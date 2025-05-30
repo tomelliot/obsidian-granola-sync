@@ -6,6 +6,7 @@ export interface IFileSystem {
   read(path: string): Promise<string>;
   write(path: string, content: string): Promise<void>;
   createFolder(path: string): Promise<void>;
+  normalizePath(path: string): string;
 }
 
 export interface IGranolaApi {
