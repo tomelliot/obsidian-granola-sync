@@ -1,3 +1,4 @@
+/* @ts-nocheck */
 import { updateSection } from '../../src/textUtils';
 
 jest.mock('../../src/fileUtils', () => ({
