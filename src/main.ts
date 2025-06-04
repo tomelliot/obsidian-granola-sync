@@ -1,4 +1,4 @@
-import { Notice, Plugin, requestUrl, normalizePath } from "obsidian";
+import { Notice, Plugin, normalizePath } from "obsidian";
 import {
   createDailyNote,
   getDailyNote,
@@ -23,19 +23,7 @@ import {
   loadCredentials as loadGranolaCredentials,
   stopCredentialsServer,
 } from "./services/credentials";
-
-// Helper interfaces for ProseMirror and API responses
-interface ProseMirrorNode {
-  type: string;
-  content?: ProseMirrorNode[];
-  text?: string;
-  attrs?: { [key: string]: any };
-}
-
-interface ProseMirrorDoc {
-  type: "doc";
-  content: ProseMirrorNode[];
-}
+import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
 
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
@@ -332,67 +320,6 @@ export default class GranolaSync extends Plugin {
     return this.saveToDisk(filename, transcriptContent, noteDate, true);
   }
 
-  private convertProsemirrorToMarkdown(
-    doc: ProseMirrorDoc | null | undefined
-  ): string {
-    if (!doc || doc.type !== "doc" || !doc.content) {
-      return "";
-    }
-
-    let markdownOutput: string[] = [];
-
-    const processNode = (node: ProseMirrorNode): string => {
-      if (!node || typeof node !== "object") return "";
-
-      let textContent = "";
-      if (node.content && Array.isArray(node.content)) {
-        textContent = node.content.map(processNode).join("");
-      } else if (node.text) {
-        textContent = node.text;
-      }
-
-      switch (node.type) {
-        case "heading":
-          const level = node.attrs?.level || 1;
-          return `${"#".repeat(level)} ${textContent.trim()}\n\n`;
-        case "paragraph":
-          // Ensure paragraphs are separated by exactly one blank line from previous content
-          // unless they are empty.
-          const trimmedContent = textContent.trim();
-          return trimmedContent ? `${trimmedContent}\n\n` : "";
-        case "bulletList":
-          if (!node.content) return "";
-          const items = node.content
-            .map((itemNode) => {
-              if (itemNode.type === "listItem") {
-                const listItemContent = (itemNode.content || [])
-                  .map(processNode)
-                  .join("")
-                  .trim();
-                return `- ${listItemContent}`;
-              }
-              return "";
-            })
-            .filter((item) => item.length > 0);
-          return items.join("\n") + (items.length > 0 ? "\n\n" : "");
-        case "text":
-          return node.text || "";
-        default:
-          return textContent;
-      }
-    };
-
-    doc.content.forEach((node) => {
-      markdownOutput.push(processNode(node));
-    });
-
-    // Post-processing: Remove excessive newlines, ensure at most two newlines between blocks
-    return markdownOutput
-      .join("")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }
-
   private async fetchDocuments(): Promise<GranolaDoc[] | null> {
     try {
       return await fetchGranolaDocuments(this.accessToken);
@@ -526,8 +453,7 @@ export default class GranolaSync extends Plugin {
         if (!contentToParse || contentToParse.type !== "doc") {
           continue;
         }
-        const markdownContent =
-          this.convertProsemirrorToMarkdown(contentToParse);
+        const markdownContent = convertProsemirrorToMarkdown(contentToParse);
 
         let noteDateSource: Date;
         if (doc.created_at) noteDateSource = new Date(doc.created_at);
@@ -626,8 +552,7 @@ export default class GranolaSync extends Plugin {
           continue;
         }
 
-        const markdownContent =
-          this.convertProsemirrorToMarkdown(contentToParse);
+        const markdownContent = convertProsemirrorToMarkdown(contentToParse);
 
         if (await this.saveNoteToDisk(doc, markdownContent)) {
           syncedCount++;
