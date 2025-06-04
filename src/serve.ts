@@ -45,11 +45,16 @@ export function startGranolaCredentialsServer() {
   process.on("exit", shutdown);
 }
 
-export function stopGranolaCredentialsServer() {
-  if (server) {
-    server.close(() => {
-      console.debug("Granola credentials server shut down.");
-    });
-    server = null;
-  }
+export function stopGranolaCredentialsServer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (server) {
+      server.close(() => {
+        console.debug("Granola credentials server shut down.");
+        resolve();
+      });
+      server = null;
+    } else {
+      resolve();
+    }
+  });
 }

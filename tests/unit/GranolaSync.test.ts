@@ -8,6 +8,82 @@ jest.mock('../../src/services/GranolaApiService');
 jest.mock('../../src/services/FileSystemService');
 jest.mock('../../src/services/MarkdownConverterService');
 
+// Mock the serve functions to prevent actual server operations during tests
+jest.mock('../../src/serve', () => ({
+  startGranolaCredentialsServer: jest.fn(),
+  stopGranolaCredentialsServer: jest.fn(() => Promise.resolve()),
+}));
+
+// Mock obsidian-daily-notes-interface
+jest.mock('obsidian-daily-notes-interface', () => ({
+  createDailyNote: jest.fn(),
+  getDailyNote: jest.fn(),
+  getAllDailyNotes: jest.fn(() => ({})),
+  getDailyNoteSettings: jest.fn(() => ({ format: 'YYYY-MM-DD', folder: '' })),
+}));
+
+// Mock textUtils
+jest.mock('../../src/textUtils', () => ({
+  updateSection: jest.fn(),
+}));
+
+// Mock moment
+jest.mock('moment', () => {
+  const moment = () => ({
+    format: jest.fn(() => '2024-01-01'),
+  });
+  return moment;
+});
+
+// Mock settings
+jest.mock('../../src/settings', () => ({
+  DEFAULT_SETTINGS: {
+    tokenPath: 'test/token.json',
+    granolaFolder: 'Granola',
+    latestSyncTime: 0,
+    isSyncEnabled: true,
+    syncInterval: 1800,
+    syncToDailyNotes: false,
+    dailyNoteSectionHeading: '## Granola Notes',
+    syncNotes: true,
+    syncTranscripts: false,
+    syncDestination: 'GRANOLA_FOLDER',
+    transcriptDestination: 'GRANOLA_TRANSCRIPTS_FOLDER',
+    granolaTranscriptsFolder: 'Granola Transcripts',
+    createLinkFromNoteToTranscript: false,
+  },
+  GranolaSyncSettingTab: jest.fn(),
+  SyncDestination: {
+    GRANOLA_FOLDER: 'GRANOLA_FOLDER',
+    DAILY_NOTE_FOLDER_STRUCTURE: 'DAILY_NOTE_FOLDER_STRUCTURE',
+    DAILY_NOTES: 'DAILY_NOTES',
+  },
+  TranscriptDestination: {
+    GRANOLA_TRANSCRIPTS_FOLDER: 'GRANOLA_TRANSCRIPTS_FOLDER',
+    DAILY_NOTE_FOLDER_STRUCTURE: 'DAILY_NOTE_FOLDER_STRUCTURE',
+  },
+}));
+
+// Mock requestUrl to prevent actual HTTP requests
+jest.mock('obsidian', () => ({
+  requestUrl: jest.fn(() => Promise.reject(new Error('No server in tests'))),
+  Plugin: class MockPlugin {
+    constructor(public app: any, public manifest: any) {}
+    loadData = jest.fn().mockResolvedValue({});
+    saveData = jest.fn().mockResolvedValue(undefined);
+    registerInterval = jest.fn();
+    addCommand = jest.fn();
+    addStatusBarItem = jest.fn(() => ({ setText: jest.fn() }));
+    addSettingTab = jest.fn();
+  },
+  Setting: jest.fn(),
+  PluginSettingTab: jest.fn(),
+  Notice: jest.fn(),
+  normalizePath: jest.fn((path: string) => path),
+  moment: jest.fn(),
+  getDailyNoteSettings: jest.fn(() => ({ format: 'YYYY-MM-DD', folder: '' })),
+}));
+
 describe('GranolaSync', () => {
   let plugin: GranolaSync;
   let mockApp: any;
@@ -60,6 +136,9 @@ describe('GranolaSync', () => {
       syncToDailyNotes: false,
       dailyNoteSectionHeading: '## Granola Notes'
     };
+
+    // Clear all mocks before each test
+    jest.clearAllMocks();
   });
 
   it('should load settings on startup', async () => {

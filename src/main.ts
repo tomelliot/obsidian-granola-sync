@@ -104,7 +104,7 @@ export default class GranolaSync extends Plugin {
 
   async onunload() {
     this.clearPeriodicSync();
-    stopGranolaCredentialsServer();
+    await stopGranolaCredentialsServer();
   }
 
   async loadSettings() {
@@ -132,10 +132,14 @@ export default class GranolaSync extends Plugin {
         throw: true,
       });
       try {
+        const responseData = response.json;
+        if (!responseData) {
+          throw new Error("No response data received from credentials server");
+        }
         const tokenData =
-          typeof response.json === "string"
-            ? JSON.parse(response.json)
-            : response.json;
+          typeof responseData === "string"
+            ? JSON.parse(responseData)
+            : responseData;
         const cognitoTokens = JSON.parse(tokenData.cognito_tokens); // Assuming cognito_tokens is a stringified JSON
         this.accessToken = cognitoTokens.access_token;
         if (!this.accessToken) {
@@ -153,7 +157,7 @@ export default class GranolaSync extends Plugin {
       console.error("Credentials loading error:", error);
     } finally {
       // Always stop the credentials server after the request
-      stopGranolaCredentialsServer();
+      await stopGranolaCredentialsServer();
     }
   }
 
