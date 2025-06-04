@@ -15,6 +15,7 @@ Forked from [Automatt/obsidian-granola-sync/](https://github.com/Automatt/obsidi
 - Periodic automatic syncing with customizable interval
 - Granular settings for notes and transcripts
 - Customizable sync settings and destinations
+- **Platform support:** This plugin only works on **macOS**. It is **not supported on iOS**.
 
 ## Installation
 
