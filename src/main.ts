@@ -5,7 +5,7 @@ import {
   getAllDailyNotes,
   getDailyNoteSettings,
 } from "obsidian-daily-notes-interface";
-import { updateSection } from "./textUtils";
+import { updateSection } from "./utils/textUtils";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -15,9 +15,14 @@ import {
 } from "./settings";
 import moment from "moment";
 import {
-  startGranolaCredentialsServer,
-  stopGranolaCredentialsServer,
-} from "./serve";
+  fetchGranolaDocuments,
+  fetchGranolaTranscript,
+  GranolaDoc,
+} from "./services/granolaApi";
+import {
+  loadCredentials as loadGranolaCredentials,
+  stopCredentialsServer,
+} from "./services/credentials";
 
 // Helper interfaces for ProseMirror and API responses
 interface ProseMirrorNode {
@@ -32,29 +37,22 @@ interface ProseMirrorDoc {
   content: ProseMirrorNode[];
 }
 
-interface GranolaDoc {
-  id: string;
-  title: string;
-  created_at?: string;
-  updated_at?: string;
-  last_viewed_panel?: {
-    content?: ProseMirrorDoc;
-  };
-}
-
-interface GranolaApiResponse {
-  docs: GranolaDoc[];
-}
-
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
-  accessToken: string | null = null;
-  tokenLoadError: string | null = null;
+  accessToken: string;
 
   async onload() {
     await this.loadSettings();
-    await this.loadCredentials();
+    const { accessToken, error } = await loadGranolaCredentials();
+    if (!accessToken || error) {
+      new Notice(
+        `Granola Sync Error: ${error || "No access token loaded."}`,
+        10000
+      );
+      return;
+    }
+    this.accessToken = accessToken;
 
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
@@ -104,57 +102,16 @@ export default class GranolaSync extends Plugin {
 
   async onunload() {
     this.clearPeriodicSync();
-    stopGranolaCredentialsServer();
+    stopCredentialsServer();
   }
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    await this.loadCredentials();
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
-    // Re-evaluate periodic sync when settings change (e.g., interval or enabled status)
-    await this.loadCredentials();
     this.setupPeriodicSync();
-  }
-
-  async loadCredentials() {
-    this.accessToken = null;
-    this.tokenLoadError = null;
-    // Start the credentials server before making the request
-    startGranolaCredentialsServer();
-    try {
-      // Fetch credentials from local server
-      const response = await requestUrl({
-        url: "http://127.0.0.1:2590/",
-        method: "GET",
-        throw: true,
-      });
-      try {
-        const tokenData =
-          typeof response.json === "string"
-            ? JSON.parse(response.json)
-            : response.json;
-        const cognitoTokens = JSON.parse(tokenData.cognito_tokens); // Assuming cognito_tokens is a stringified JSON
-        this.accessToken = cognitoTokens.access_token;
-        if (!this.accessToken) {
-          this.tokenLoadError =
-            "No access token found in credentials file. The token may have expired.";
-        }
-      } catch (parseError) {
-        this.tokenLoadError =
-          "Invalid JSON format in credentials response. Please ensure the server returns valid JSON.";
-        console.error("Token response parse error:", parseError);
-      }
-    } catch (error) {
-      this.tokenLoadError =
-        "Failed to load credentials from http://127.0.0.1:2590/. Please check if the credentials server is running.";
-      console.error("Credentials loading error:", error);
-    } finally {
-      // Always stop the credentials server after the request
-      stopGranolaCredentialsServer();
-    }
   }
 
   setupPeriodicSync() {
@@ -191,11 +148,6 @@ export default class GranolaSync extends Plugin {
       window.clearInterval(this.syncIntervalId);
       this.syncIntervalId = null;
     }
-  }
-
-  // Helper to escape strings for use in regex
-  private escapeRegExp(string: string): string {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // $& means the whole matched string
   }
 
   private sanitizeFilename(title: string): string {
@@ -441,49 +393,9 @@ export default class GranolaSync extends Plugin {
       .trim();
   }
 
-  private async checkCredentials(): Promise<string | null> {
-    if (this.tokenLoadError) {
-      new Notice(`Granola Sync Error: ${this.tokenLoadError}`, 10000);
-      return null;
-    }
-    if (!this.accessToken) {
-      new Notice("Granola Sync Error: No access token loaded.", 10000);
-      return null;
-    }
-    return this.accessToken;
-  }
-
-  private async fetchDocuments(
-    accessToken: string
-  ): Promise<GranolaDoc[] | null> {
+  private async fetchDocuments(): Promise<GranolaDoc[] | null> {
     try {
-      const response = await requestUrl({
-        url: "https://api.granola.ai/v2/get-documents",
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          Accept: "*/*",
-          "User-Agent": "GranolaObsidianPlugin/0.1.7",
-          "X-Client-Version": "ObsidianPlugin-0.1.7",
-        },
-        body: JSON.stringify({
-          limit: 100,
-          offset: 0,
-          include_last_viewed_panel: true,
-        }),
-        throw: true,
-      });
-
-      const apiResponse = response.json as GranolaApiResponse;
-      if (!apiResponse || !apiResponse.docs) {
-        new Notice(
-          "Granola Sync Error: Invalid API response format. Please try again later.",
-          10000
-        );
-        return null;
-      }
-      return apiResponse.docs;
+      return await fetchGranolaDocuments(this.accessToken);
     } catch (error: any) {
       if (error.status === 401) {
         new Notice(
@@ -587,12 +499,8 @@ export default class GranolaSync extends Plugin {
       return;
     }
 
-    // Check credentials
-    const accessToken = await this.checkCredentials();
-    if (!accessToken) return;
-
-    // Fetch documents
-    const documents = await this.fetchDocuments(accessToken);
+    // Fetch documents (now handles credentials)
+    const documents = await this.fetchDocuments();
     if (!documents) return;
 
     let syncedCount = 0;
@@ -760,12 +668,8 @@ export default class GranolaSync extends Plugin {
       return;
     }
 
-    // Check credentials
-    const accessToken = await this.checkCredentials();
-    if (!accessToken) return;
-
-    // Fetch documents
-    const documents = await this.fetchDocuments(accessToken);
+    // Fetch documents (now handles credentials)
+    const documents = await this.fetchDocuments();
     if (!documents) return;
 
     let syncedCount = 0;
@@ -773,38 +677,18 @@ export default class GranolaSync extends Plugin {
       const docId = doc.id;
       const title = doc.title || "Untitled Granola Note";
       try {
-        const transcriptResp = await requestUrl({
-          url: "https://api.granola.ai/v1/get-document-transcript",
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-            Accept: "*/*",
-            "User-Agent": "GranolaObsidianPlugin/0.1.7",
-            "X-Client-Version": "ObsidianPlugin-0.1.7",
-          },
-          body: JSON.stringify({ document_id: docId }),
-          throw: true,
-        });
-        const transcriptData = transcriptResp.json as Array<{
-          document_id: string;
-          start_timestamp: string;
-          text: string;
-          source: string;
-          id: string;
-          is_final: boolean;
-          end_timestamp: string;
-        }>;
+        const transcriptData = await fetchGranolaTranscript(
+          this.accessToken,
+          docId
+        );
         if (!Array.isArray(transcriptData) || transcriptData.length === 0) {
           continue;
         }
-
         // Use the extracted formatting function
         const transcriptMd = this.formatTranscriptBySpeaker(
           transcriptData,
           title
         );
-
         if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
           syncedCount++;
         }
