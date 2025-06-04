@@ -12,31 +12,29 @@ const filePath = path.join(
 );
 
 export function startCredentialsServer() {
-  server = http.createServer((req, res) => {
-    if (req.url === "/supabase.json" || req.url === "/") {
-      fs.readFile(filePath, (err, data) => {
-        if (err) {
-          res.writeHead(404, { "Content-Type": "text/plain" });
-          res.end("File not found");
-        } else {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(data);
-        }
-      });
-    } else {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.end("Not found");
-    }
-  });
+  server = http
+    .createServer((req, res) => {
+      if (req.url === "/supabase.json" || req.url === "/") {
+        fs.readFile(filePath, (err, data) => {
+          if (err) {
+            res.writeHead(404, { "Content-Type": "text/plain" });
+            res.end("File not found");
+          } else {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(data);
+          }
+        });
+      } else {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("Not found");
+      }
+    })
+    .listen(2590, "127.0.0.1");
 
   // Graceful shutdown on process exit
-  const shutdown = () => {
-    stopCredentialsServer();
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-  process.on("exit", shutdown);
+  process.on("SIGINT", stopCredentialsServer);
+  process.on("SIGTERM", stopCredentialsServer);
+  process.on("exit", stopCredentialsServer);
 }
 
 export function stopCredentialsServer() {
