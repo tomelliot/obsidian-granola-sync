@@ -68,13 +68,8 @@ export default class GranolaSync extends Plugin {
         new Notice("Granola Sync: Starting manual sync.");
         statusBarItemEl.setText("Granola Sync: Syncing...");
 
-        // Always sync transcripts first if enabled, so notes can link to them
-        if (this.settings.syncTranscripts) {
-          await this.syncTranscripts();
-        }
-        if (this.settings.syncNotes) {
-          await this.syncNotes();
-        }
+        await this.performSync();
+
         new Notice("Granola Sync: Manual sync complete.");
 
         if (!this.settings.syncNotes && !this.settings.syncTranscripts) {
@@ -167,13 +162,7 @@ export default class GranolaSync extends Plugin {
         if (statusBarItemEl)
           statusBarItemEl.setText("Granola Sync: Auto-syncing...");
 
-        // Always sync transcripts first if enabled, so notes can link to them
-        if (this.settings.syncTranscripts) {
-          await this.syncTranscripts();
-        }
-        if (this.settings.syncNotes) {
-          await this.syncNotes();
-        }
+        await this.performSync();
 
         if (statusBarItemEl)
           statusBarItemEl.setText(
@@ -251,194 +240,26 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-  // Generic save to disk method
-  private async saveToDisk(
-    filename: string,
-    content: string,
-    noteDate: Date,
-    isTranscript: boolean = false
-  ): Promise<boolean> {
-    try {
-      // Determine the folder path based on settings and file type
-      let folderPath: string;
+  // Unified sync function that fetches documents once and syncs both notes and transcripts
+  private async performSync(): Promise<void> {
+    // Check credentials
+    const accessToken = await this.checkCredentials();
+    if (!accessToken) return;
 
-      if (isTranscript) {
-        // Handle transcript destinations
-        switch (this.settings.transcriptDestination) {
-          case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.computeDailyNoteFolderPath(noteDate);
-            break;
-          case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-            folderPath = normalizePath(this.settings.granolaTranscriptsFolder);
-            break;
-        }
-      } else {
-        // Handle note destinations
-        switch (this.settings.syncDestination) {
-          case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.computeDailyNoteFolderPath(noteDate);
-            break;
-          case SyncDestination.GRANOLA_FOLDER:
-            folderPath = normalizePath(this.settings.granolaFolder);
-            break;
-          default:
-            // This shouldn't happen for individual files
-            new Notice(
-              `Invalid sync destination for individual files: ${this.settings.syncDestination}`,
-              7000
-            );
-            return false;
-        }
-      }
+    // Fetch documents once
+    const documents = await this.fetchDocuments(accessToken);
+    if (!documents) return;
 
-      // Ensure the folder exists
-      if (!(await this.ensureFolderExists(folderPath))) {
-        new Notice(
-          `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
-          7000
-        );
-        return false;
-      }
-
-      const filePath = normalizePath(`${folderPath}/${filename}`);
-      await this.app.vault.adapter.write(filePath, content);
-      return true;
-    } catch (e) {
-      new Notice(`Error saving file: ${filename}. Check console.`, 7000);
-      console.error("Error saving file to disk:", e);
-      return false;
+    // Always sync transcripts first if enabled, so notes can link to them
+    if (this.settings.syncTranscripts) {
+      await this.syncTranscripts(documents, accessToken);
     }
-  }
-
-  // Save a note to disk based on the sync destination setting
-  private async saveNoteToDisk(
-    doc: GranolaDoc,
-    markdownContent: string
-  ): Promise<boolean> {
-    const title = doc.title || "Untitled Granola Note";
-    const docId = doc.id || "unknown_id";
-
-    // Prepare frontmatter
-    const escapedTitleForYaml = title.replace(/"/g, '\\"');
-    const frontmatterLines = [
-      "---",
-      `granola_id: ${docId}`,
-      `title: "${escapedTitleForYaml}"`,
-    ];
-    if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
-    if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
-    frontmatterLines.push("---", "");
-
-    let finalMarkdown = frontmatterLines.join("\n");
-
-    // Add transcript link if enabled
-    if (
-      this.settings.syncTranscripts &&
-      this.settings.createLinkFromNoteToTranscript
-    ) {
-      // Use the date from the note
-      let noteDate: Date;
-      if (doc.created_at) noteDate = new Date(doc.created_at);
-      else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-      else noteDate = new Date();
-
-      // Compute transcript path using the helper method
-      const transcriptPath = this.computeTranscriptPath(title, noteDate);
-
-      // Add the link
-      finalMarkdown += `[Transcript](${transcriptPath})\n\n`;
+    if (this.settings.syncNotes) {
+      await this.syncNotes(documents);
     }
 
-    // Add the actual note content
-    finalMarkdown += markdownContent;
-
-    const filename = this.sanitizeFilename(title) + ".md";
-
-    // Get the note date
-    let noteDate: Date;
-    if (doc.created_at) noteDate = new Date(doc.created_at);
-    else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-    else noteDate = new Date();
-
-    return this.saveToDisk(filename, finalMarkdown, noteDate, false);
-  }
-
-  // Save a transcript to disk based on the transcript destination setting
-  private async saveTranscriptToDisk(
-    doc: GranolaDoc,
-    transcriptContent: string
-  ): Promise<boolean> {
-    const title = doc.title || "Untitled Granola Note";
-    const filename = this.sanitizeFilename(title) + "-transcript.md";
-
-    // Get the note date
-    let noteDate: Date;
-    if (doc.created_at) noteDate = new Date(doc.created_at);
-    else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-    else noteDate = new Date();
-
-    return this.saveToDisk(filename, transcriptContent, noteDate, true);
-  }
-
-  private convertProsemirrorToMarkdown(
-    doc: ProseMirrorDoc | null | undefined
-  ): string {
-    if (!doc || doc.type !== "doc" || !doc.content) {
-      return "";
-    }
-
-    let markdownOutput: string[] = [];
-
-    const processNode = (node: ProseMirrorNode): string => {
-      if (!node || typeof node !== "object") return "";
-
-      let textContent = "";
-      if (node.content && Array.isArray(node.content)) {
-        textContent = node.content.map(processNode).join("");
-      } else if (node.text) {
-        textContent = node.text;
-      }
-
-      switch (node.type) {
-        case "heading":
-          const level = node.attrs?.level || 1;
-          return `${"#".repeat(level)} ${textContent.trim()}\n\n`;
-        case "paragraph":
-          // Ensure paragraphs are separated by exactly one blank line from previous content
-          // unless they are empty.
-          const trimmedContent = textContent.trim();
-          return trimmedContent ? `${trimmedContent}\n\n` : "";
-        case "bulletList":
-          if (!node.content) return "";
-          const items = node.content
-            .map((itemNode) => {
-              if (itemNode.type === "listItem") {
-                const listItemContent = (itemNode.content || [])
-                  .map(processNode)
-                  .join("")
-                  .trim();
-                return `- ${listItemContent}`;
-              }
-              return "";
-            })
-            .filter((item) => item.length > 0);
-          return items.join("\n") + (items.length > 0 ? "\n\n" : "");
-        case "text":
-          return node.text || "";
-        default:
-          return textContent;
-      }
-    };
-
-    doc.content.forEach((node) => {
-      markdownOutput.push(processNode(node));
-    });
-
-    // Post-processing: Remove excessive newlines, ensure at most two newlines between blocks
-    return markdownOutput
-      .join("")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+    this.settings.latestSyncTime = Date.now();
+    await this.saveSettings(); // Save settings to persist latestSyncTime
   }
 
   private async checkCredentials(): Promise<string | null> {
@@ -581,154 +402,404 @@ export default class GranolaSync extends Plugin {
     return transcriptMd;
   }
 
-  async syncNotes() {
+  // Check if a file exists and return true if it should be skipped (not overwritten)
+  private async shouldSkipExistingFile(filePath: string): Promise<boolean> {
+    try {
+      return await this.app.vault.adapter.exists(filePath);
+    } catch (error) {
+      console.error("Error checking file existence:", error);
+      return false; // If we can't check, proceed with save
+    }
+  }
+
+  // Generic save to disk method with overwrite protection
+  private async saveToDisk(
+    filename: string,
+    content: string,
+    noteDate: Date,
+    isTranscript: boolean = false,
+    allowOverwrite: boolean = true
+  ): Promise<boolean> {
+    try {
+      // Determine the folder path based on settings and file type
+      let folderPath: string;
+
+      if (isTranscript) {
+        // Handle transcript destinations
+        switch (this.settings.transcriptDestination) {
+          case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
+            folderPath = this.computeDailyNoteFolderPath(noteDate);
+            break;
+          case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
+            folderPath = normalizePath(this.settings.granolaTranscriptsFolder);
+            break;
+        }
+      } else {
+        // Handle note destinations
+        switch (this.settings.syncDestination) {
+          case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
+            folderPath = this.computeDailyNoteFolderPath(noteDate);
+            break;
+          case SyncDestination.GRANOLA_FOLDER:
+            folderPath = normalizePath(this.settings.granolaFolder);
+            break;
+          default:
+            // This shouldn't happen for individual files
+            new Notice(
+              `Invalid sync destination for individual files: ${this.settings.syncDestination}`,
+              7000
+            );
+            return false;
+        }
+      }
+
+      // Ensure the folder exists
+      if (!(await this.ensureFolderExists(folderPath))) {
+        new Notice(
+          `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
+          7000
+        );
+        return false;
+      }
+
+      const filePath = normalizePath(`${folderPath}/${filename}`);
+      
+      // Check if file exists and if we should skip overwriting
+      if (!allowOverwrite && await this.shouldSkipExistingFile(filePath)) {
+        console.log(`Skipping existing file: ${filePath}`);
+        return true; // Return true as this is not an error, just a skip
+      }
+
+      await this.app.vault.adapter.write(filePath, content);
+      return true;
+    } catch (e) {
+      new Notice(`Error saving file: ${filename}. Check console.`, 7000);
+      console.error("Error saving file to disk:", e);
+      return false;
+    }
+  }
+
+  // Save a note to disk based on the sync destination setting
+  private async saveNoteToDisk(
+    doc: GranolaDoc,
+    markdownContent: string,
+    allowOverwrite: boolean = true
+  ): Promise<boolean> {
+    const title = doc.title || "Untitled Granola Note";
+    const docId = doc.id || "unknown_id";
+
+    // Prepare frontmatter
+    const escapedTitleForYaml = title.replace(/"/g, '\\"');
+    const frontmatterLines = [
+      "---",
+      `granola_id: ${docId}`,
+      `title: "${escapedTitleForYaml}"`,
+    ];
+    if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
+    if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
+    frontmatterLines.push("---", "");
+
+    let finalMarkdown = frontmatterLines.join("\n");
+
+    // Add transcript link if enabled
+    if (
+      this.settings.syncTranscripts &&
+      this.settings.createLinkFromNoteToTranscript
+    ) {
+      // Use the date from the note
+      let noteDate: Date;
+      if (doc.created_at) noteDate = new Date(doc.created_at);
+      else if (doc.updated_at) noteDate = new Date(doc.updated_at);
+      else noteDate = new Date();
+
+      // Compute transcript path using the helper method
+      const transcriptPath = this.computeTranscriptPath(title, noteDate);
+
+      // Add the link
+      finalMarkdown += `[Transcript](${transcriptPath})\n\n`;
+    }
+
+    // Add the actual note content
+    finalMarkdown += markdownContent;
+
+    const filename = this.sanitizeFilename(title) + ".md";
+
+    // Get the note date
+    let noteDate: Date;
+    if (doc.created_at) noteDate = new Date(doc.created_at);
+    else if (doc.updated_at) noteDate = new Date(doc.updated_at);
+    else noteDate = new Date();
+
+    return this.saveToDisk(filename, finalMarkdown, noteDate, false, allowOverwrite);
+  }
+
+  // Save a transcript to disk based on the transcript destination setting
+  private async saveTranscriptToDisk(
+    doc: GranolaDoc,
+    transcriptContent: string,
+    allowOverwrite: boolean = true
+  ): Promise<boolean> {
+    const title = doc.title || "Untitled Granola Note";
+    const filename = this.sanitizeFilename(title) + "-transcript.md";
+
+    // Get the note date
+    let noteDate: Date;
+    if (doc.created_at) noteDate = new Date(doc.created_at);
+    else if (doc.updated_at) noteDate = new Date(doc.updated_at);
+    else noteDate = new Date();
+
+    return this.saveToDisk(filename, transcriptContent, noteDate, true, allowOverwrite);
+  }
+
+  private convertProsemirrorToMarkdown(
+    doc: ProseMirrorDoc | null | undefined
+  ): string {
+    if (!doc || doc.type !== "doc" || !doc.content) {
+      return "";
+    }
+
+    let markdownOutput: string[] = [];
+
+    const processNode = (node: ProseMirrorNode): string => {
+      if (!node || typeof node !== "object") return "";
+
+      let textContent = "";
+      if (node.content && Array.isArray(node.content)) {
+        textContent = node.content.map(processNode).join("");
+      } else if (node.text) {
+        textContent = node.text;
+      }
+
+      switch (node.type) {
+        case "heading":
+          const level = node.attrs?.level || 1;
+          return `${"#".repeat(level)} ${textContent.trim()}\n\n`;
+        case "paragraph":
+          // Ensure paragraphs are separated by exactly one blank line from previous content
+          // unless they are empty.
+          const trimmedContent = textContent.trim();
+          return trimmedContent ? `${trimmedContent}\n\n` : "";
+        case "bulletList":
+          if (!node.content) return "";
+          const items = node.content
+            .map((itemNode) => {
+              if (itemNode.type === "listItem") {
+                const listItemContent = (itemNode.content || [])
+                  .map(processNode)
+                  .join("")
+                  .trim();
+                return `- ${listItemContent}`;
+              }
+              return "";
+            })
+            .filter((item) => item.length > 0);
+          return items.join("\n") + (items.length > 0 ? "\n\n" : "");
+        case "text":
+          return node.text || "";
+        default:
+          return textContent;
+      }
+    };
+
+    doc.content.forEach((node) => {
+      markdownOutput.push(processNode(node));
+    });
+
+    // Post-processing: Remove excessive newlines, ensure at most two newlines between blocks
+    return markdownOutput
+      .join("")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  // Save notes to daily notes (section-based approach)
+  private async saveToDailyNotes(documents: GranolaDoc[]): Promise<number> {
+    const dailyNotesMap: Map<
+      string,
+      {
+        title: string;
+        docId: string;
+        createdAt?: string;
+        updatedAt?: string;
+        markdown: string;
+      }[]
+    > = new Map();
+
+    // Group documents by date
+    for (const doc of documents) {
+      const title = doc.title || "Untitled Granola Note";
+      const docId = doc.id || "unknown_id";
+      const contentToParse = doc.last_viewed_panel?.content;
+
+      if (!contentToParse || contentToParse.type !== "doc") {
+        continue;
+      }
+      const markdownContent = this.convertProsemirrorToMarkdown(contentToParse);
+
+      let noteDateSource: Date;
+      if (doc.created_at) noteDateSource = new Date(doc.created_at);
+      else if (doc.updated_at) noteDateSource = new Date(doc.updated_at);
+      else noteDateSource = new Date();
+
+      const noteMoment = moment(noteDateSource);
+      const mapKey = noteMoment.format("YYYY-MM-DD"); // Use date string as key
+
+      if (!dailyNotesMap.has(mapKey)) {
+        dailyNotesMap.set(mapKey, []);
+      }
+      dailyNotesMap.get(mapKey)?.push({
+        title,
+        docId,
+        createdAt: doc.created_at,
+        updatedAt: doc.updated_at,
+        markdown: markdownContent,
+      });
+    }
+
+    let syncedCount = 0;
+    const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
+
+    // Process each date's notes
+    for (const [dateKey, notesForDay] of dailyNotesMap) {
+      const noteMoment = moment(dateKey, "YYYY-MM-DD");
+      let dailyNoteFile = getDailyNote(noteMoment as any, getAllDailyNotes());
+
+      if (!dailyNoteFile) {
+        dailyNoteFile = await createDailyNote(noteMoment as any);
+      }
+
+      let fullSectionContent = sectionHeadingSetting;
+      if (notesForDay.length > 0) {
+        for (const note of notesForDay) {
+          fullSectionContent += `\n### ${note.title}\n`;
+          fullSectionContent += `**Granola ID:** ${note.docId}\n`;
+          if (note.createdAt)
+            fullSectionContent += `**Created:** ${note.createdAt}\n`;
+          if (note.updatedAt)
+            fullSectionContent += `**Updated:** ${note.updatedAt}\n`;
+
+          // Add transcript link if enabled
+          if (
+            this.settings.syncTranscripts &&
+            this.settings.createLinkFromNoteToTranscript
+          ) {
+            let noteDate: Date;
+            if (note.createdAt) noteDate = new Date(note.createdAt);
+            else if (note.updatedAt) noteDate = new Date(note.updatedAt);
+            else noteDate = new Date(dateKey);
+
+            const transcriptPath = this.computeTranscriptPath(note.title, noteDate);
+            fullSectionContent += `**Transcript:** [[${transcriptPath}]]\n`;
+          }
+
+          fullSectionContent += `\n${note.markdown}\n`;
+        }
+      }
+
+      const completeSectionText = fullSectionContent.trim() + "\n";
+
+      try {
+        await updateSection(
+          this.app,
+          dailyNoteFile,
+          sectionHeadingSetting,
+          completeSectionText
+        );
+        syncedCount += notesForDay.length;
+      } catch (error) {
+        new Notice(
+          `Error updating section in ${dailyNoteFile.path}. Check console.`,
+          7000
+        );
+      }
+    }
+
+    return syncedCount;
+  }
+
+  // Save notes to individual files
+  private async saveToIndividualFiles(documents: GranolaDoc[]): Promise<number> {
+    let syncedCount = 0;
+
+    for (const doc of documents) {
+      const contentToParse = doc.last_viewed_panel?.content;
+      if (!contentToParse || contentToParse.type !== "doc") {
+        continue;
+      }
+
+      const markdownContent = this.convertProsemirrorToMarkdown(contentToParse);
+
+      // Don't overwrite existing files for individual file saves
+      if (await this.saveNoteToDisk(doc, markdownContent, false)) {
+        syncedCount++;
+      }
+    }
+
+    return syncedCount;
+  }
+
+  // Fetch transcript data for a specific document
+  private async fetchTranscriptData(
+    docId: string,
+    accessToken: string
+  ): Promise<Array<{
+    document_id: string;
+    start_timestamp: string;
+    text: string;
+    source: string;
+    id: string;
+    is_final: boolean;
+    end_timestamp: string;
+  }> | null> {
+    try {
+      const transcriptResp = await requestUrl({
+        url: "https://api.granola.ai/v1/get-document-transcript",
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "*/*",
+          "User-Agent": "GranolaObsidianPlugin/0.1.7",
+          "X-Client-Version": "ObsidianPlugin-0.1.7",
+        },
+        body: JSON.stringify({ document_id: docId }),
+        throw: true,
+      });
+
+      const transcriptData = transcriptResp.json as Array<{
+        document_id: string;
+        start_timestamp: string;
+        text: string;
+        source: string;
+        id: string;
+        is_final: boolean;
+        end_timestamp: string;
+      }>;
+
+      if (!Array.isArray(transcriptData) || transcriptData.length === 0) {
+        return null;
+      }
+
+      return transcriptData;
+    } catch (e) {
+      console.error(`Transcript fetch error for doc ${docId}:`, e);
+      return null;
+    }
+  }
+
+  async syncNotes(documents: GranolaDoc[]) {
     // Check if note syncing is enabled
     if (!this.settings.syncNotes) {
       return;
     }
 
-    // Check credentials
-    const accessToken = await this.checkCredentials();
-    if (!accessToken) return;
-
-    // Fetch documents
-    const documents = await this.fetchDocuments(accessToken);
-    if (!documents) return;
-
     let syncedCount = 0;
 
     if (this.settings.syncDestination === SyncDestination.DAILY_NOTES) {
-      // Sync to daily notes
-      const dailyNotesMap: Map<
-        string,
-        {
-          title: string;
-          docId: string;
-          createdAt?: string;
-          updatedAt?: string;
-          markdown: string;
-        }[]
-      > = new Map();
-
-      for (const doc of documents) {
-        const title = doc.title || "Untitled Granola Note";
-        const docId = doc.id || "unknown_id";
-        const contentToParse = doc.last_viewed_panel?.content;
-
-        if (!contentToParse || contentToParse.type !== "doc") {
-          continue;
-        }
-        const markdownContent =
-          this.convertProsemirrorToMarkdown(contentToParse);
-
-        let noteDateSource: Date;
-        if (doc.created_at) noteDateSource = new Date(doc.created_at);
-        else if (doc.updated_at) noteDateSource = new Date(doc.updated_at);
-        else noteDateSource = new Date();
-
-        const noteMoment = moment(noteDateSource);
-        const mapKey = noteMoment.format("YYYY-MM-DD"); // Use date string as key
-
-        if (!dailyNotesMap.has(mapKey)) {
-          dailyNotesMap.set(mapKey, []);
-        }
-        dailyNotesMap.get(mapKey)?.push({
-          title,
-          docId,
-          createdAt: doc.created_at,
-          updatedAt: doc.updated_at,
-          markdown: markdownContent,
-        });
-      }
-
-      const sectionHeadingSetting =
-        this.settings.dailyNoteSectionHeading.trim(); // Trim the setting value
-
-      for (const [dateKey, notesForDay] of dailyNotesMap) {
-        const noteMoment = moment(dateKey, "YYYY-MM-DD");
-        let dailyNoteFile = getDailyNote(noteMoment as any, getAllDailyNotes());
-
-        if (!dailyNoteFile) {
-          dailyNoteFile = await createDailyNote(noteMoment as any);
-        }
-
-        let fullSectionContent = sectionHeadingSetting; // Use trimmed version here
-        if (notesForDay.length > 0) {
-          // Only add note content if there are notes
-          for (const note of notesForDay) {
-            // Each note block starts with a newline, ensuring separation from heading or previous note
-            fullSectionContent += `\n### ${note.title}\n`;
-            fullSectionContent += `**Granola ID:** ${note.docId}\n`;
-            if (note.createdAt)
-              fullSectionContent += `**Created:** ${note.createdAt}\n`;
-            if (note.updatedAt)
-              fullSectionContent += `**Updated:** ${note.updatedAt}\n`;
-
-            // Add transcript link if enabled
-            if (
-              this.settings.syncTranscripts &&
-              this.settings.createLinkFromNoteToTranscript
-            ) {
-              // Use the date from the note
-              let noteDate: Date;
-              if (note.createdAt) noteDate = new Date(note.createdAt);
-              else if (note.updatedAt) noteDate = new Date(note.updatedAt);
-              else noteDate = new Date(dateKey);
-
-              // Compute transcript path using the helper method
-              const transcriptPath = this.computeTranscriptPath(
-                note.title,
-                noteDate
-              );
-
-              fullSectionContent += `**Transcript:** [[${transcriptPath}]]\n`;
-            }
-
-            fullSectionContent += `\n${note.markdown}\n`;
-          }
-        } else {
-          // If there are no notes for the day, the section will just be the heading.
-        }
-
-        // Prepare the final content for the section, ensuring it ends with a single newline.
-        const completeSectionText = fullSectionContent.trim() + "\n";
-
-        // Use updateSection from textUtils.ts
-        try {
-          await updateSection(
-            this.app,
-            dailyNoteFile,
-            sectionHeadingSetting,
-            completeSectionText
-          );
-        } catch (error) {
-          new Notice(
-            `Error updating section in ${dailyNoteFile.path}. Check console.`,
-            7000
-          );
-        }
-
-        syncedCount += notesForDay.length;
-      }
+      syncedCount = await this.saveToDailyNotes(documents);
     } else {
-      // Sync to individual files (either Granola folder or daily note folder structure)
-      for (const doc of documents) {
-        const contentToParse = doc.last_viewed_panel?.content;
-        if (!contentToParse || contentToParse.type !== "doc") {
-          continue;
-        }
-
-        const markdownContent =
-          this.convertProsemirrorToMarkdown(contentToParse);
-
-        if (await this.saveNoteToDisk(doc, markdownContent)) {
-          syncedCount++;
-        }
-      }
+      syncedCount = await this.saveToIndividualFiles(documents);
     }
-
-    this.settings.latestSyncTime = Date.now();
-    await this.saveSettings(); // Save settings to persist latestSyncTime
 
     let locationMessage: string;
     switch (this.settings.syncDestination) {
@@ -754,66 +825,28 @@ export default class GranolaSync extends Plugin {
       );
   }
 
-  async syncTranscripts() {
+  async syncTranscripts(documents: GranolaDoc[], accessToken: string) {
     // Check if transcript syncing is enabled
     if (!this.settings.syncTranscripts) {
       return;
     }
 
-    // Check credentials
-    const accessToken = await this.checkCredentials();
-    if (!accessToken) return;
-
-    // Fetch documents
-    const documents = await this.fetchDocuments(accessToken);
-    if (!documents) return;
-
     let syncedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
       const title = doc.title || "Untitled Granola Note";
-      try {
-        const transcriptResp = await requestUrl({
-          url: "https://api.granola.ai/v1/get-document-transcript",
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-            Accept: "*/*",
-            "User-Agent": "GranolaObsidianPlugin/0.1.7",
-            "X-Client-Version": "ObsidianPlugin-0.1.7",
-          },
-          body: JSON.stringify({ document_id: docId }),
-          throw: true,
-        });
-        const transcriptData = transcriptResp.json as Array<{
-          document_id: string;
-          start_timestamp: string;
-          text: string;
-          source: string;
-          id: string;
-          is_final: boolean;
-          end_timestamp: string;
-        }>;
-        if (!Array.isArray(transcriptData) || transcriptData.length === 0) {
-          continue;
-        }
+      
+      const transcriptData = await this.fetchTranscriptData(docId, accessToken);
+      if (!transcriptData) {
+        continue;
+      }
 
-        // Use the extracted formatting function
-        const transcriptMd = this.formatTranscriptBySpeaker(
-          transcriptData,
-          title
-        );
+      // Use the extracted formatting function
+      const transcriptMd = this.formatTranscriptBySpeaker(transcriptData, title);
 
-        if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
-          syncedCount++;
-        }
-      } catch (e) {
-        new Notice(
-          `Error fetching transcript for document: ${title}. Check console.`,
-          7000
-        );
-        console.error(`Transcript fetch error for doc ${docId}:`, e);
+      // Don't overwrite existing transcript files
+      if (await this.saveTranscriptToDisk(doc, transcriptMd, false)) {
+        syncedCount++;
       }
     }
 
