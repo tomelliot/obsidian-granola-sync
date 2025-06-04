@@ -23,11 +23,14 @@ describe('GranolaSyncService', () => {
   let mockConverter: jest.Mocked<IMarkdownConverter>;
 
   beforeEach(() => {
+    // Clear all mocks before each test
+    jest.clearAllMocks();
+    
     mockApp = {
       vault: {
         adapter: {
           exists: jest.fn().mockResolvedValue(true),
-          read: jest.fn().mockResolvedValue('{"cognito_tokens":"{\"access_token\":\"abc\"}"}'),
+          read: jest.fn().mockResolvedValue('{"cognito_tokens":"{\\"access_token\\":\\"abc\\"}"}'),
           write: jest.fn()
         },
         createFolder: jest.fn()
