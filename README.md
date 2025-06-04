@@ -25,6 +25,8 @@ Forked from [Automatt/obsidian-granola-sync/](https://github.com/Automatt/obsidi
 
 ## Configuration
 
+> **Note:** Granola credentials are fetched by the plugin using a local web server that temporarily serves your credentials file to the plugin. You can review the implementation of this mechanism in [`src/services/credentials.ts`](src/services/credentials.ts).
+
 1. Set the path to your Granola token file in the plugin settings
 2. Configure note syncing:
    - Choose whether to sync notes

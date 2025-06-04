@@ -12,29 +12,22 @@ const filePath = path.join(
 );
 
 export function startCredentialsServer() {
-  console.debug("Starting Granola credentials server...");
-  server = http
-    .createServer((req, res) => {
-      if (req.url === "/supabase.json" || req.url === "/") {
-        fs.readFile(filePath, (err, data) => {
-          if (err) {
-            res.writeHead(404, { "Content-Type": "text/plain" });
-            res.end("File not found");
-          } else {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(data);
-          }
-        });
-      } else {
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Not found");
-      }
-    })
-    .listen(2590, "127.0.0.1", () => {
-      console.debug(
-        "Granola credentials server running at http://127.0.0.1:2590/"
-      );
-    });
+  server = http.createServer((req, res) => {
+    if (req.url === "/supabase.json" || req.url === "/") {
+      fs.readFile(filePath, (err, data) => {
+        if (err) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("File not found");
+        } else {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(data);
+        }
+      });
+    } else {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not found");
+    }
+  });
 
   // Graceful shutdown on process exit
   const shutdown = () => {
@@ -48,10 +41,7 @@ export function startCredentialsServer() {
 
 export function stopCredentialsServer() {
   if (server) {
-    server.close(() => {
-      console.debug("Granola credentials server shut down.");
-    });
-    server = null;
+    server.close(() => (server = null));
   }
 }
 
