@@ -480,10 +480,10 @@ export default class GranolaSync extends Plugin {
 
       for (const [dateKey, notesForDay] of dailyNotesMap) {
         const noteMoment = moment(dateKey, "YYYY-MM-DD");
-        let dailyNoteFile = getDailyNote(noteMoment as any, getAllDailyNotes());
+        let dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
 
         if (!dailyNoteFile) {
-          dailyNoteFile = await createDailyNote(noteMoment as any);
+          dailyNoteFile = await createDailyNote(noteMoment);
         }
 
         let fullSectionContent = sectionHeadingSetting; // Use trimmed version here
