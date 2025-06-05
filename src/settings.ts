@@ -129,8 +129,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       const explanationEl = containerEl.createEl("div", {
         cls: "setting-item-description",
       });
-      explanationEl.style.marginTop = "-0.5em";
-      explanationEl.style.marginBottom = "1em";
       switch (this.plugin.settings.syncDestination) {
         case SyncDestination.DAILY_NOTES:
           explanationEl.setText(
@@ -236,8 +234,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       const transcriptExplanationEl = containerEl.createEl("div", {
         cls: "setting-item-description",
       });
-      transcriptExplanationEl.style.marginTop = "-0.5em";
-      transcriptExplanationEl.style.marginBottom = "1em";
       switch (this.plugin.settings.transcriptDestination) {
         case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
           transcriptExplanationEl.setText(
