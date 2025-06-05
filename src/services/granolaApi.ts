@@ -19,9 +19,19 @@ export interface GranolaApiResponse {
   docs: GranolaDoc[];
 }
 
+export interface TranscriptEntry {
+  document_id: string;
+  start_timestamp: string;
+  text: string;
+  source: string;
+  id: string;
+  is_final: boolean;
+  end_timestamp: string;
+}
+
 export async function fetchGranolaDocuments(
   accessToken: string
-): Promise<GranolaDoc[] | null> {
+): Promise<GranolaDoc[]> {
   try {
     const response = await requestUrl({
       url: "https://api.granola.ai/v2/get-documents",
@@ -41,19 +51,20 @@ export async function fetchGranolaDocuments(
       throw: true,
     });
     const apiResponse = response.json as GranolaApiResponse;
-    if (!apiResponse || !apiResponse.docs) {
-      return null;
+    if (!apiResponse || !Array.isArray(apiResponse.docs)) {
+      return [];
     }
     return apiResponse.docs;
   } catch (error: any) {
-    throw error;
+    // Optionally log error
+    return [];
   }
 }
 
 export async function fetchGranolaTranscript(
   accessToken: string,
   docId: string
-): Promise<any[] | null> {
+): Promise<TranscriptEntry[]> {
   try {
     const transcriptResp = await requestUrl({
       url: "https://api.granola.ai/v1/get-document-transcript",
@@ -68,8 +79,14 @@ export async function fetchGranolaTranscript(
       body: JSON.stringify({ document_id: docId }),
       throw: true,
     });
-    return transcriptResp.json as any[];
+    const data = transcriptResp.json;
+    if (!Array.isArray(data)) {
+      return [];
+    }
+    // Optionally: validate each entry has required fields
+    return data as TranscriptEntry[];
   } catch (error: any) {
-    throw error;
+    // Optionally log error
+    return [];
   }
 }

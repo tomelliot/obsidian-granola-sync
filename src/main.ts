@@ -18,6 +18,7 @@ import {
   fetchGranolaDocuments,
   fetchGranolaTranscript,
   GranolaDoc,
+  TranscriptEntry,
 } from "./services/granolaApi";
 import {
   loadCredentials as loadGranolaCredentials,
@@ -320,7 +321,7 @@ export default class GranolaSync extends Plugin {
     return this.saveToDisk(filename, transcriptContent, noteDate, true);
   }
 
-  private async fetchDocuments(): Promise<GranolaDoc[] | null> {
+  private async fetchDocuments(): Promise<GranolaDoc[]> {
     try {
       return await fetchGranolaDocuments(this.accessToken);
     } catch (error: any) {
@@ -351,7 +352,7 @@ export default class GranolaSync extends Plugin {
         );
       }
       console.error("API request error:", error);
-      return null;
+      return [];
     }
   }
 
@@ -372,15 +373,7 @@ export default class GranolaSync extends Plugin {
   }
 
   private formatTranscriptBySpeaker(
-    transcriptData: Array<{
-      document_id: string;
-      start_timestamp: string;
-      text: string;
-      source: string;
-      id: string;
-      is_final: boolean;
-      end_timestamp: string;
-    }>,
+    transcriptData: TranscriptEntry[],
     title: string
   ): string {
     let transcriptMd = `# Transcript for: ${title}\n\n`;
@@ -595,18 +588,18 @@ export default class GranolaSync extends Plugin {
 
     // Fetch documents (now handles credentials)
     const documents = await this.fetchDocuments();
-    if (!documents) return;
+    if (!documents || documents.length === 0) return;
 
     let syncedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
       const title = doc.title || "Untitled Granola Note";
       try {
-        const transcriptData = await fetchGranolaTranscript(
+        const transcriptData: TranscriptEntry[] = await fetchGranolaTranscript(
           this.accessToken,
           docId
         );
-        if (!Array.isArray(transcriptData) || transcriptData.length === 0) {
+        if (transcriptData.length === 0) {
           continue;
         }
         // Use the extracted formatting function
