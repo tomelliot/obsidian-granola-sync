@@ -1,0 +1,10 @@
+{
+  "id": "granola-sync",
+  "name": "Granola Sync",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Sync Granola notes to your Obsidian vault.",
+  "author": "Tom Elliot",
+  "authorUrl": "https://www.tomelliot.net/",
+  "isDesktopOnly": false
+}
