@@ -62,8 +62,8 @@ export async function loadCredentials(): Promise<{
         typeof response.json === "string"
           ? JSON.parse(response.json)
           : response.json;
-      const cognitoTokens = JSON.parse(tokenData.cognito_tokens);
-      accessToken = cognitoTokens.access_token;
+      const workosTokens = JSON.parse(tokenData.workos_tokens);
+      accessToken = workosTokens.access_token;
       if (!accessToken) {
         tokenLoadError =
           "No access token found in credentials file. The token may have expired.";
