@@ -91,7 +91,6 @@ export default class GranolaSync extends Plugin {
   }
 
   async onunload() {
-    this.clearPeriodicSync();
     stopCredentialsServer();
   }
 
