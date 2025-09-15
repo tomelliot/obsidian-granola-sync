@@ -85,13 +85,14 @@ export async function updateSection(
     const suffix =
       nextSectionLineNum !== -1 ? fileLines.slice(nextSectionLineNum) : [];
 
-    return vault.modify(
-      file,
-      [...prefix, sectionContents, ...suffix].join("\n")
-    );
+    return vault.process(file, (data) => {
+      return [...prefix, sectionContents, ...suffix].join("\n");
+    });
   } else {
     // Section does not exist, append to end of file.
-    return vault.modify(file, [...fileLines, "", sectionContents].join("\n"));
+    return vault.process(file, (data) => {
+      return [...fileLines, "", sectionContents].join("\n");
+    });
   }
 }
 
@@ -132,8 +133,7 @@ export async function updateProperties(
 
   // Don't worry about the case where the editor is open here.
   // It's more unlikely that the user is editing the existing note
-  return vault.modify(
-    file,
-    [properties, ...fileLines].join('\n')
-  );
+  return vault.process(file, (data) => {
+    return [properties, ...fileLines].join('\n');
+  });
 }
