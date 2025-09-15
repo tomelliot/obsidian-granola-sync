@@ -1,4 +1,4 @@
-import { App } from "obsidian";
+import { App, TFile } from "obsidian";
 
 export function startCredentialsServer() {
   // No-op for mobile compatibility
@@ -17,7 +17,11 @@ export async function loadCredentials(app: App, tokenPath: string): Promise<{
   
   try {
     // Use Vault API to read credentials file from the vault
-    const fileContent = await app.vault.adapter.read(tokenPath);
+    const file = app.vault.getAbstractFileByPath(tokenPath);
+    if (!file) {
+      throw new Error(`Credentials file not found: ${tokenPath}`);
+    }
+    const fileContent = await app.vault.read(file as TFile);
     
     try {
       const tokenData = JSON.parse(fileContent);

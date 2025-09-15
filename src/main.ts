@@ -1,4 +1,4 @@
-import { Notice, Plugin, normalizePath } from "obsidian";
+import { Notice, Plugin, normalizePath, TFile } from "obsidian";
 import {
   createDailyNote,
   getDailyNote,
@@ -243,7 +243,12 @@ export default class GranolaSync extends Plugin {
       }
 
       const filePath = normalizePath(`${folderPath}/${filename}`);
-      await this.app.vault.adapter.write(filePath, content);
+      const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+      if (existingFile) {
+        await this.app.vault.modify(existingFile as TFile, content);
+      } else {
+        await this.app.vault.create(filePath, content);
+      }
       return true;
     } catch (e) {
       new Notice(`Error saving file: ${filename}. Check console.`, 7000);
@@ -360,7 +365,8 @@ export default class GranolaSync extends Plugin {
 
   private async ensureFolderExists(folderPath: string): Promise<boolean> {
     try {
-      if (!(await this.app.vault.adapter.exists(folderPath))) {
+      const folderExists = this.app.vault.getAbstractFileByPath(folderPath);
+      if (!folderExists) {
         await this.app.vault.createFolder(folderPath);
       }
       return true;
