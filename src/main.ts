@@ -33,7 +33,7 @@ export default class GranolaSync extends Plugin {
 
   async onload() {
     await this.loadSettings();
-    const { accessToken, error } = await loadGranolaCredentials();
+    const { accessToken, error } = await loadGranolaCredentials(this.app, this.settings.tokenPath);
     if (!accessToken || error) {
       console.error("Error loading Granola credentials: ", error);
       new Notice(
