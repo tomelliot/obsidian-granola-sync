@@ -67,7 +67,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     const { containerEl } = this;
 
     containerEl.empty();
-    containerEl.createEl("h3", { text: "Granola Sync Settings" });
+    containerEl.setHeading("Granola sync settings");
 
     new Setting(containerEl)
       .setName("Path to Granola access token file")
@@ -85,7 +85,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       );
 
     // Notes Section
-    containerEl.createEl("h4", { text: "Notes" });
+    containerEl.setHeading("Notes", 4);
 
     new Setting(containerEl)
       .setName("Sync Notes")
@@ -187,7 +187,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     }
 
     // Transcripts Section
-    containerEl.createEl("h4", { text: "Transcripts" });
+    containerEl.setHeading("Transcripts", 4);
 
     new Setting(containerEl)
       .setName("Sync Transcripts")
@@ -287,7 +287,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     }
 
     // Automatic Sync Section
-    containerEl.createEl("h4", { text: "Automatic Sync" });
+    containerEl.setHeading("Automatic sync", 4);
 
     new Setting(containerEl)
       .setName("Periodic sync enabled")
