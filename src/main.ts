@@ -37,7 +37,7 @@ export default class GranolaSync extends Plugin {
     if (!accessToken || error) {
       console.error("Error loading Granola credentials: ", error);
       new Notice(
-        `Granola Sync Error: ${error || "No access token loaded."}`,
+        `Granola sync error: ${error || "No access token loaded."}`,
         10000
       );
       return;
@@ -46,15 +46,15 @@ export default class GranolaSync extends Plugin {
 
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
-    statusBarItemEl.setText("Granola Sync Idle"); // Updated status bar text
+    statusBarItemEl.setText("Granola sync idle"); // Updated status bar text
 
     // This adds a simple command that can be triggered anywhere
     this.addCommand({
       id: "sync-granola",
       name: "Sync from Granola", // Updated command name
       callback: async () => {
-        new Notice("Granola Sync: Starting manual sync.");
-        statusBarItemEl.setText("Granola Sync: Syncing...");
+        new Notice("Granola sync: Starting manual sync.");
+        statusBarItemEl.setText("Granola sync: Syncing...");
 
         // Always sync transcripts first if enabled, so notes can link to them
         if (this.settings.syncTranscripts) {
@@ -63,16 +63,16 @@ export default class GranolaSync extends Plugin {
         if (this.settings.syncNotes) {
           await this.syncNotes();
         }
-        new Notice("Granola Sync: Manual sync complete.");
+        new Notice("Granola sync: Manual sync complete.");
 
         if (!this.settings.syncNotes && !this.settings.syncTranscripts) {
           new Notice(
-            "Granola Sync: No sync options enabled. Please enable either notes or transcripts in settings."
+            "Granola sync: No sync options enabled. Please enable either notes or transcripts in settings."
           );
         }
 
         statusBarItemEl.setText(
-          `Granola Sync: Last synced ${new Date(
+          `Granola sync: Last synced ${new Date(
             this.settings.latestSyncTime
           ).toLocaleString()}`
         );
@@ -112,7 +112,7 @@ export default class GranolaSync extends Plugin {
           ".status-bar-item .status-bar-item-segment"
         );
         if (statusBarItemEl)
-          statusBarItemEl.setText("Granola Sync: Auto-syncing...");
+          statusBarItemEl.setText("Granola sync: Auto-syncing...");
 
         // Always sync transcripts first if enabled, so notes can link to them
         if (this.settings.syncTranscripts) {
@@ -124,7 +124,7 @@ export default class GranolaSync extends Plugin {
 
         if (statusBarItemEl)
           statusBarItemEl.setText(
-            `Granola Sync: Last synced ${new Date(
+            `Granola sync: Last synced ${new Date(
               this.settings.latestSyncTime
             ).toLocaleString()}`
           );
@@ -329,27 +329,27 @@ export default class GranolaSync extends Plugin {
       console.error("Error fetching Granola documents: ", error);
       if (error.status === 401) {
         new Notice(
-          "Granola Sync Error: Authentication failed. Your access token may have expired. Please update your credentials file.",
+          "Granola sync error: Authentication failed. Your access token may have expired. Please update your credentials file.",
           10000
         );
       } else if (error.status === 403) {
         new Notice(
-          "Granola Sync Error: Access forbidden. Please check your permissions.",
+          "Granola sync error: Access forbidden. Please check your permissions.",
           10000
         );
       } else if (error.status === 404) {
         new Notice(
-          "Granola Sync Error: API endpoint not found. Please check for updates.",
+          "Granola sync error: API endpoint not found. Please check for updates.",
           10000
         );
       } else if (error.status >= 500) {
         new Notice(
-          "Granola Sync Error: Granola API server error. Please try again later.",
+          "Granola sync error: Granola API server error. Please try again later.",
           10000
         );
       } else {
         new Notice(
-          "Granola Sync Error: Failed to fetch documents from Granola API. Please check your internet connection.",
+          "Granola sync error: Failed to fetch documents from Granola API. Please check your internet connection.",
           10000
         );
       }
@@ -366,7 +366,7 @@ export default class GranolaSync extends Plugin {
       return true;
     } catch (error) {
       new Notice(
-        `Granola Sync Error: Could not create folder '${folderPath}'. Check console.`,
+        `Granola sync error: Could not create folder '${folderPath}'. Check console.`,
         10000
       );
       console.error("Folder creation error:", error);
@@ -576,7 +576,7 @@ export default class GranolaSync extends Plugin {
     );
     if (statusBarItemEl)
       statusBarItemEl.setText(
-        `Granola Sync: Last synced ${new Date(
+        `Granola sync: Last synced ${new Date(
           this.settings.latestSyncTime
         ).toLocaleString()}`
       );
