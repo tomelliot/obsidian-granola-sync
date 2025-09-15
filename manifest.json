@@ -6,5 +6,5 @@
   "description": "Sync Granola notes to your vault.",
   "author": "Tom Elliot",
   "authorUrl": "https://www.tomelliot.net/",
-  "isDesktopOnly": false
+  "isDesktopOnly": true
 }
