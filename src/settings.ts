@@ -67,10 +67,10 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     const { containerEl } = this;
 
     containerEl.empty();
-    containerEl.createEl("h3", { text: "Granola Sync Settings" });
+    new Setting(containerEl).setName("Granola sync settings").setHeading();
 
     new Setting(containerEl)
-      .setName("Path to Granola Access Token File")
+      .setName("Path to Granola access token file")
       .setDesc(
         'Path to the JSON file containing your Granola authentication token, relative to your vault root (e.g., "configs/supabase.json"). On macOS, copy this file from ~/Library/Application Support/Granola/supabase.json.'
       )
@@ -85,7 +85,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       );
 
     // Notes Section
-    containerEl.createEl("h4", { text: "Notes" });
+    new Setting(containerEl).setName("Notes").setHeading();
 
     new Setting(containerEl)
       .setName("Sync Notes")
@@ -106,12 +106,12 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     // Only show note-related settings when sync notes is enabled
     if (this.plugin.settings.syncNotes) {
       new Setting(containerEl)
-        .setName("Notes Sync Destination")
+        .setName("Notes sync destination")
         .setDesc("Choose where to save your Granola notes")
         .addDropdown((dropdown) =>
           dropdown
             .addOption(SyncDestination.DAILY_NOTES, "Append to Daily Notes")
-            .addOption(SyncDestination.GRANOLA_FOLDER, "Save to Granola Folder")
+            .addOption(SyncDestination.GRANOLA_FOLDER, "Save to Granola folder")
             .addOption(
               SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE,
               "Use Daily Note Folder Structure"
@@ -152,7 +152,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         this.plugin.settings.syncDestination === SyncDestination.DAILY_NOTES
       ) {
         new Setting(containerEl)
-          .setName("Daily Note Section Heading")
+          .setName("Daily note section heading")
           .setDesc(
             'The markdown heading that will be used to mark the Granola notes section in your daily notes. Include the heading markers (e.g., "## Meeting Notes").'
           )
@@ -169,7 +169,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         this.plugin.settings.syncDestination === SyncDestination.GRANOLA_FOLDER
       ) {
         new Setting(containerEl)
-          .setName("Granola Folder")
+          .setName("Granola folder")
           .setDesc(
             "The folder where all your Granola notes will be saved. The folder will be created if it doesn't exist."
           )
@@ -187,7 +187,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     }
 
     // Transcripts Section
-    containerEl.createEl("h4", { text: "Transcripts" });
+    new Setting(containerEl).setName("Transcripts").setHeading();
 
     new Setting(containerEl)
       .setName("Sync Transcripts")
@@ -208,7 +208,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     // Only show transcript-related settings when sync transcripts is enabled
     if (this.plugin.settings.syncTranscripts) {
       new Setting(containerEl)
-        .setName("Transcripts Sync Destination")
+        .setName("Transcripts sync destination")
         .setDesc("Choose where to save your Granola transcripts")
         .addDropdown((dropdown) =>
           dropdown
@@ -253,7 +253,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER
       ) {
         new Setting(containerEl)
-          .setName("Granola Transcripts Folder")
+          .setName("Granola transcripts folder")
           .setDesc(
             "The folder where all your Granola transcripts will be saved. The folder will be created if it doesn't exist."
           )
@@ -271,7 +271,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       // Add link creation setting - only show when both notes and transcripts are enabled
       if (this.plugin.settings.syncNotes) {
         new Setting(containerEl)
-          .setName("Create link from Granola Note to Transcript")
+          .setName("Create link from Granola note to transcript")
           .setDesc(
             "Automatically add a link to the transcript file at the top of each Granola note. This requires both notes and transcripts to be synced."
           )
@@ -287,10 +287,10 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     }
 
     // Automatic Sync Section
-    containerEl.createEl("h4", { text: "Automatic Sync" });
+    new Setting(containerEl).setName("Automatic sync").setHeading();
 
     new Setting(containerEl)
-      .setName("Periodic Sync Enabled")
+      .setName("Periodic sync enabled")
       .setDesc(
         "Automatically sync your Granola notes at regular intervals. When disabled, you'll need to manually run the sync command."
       )
@@ -308,7 +308,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     // Only show sync interval when periodic sync is enabled
     if (this.plugin.settings.isSyncEnabled) {
       new Setting(containerEl)
-        .setName("Sync Interval")
+        .setName("Sync interval")
         .setDesc(
           "How often to automatically sync notes when periodic sync is enabled. Enter value in seconds (default: 1800 = 30 minutes)."
         )

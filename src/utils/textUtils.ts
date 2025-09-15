@@ -69,7 +69,7 @@ export async function updateSection(
           ? { line: nextSectionLineNum - 1, ch: 0 }
           : { line: fileLines.length, ch: 0 };
 
-        editor.replaceRange(`${sectionContents}\n`, from, to);
+      editor.replaceRange(`${sectionContents}\n`, from, to);
       return;
     } else {
       const pos = { line: fileLines.length - 1, ch: 0 };
@@ -85,19 +85,20 @@ export async function updateSection(
     const suffix =
       nextSectionLineNum !== -1 ? fileLines.slice(nextSectionLineNum) : [];
 
-    return vault.modify(
-      file,
-      [...prefix, sectionContents, ...suffix].join("\n")
-    );
+    await vault.process(file, (data) => {
+      return [...prefix, sectionContents, ...suffix].join("\n");
+    });
   } else {
     // Section does not exist, append to end of file.
-    return vault.modify(file, [...fileLines, "", sectionContents].join("\n"));
+    await vault.process(file, (data) => {
+      return [...fileLines, "", sectionContents].join("\n");
+    });
   }
 }
 
 /**
  * Replaces the properties block at the start of a file with this new one, or adds a new properties block if that does not exist
- * @param app 
+ * @param app
  * @param file the file to add to
  * @param properties a string representing the properties to add
  * @example
@@ -116,10 +117,10 @@ export async function updateProperties(
   const fileContents = await vault.read(file);
   let fileLines = fileContents.split("\n");
   const propertiesLines: number[] = [];
-  
+
   // Collect all of the properties marker lines
   for (let i = 0; i < fileLines.length; i++) {
-    if (fileLines[i] === '---') {
+    if (fileLines[i] === "---") {
       propertiesLines.push(i);
     }
   }
@@ -127,13 +128,12 @@ export async function updateProperties(
   // If we found correct matching markers, remove the existing properties so we can update them
   if (propertiesLines[0] === 0 && propertiesLines[1] > 0) {
     const propertiesEndLine = propertiesLines[1];
-    fileLines = fileLines.slice(propertiesEndLine + 1)
+    fileLines = fileLines.slice(propertiesEndLine + 1);
   }
 
   // Don't worry about the case where the editor is open here.
   // It's more unlikely that the user is editing the existing note
-  return vault.modify(
-    file,
-    [properties, ...fileLines].join('\n')
-  );
+  await vault.process(file, (data) => {
+    return [properties, ...fileLines].join("\n");
+  });
 }
