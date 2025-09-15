@@ -58,6 +58,7 @@ describe("updateProperties & updateSection", () => {
     mockVault = {
       read: jest.fn(),
       modify: jest.fn(),
+      process: jest.fn(),
     };
 
     mockApp = {
@@ -78,7 +79,8 @@ describe("updateProperties & updateSection", () => {
 
       await updateProperties(mockApp, mockFile, newProperties);
 
-      const modifiedText = (mockVault.modify as jest.Mock).mock.calls[0][1];
+      const processCallback = (mockVault.process as jest.Mock).mock.calls[0][1];
+      const modifiedText = processCallback("Content line");
       expect(modifiedText.startsWith(newProperties)).toBe(true);
     });
 
@@ -91,7 +93,8 @@ describe("updateProperties & updateSection", () => {
       await updateProperties(mockApp, mockFile, newProperties);
 
       // The modified text should start with the new properties and not contain the old one
-      const modifiedText = (mockVault.modify as jest.Mock).mock.calls[0][1];
+      const processCallback = (mockVault.process as jest.Mock).mock.calls[0][1];
+      const modifiedText = processCallback(existing);
       expect(modifiedText.startsWith(newProperties)).toBe(true);
       expect(modifiedText).not.toContain("old: property");
     });
@@ -106,7 +109,8 @@ describe("updateProperties & updateSection", () => {
 
       await updateSection(mockApp, mockFile, heading, sectionContent);
 
-      const modified = (mockVault.modify as jest.Mock).mock.calls[0][1];
+      const processCallback = (mockVault.process as jest.Mock).mock.calls[0][1];
+      const modified = processCallback("File without heading");
       expect(modified.trimEnd()).toContain(sectionContent);
     });
 
@@ -124,7 +128,8 @@ describe("updateProperties & updateSection", () => {
 
       await updateSection(mockApp, mockFile, heading, sectionContent);
 
-      const modified = (mockVault.modify as jest.Mock).mock.calls[0][1];
+      const processCallback = (mockVault.process as jest.Mock).mock.calls[0][1];
+      const modified = processCallback(existingFile);
       // The new content should be in place of old content
       expect(modified).toContain(sectionContent);
       expect(modified).not.toContain("Old content");
