@@ -2,7 +2,7 @@ import { requestUrl } from "obsidian";
 
 export interface ProseMirrorDoc {
   type: "doc";
-  content: any[];
+  content: unknown[];
 }
 
 export interface GranolaDoc {

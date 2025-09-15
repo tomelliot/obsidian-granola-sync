@@ -3,7 +3,7 @@ export interface ProseMirrorNode {
   type: string;
   content?: ProseMirrorNode[];
   text?: string;
-  attrs?: { [key: string]: any };
+  attrs?: { [key: string]: unknown };
 }
 
 export interface ProseMirrorDoc {
