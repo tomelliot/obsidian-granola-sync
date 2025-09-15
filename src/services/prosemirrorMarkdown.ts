@@ -1,9 +1,8 @@
-// Minimal ProseMirror types for conversion
-export interface ProseMirrorNode {
+interface ProseMirrorNode {
   type: string;
   content?: ProseMirrorNode[];
   text?: string;
-  attrs?: { [key: string]: any };
+  attrs?: { [key: string]: unknown };
 }
 
 export interface ProseMirrorDoc {
@@ -20,7 +19,11 @@ export function convertProsemirrorToMarkdown(
 
   let markdownOutput: string[] = [];
 
-  const processNode = (node: ProseMirrorNode, indentLevel = 0, isTopLevel = false): string => {
+  const processNode = (
+    node: ProseMirrorNode,
+    indentLevel = 0,
+    isTopLevel = false
+  ): string => {
     if (!node || typeof node !== "object") return "";
 
     let textContent = "";
@@ -50,11 +53,14 @@ export function convertProsemirrorToMarkdown(
 
     switch (node.type) {
       case "heading":
-        const level = node.attrs?.level || 1;
-        return `${"#".repeat(level)} ${textContent.trim()}${isTopLevel ? '\n\n' : '\n'}`;
+        const level =
+          typeof node.attrs?.level === "number" ? node.attrs.level : 1;
+        return `${"#".repeat(level)} ${textContent.trim()}${
+          isTopLevel ? "\n\n" : "\n"
+        }`;
       case "paragraph":
         // Only add double newlines for top-level paragraphs
-        return textContent + (isTopLevel ? '\n\n' : '');
+        return textContent + (isTopLevel ? "\n\n" : "");
       case "bulletList":
         if (!node.content) return "";
         const items = node.content
@@ -82,7 +88,7 @@ export function convertProsemirrorToMarkdown(
           })
           .filter((item) => item.length > 0);
         // Only add double newlines for top-level bullet lists
-        return items.join("\n") + (isTopLevel ? '\n\n' : '');
+        return items.join("\n") + (isTopLevel ? "\n\n" : "");
       case "text":
         return node.text || "";
       default:

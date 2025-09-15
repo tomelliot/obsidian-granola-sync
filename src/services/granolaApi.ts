@@ -1,9 +1,5 @@
 import { requestUrl } from "obsidian";
-
-export interface ProseMirrorDoc {
-  type: "doc";
-  content: any[];
-}
+import { ProseMirrorDoc } from "./prosemirrorMarkdown";
 
 export interface GranolaDoc {
   id: string;

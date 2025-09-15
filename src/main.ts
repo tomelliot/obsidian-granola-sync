@@ -330,24 +330,25 @@ export default class GranolaSync extends Plugin {
   private async fetchDocuments(): Promise<GranolaDoc[]> {
     try {
       return await fetchGranolaDocuments(this.accessToken);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching Granola documents: ", error);
-      if (error.status === 401) {
+      const errorStatus = (error as { status?: number })?.status;
+      if (errorStatus === 401) {
         new Notice(
           "Granola sync error: Authentication failed. Your access token may have expired. Please update your credentials file.",
           10000
         );
-      } else if (error.status === 403) {
+      } else if (errorStatus === 403) {
         new Notice(
           "Granola sync error: Access forbidden. Please check your permissions.",
           10000
         );
-      } else if (error.status === 404) {
+      } else if (errorStatus === 404) {
         new Notice(
           "Granola sync error: API endpoint not found. Please check for updates.",
           10000
         );
-      } else if (error.status >= 500) {
+      } else if (errorStatus && errorStatus >= 500) {
         new Notice(
           "Granola sync error: Granola API server error. Please try again later.",
           10000
