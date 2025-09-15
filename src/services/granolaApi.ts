@@ -52,7 +52,6 @@ export async function fetchGranolaDocuments(
   const apiResponse = response.json as GranolaApiResponse;
   if (!apiResponse || !Array.isArray(apiResponse.docs)) {
     const errorMessage = `Invalid response from Granola API`;
-    console.log(errorMessage, JSON.stringify(apiResponse));
     throw new Error(errorMessage);
   }
   return apiResponse.docs;
@@ -78,7 +77,6 @@ export async function fetchGranolaTranscript(
   const data = transcriptResp.json;
   if (!Array.isArray(data)) {
     const errorMessage = `Error fetching Granola transcript`;
-    console.log(errorMessage, JSON.stringify(data));
     throw new Error(errorMessage);
   }
   // Optionally: validate each entry has required fields
