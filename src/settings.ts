@@ -88,7 +88,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("Notes").setHeading();
 
     new Setting(containerEl)
-      .setName("Sync Notes")
+      .setName("Sync notes")
       .setDesc(
         "Enable syncing of meeting notes from Granola. Turn this off if you only want to sync transcripts."
       )
@@ -110,11 +110,11 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         .setDesc("Choose where to save your Granola notes")
         .addDropdown((dropdown) =>
           dropdown
-            .addOption(SyncDestination.DAILY_NOTES, "Append to Daily Notes")
+            .addOption(SyncDestination.DAILY_NOTES, "Append to daily notes")
             .addOption(SyncDestination.GRANOLA_FOLDER, "Save to Granola folder")
             .addOption(
               SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE,
-              "Use Daily Note Folder Structure"
+              "Use daily note folder structure"
             )
             .setValue(this.plugin.settings.syncDestination)
             .onChange(async (value) => {
@@ -190,7 +190,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("Transcripts").setHeading();
 
     new Setting(containerEl)
-      .setName("Sync Transcripts")
+      .setName("Sync transcripts")
       .setDesc(
         "Enable syncing of meeting transcripts from Granola. Transcripts are saved as separate files with speaker-by-speaker formatting."
       )
@@ -214,11 +214,11 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           dropdown
             .addOption(
               TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
-              "Save to Transcripts Folder"
+              "Save to transcripts folder"
             )
             .addOption(
               TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE,
-              "Use Daily Note Folder Structure"
+              "Use daily note folder structure"
             )
             .setValue(this.plugin.settings.transcriptDestination)
             .onChange(async (value) => {
