@@ -115,11 +115,11 @@ function buildPlugin() {
 }
 
 function commitAndTag(version) {
-  const tagName = `v${version}`;
+  const tagName = version; // Use version directly without 'v' prefix
 
   log(`Committing changes...`, colors.blue);
   exec(`git add manifest.json package.json`);
-  exec(`git commit -m "Release ${tagName}"`);
+  exec(`git commit -m "Release ${version}"`);
 
   log(`Creating tag ${tagName}...`, colors.blue);
   exec(`git tag ${tagName}`);
