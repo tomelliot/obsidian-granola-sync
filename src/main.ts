@@ -477,6 +477,28 @@ export default class GranolaSync extends Plugin {
     return transcriptMd;
   }
 
+  // Filter documents based on syncDaysBack setting
+  private filterDocumentsByDate(documents: GranolaDoc[]): GranolaDoc[] {
+    // If syncDaysBack is 0, sync all documents (no filtering)
+    if (this.settings.syncDaysBack === 0) {
+      return documents;
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - this.settings.syncDaysBack);
+
+    return documents.filter((doc) => {
+      // Use created_at if available, otherwise fall back to updated_at
+      const docDate = doc.created_at
+        ? new Date(doc.created_at)
+        : doc.updated_at
+        ? new Date(doc.updated_at)
+        : new Date();
+
+      return docDate >= cutoffDate;
+    });
+  }
+
   // Top-level sync function that handles common setup once
   async sync() {
     // Load credentials at the start of each sync
@@ -499,12 +521,22 @@ export default class GranolaSync extends Plugin {
       return;
     }
 
+    // Filter documents based on syncDaysBack setting
+    const filteredDocuments = this.filterDocumentsByDate(documents);
+    if (filteredDocuments.length === 0) {
+      new Notice(
+        `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
+        5000
+      );
+      return;
+    }
+
     // Always sync transcripts first if enabled, so notes can link to them
     if (this.settings.syncTranscripts) {
-      await this.syncTranscripts(documents, accessToken);
+      await this.syncTranscripts(filteredDocuments, accessToken);
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(documents);
+      await this.syncNotes(filteredDocuments);
     }
   }
 
