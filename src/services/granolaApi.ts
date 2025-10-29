@@ -43,9 +43,10 @@ export async function fetchGranolaDocuments(
       offset: 0,
       include_last_viewed_panel: true,
     }),
-    throw: true,
   });
+
   const apiResponse = response.json as GranolaApiResponse;
+
   if (!apiResponse || !Array.isArray(apiResponse.docs)) {
     const errorMessage = `Invalid response from Granola API`;
     throw new Error(errorMessage);
@@ -68,8 +69,8 @@ export async function fetchGranolaTranscript(
       "X-Client-Version": "ObsidianPlugin-0.1.7",
     },
     body: JSON.stringify({ document_id: docId }),
-    throw: true,
   });
+
   const data = transcriptResp.json;
   if (!Array.isArray(data)) {
     const errorMessage = `Error fetching Granola transcript`;

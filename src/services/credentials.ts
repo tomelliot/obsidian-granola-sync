@@ -11,9 +11,15 @@ const filePath = path.join(
   "Library/Application Support/Granola/supabase.json"
 );
 
-export function startCredentialsServer() {
-  server = http
-    .createServer((req, res) => {
+export async function startCredentialsServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Graceful shutdown on process exit
+    process.on("SIGINT", stopCredentialsServer);
+    process.on("SIGTERM", stopCredentialsServer);
+    process.on("exit", stopCredentialsServer);
+
+    console.debug("Starting credentials server");
+    server = http.createServer((req, res) => {
       if (req.url === "/supabase.json" || req.url === "/") {
         fs.readFile(filePath, (err, data) => {
           if (err) {
@@ -29,13 +35,18 @@ export function startCredentialsServer() {
         res.writeHead(404, { "Content-Type": "text/plain" });
         res.end("Not found");
       }
-    })
-    .listen(2590, "127.0.0.1");
+    });
 
-  // Graceful shutdown on process exit
-  process.on("SIGINT", stopCredentialsServer);
-  process.on("SIGTERM", stopCredentialsServer);
-  process.on("exit", stopCredentialsServer);
+    server.on("error", (err) => {
+      console.error("Server startup error:", err);
+      reject(err);
+    });
+
+    server.listen(2590, "127.0.0.1", () => {
+      console.debug("Credentials server started");
+      resolve();
+    });
+  });
 }
 
 export function stopCredentialsServer() {
@@ -50,7 +61,23 @@ export async function loadCredentials(): Promise<{
 }> {
   let accessToken: string | null = null;
   let tokenLoadError: string | null = null;
-  startCredentialsServer();
+
+  try {
+    // Wait for the server to be ready before making the request
+    await startCredentialsServer();
+
+    // Add a small delay to ensure the server is fully ready
+    console.debug("Waiting for credentials server to be ready");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    console.debug("Credentials server ready");
+  } catch (serverError) {
+    const errorMessage =
+      serverError instanceof Error ? serverError.message : String(serverError);
+    tokenLoadError = `Failed to start credentials server: ${errorMessage}`;
+    console.error("Server startup error:", serverError);
+    return { accessToken, error: tokenLoadError };
+  }
+
   try {
     const response = await requestUrl({
       url: "http://127.0.0.1:2590/",

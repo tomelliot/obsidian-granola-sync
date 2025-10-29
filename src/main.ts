@@ -29,22 +29,10 @@ import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
-  accessToken: string;
   private granolaIdCache: Map<string, TFile> = new Map();
 
   async onload() {
     await this.loadSettings();
-    const { accessToken, error } = await loadGranolaCredentials();
-    if (!accessToken || error) {
-      console.error("Error loading Granola credentials: ", error);
-      new Notice(
-        `Granola sync error: ${error || "No access token loaded."}`,
-        10000
-      );
-      return;
-    }
-    this.accessToken = accessToken;
-
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
     statusBarItemEl.setText("Granola sync idle"); // Updated status bar text
@@ -389,9 +377,9 @@ export default class GranolaSync extends Plugin {
     );
   }
 
-  private async fetchDocuments(): Promise<GranolaDoc[]> {
+  private async fetchDocuments(accessToken: string): Promise<GranolaDoc[]> {
     try {
-      return await fetchGranolaDocuments(this.accessToken);
+      return await fetchGranolaDocuments(accessToken);
     } catch (error: unknown) {
       console.error("Error fetching Granola documents: ", error);
       const errorStatus = (error as { status?: number })?.status;
@@ -491,18 +479,29 @@ export default class GranolaSync extends Plugin {
 
   // Top-level sync function that handles common setup once
   async sync() {
+    // Load credentials at the start of each sync
+    const { accessToken, error } = await loadGranolaCredentials();
+    if (!accessToken || error) {
+      console.error("Error loading Granola credentials:", error);
+      new Notice(
+        `Granola sync error: ${error || "No access token loaded."}`,
+        10000
+      );
+      return;
+    }
+
     // Build the Granola ID cache before syncing
     await this.buildGranolaIdCache();
 
     // Fetch documents (now handles credentials)
-    const documents = await this.fetchDocuments();
+    const documents = await this.fetchDocuments(accessToken);
     if (!documents || documents.length === 0) {
       return;
     }
 
     // Always sync transcripts first if enabled, so notes can link to them
     if (this.settings.syncTranscripts) {
-      await this.syncTranscripts(documents);
+      await this.syncTranscripts(documents, accessToken);
     }
     if (this.settings.syncNotes) {
       await this.syncNotes(documents);
@@ -667,14 +666,17 @@ export default class GranolaSync extends Plugin {
       );
   }
 
-  private async syncTranscripts(documents: GranolaDoc[]): Promise<void> {
+  private async syncTranscripts(
+    documents: GranolaDoc[],
+    accessToken: string
+  ): Promise<void> {
     let syncedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
       const title = doc.title || "Untitled Granola Note";
       try {
         const transcriptData: TranscriptEntry[] = await fetchGranolaTranscript(
-          this.accessToken,
+          accessToken,
           docId
         );
         if (transcriptData.length === 0) {

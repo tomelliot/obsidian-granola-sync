@@ -96,6 +96,18 @@ The plugin uses a combination of unit and integration tests:
 3. Use Jest's mocking capabilities for external dependencies
 4. Run tests to ensure they pass
 
+### Releasing
+
+To create a release:
+
+```bash
+# Auto-bump patch version
+node scripts/release.js
+
+# Specify a specific version
+node scripts/release.js 1.2.3
+```
+
 ## Contributing
 
 1. Fork the repository
