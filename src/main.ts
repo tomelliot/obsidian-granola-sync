@@ -30,6 +30,7 @@ export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
   accessToken: string;
+  private granolaIdCache: Map<string, TFile> = new Map();
 
   async onload() {
     await this.loadSettings();
@@ -51,18 +52,12 @@ export default class GranolaSync extends Plugin {
     // This adds a simple command that can be triggered anywhere
     this.addCommand({
       id: "sync-granola",
-      name: "Sync from Granola", // Updated command name
+      name: "Sync from Granola",
       callback: async () => {
         new Notice("Granola sync: Starting manual sync.");
         statusBarItemEl.setText("Granola sync: Syncing...");
 
-        // Always sync transcripts first if enabled, so notes can link to them
-        if (this.settings.syncTranscripts) {
-          await this.syncTranscripts();
-        }
-        if (this.settings.syncNotes) {
-          await this.syncNotes();
-        }
+        await this.sync();
         new Notice("Granola sync: Manual sync complete.");
 
         if (!this.settings.syncNotes && !this.settings.syncTranscripts) {
@@ -113,13 +108,7 @@ export default class GranolaSync extends Plugin {
         if (statusBarItemEl)
           statusBarItemEl.setText("Granola sync: Auto-syncing...");
 
-        // Always sync transcripts first if enabled, so notes can link to them
-        if (this.settings.syncTranscripts) {
-          await this.syncTranscripts();
-        }
-        if (this.settings.syncNotes) {
-          await this.syncNotes();
-        }
+        await this.sync();
 
         if (statusBarItemEl)
           statusBarItemEl.setText(
@@ -151,30 +140,27 @@ export default class GranolaSync extends Plugin {
     return filename;
   }
 
-  // Find an existing file with the given Granola ID by searching frontmatter
-  private async findFileByGranolaId(
-    granolaId: string,
-    folderPath?: string
-  ): Promise<TFile | null> {
+  // Build the Granola ID cache by scanning all markdown files in the vault
+  private async buildGranolaIdCache(): Promise<void> {
+    this.granolaIdCache.clear();
     const files = this.app.vault.getMarkdownFiles();
-    
-    // Filter by folder if specified
-    const filesToSearch = folderPath 
-      ? files.filter(file => file.path.startsWith(folderPath))
-      : files;
-    
-    for (const file of filesToSearch) {
+
+    for (const file of files) {
       try {
         const cache = this.app.metadataCache.getFileCache(file);
-        if (cache?.frontmatter?.granola_id === granolaId) {
-          return file;
+        if (cache?.frontmatter?.granola_id) {
+          const granolaId = cache.frontmatter.granola_id as string;
+          this.granolaIdCache.set(granolaId, file);
         }
       } catch (e) {
         console.error(`Error reading frontmatter for ${file.path}:`, e);
       }
     }
-    
-    return null;
+  }
+
+  // Find an existing file with the given Granola ID using the cache
+  private findFileByGranolaId(granolaId: string): TFile | null {
+    return this.granolaIdCache.get(granolaId) || null;
   }
 
   // Compute the folder path for a note based on daily note settings
@@ -269,13 +255,13 @@ export default class GranolaSync extends Plugin {
       }
 
       const filePath = normalizePath(`${folderPath}/${filename}`);
-      
+
       // First, check if a file with this Granola ID already exists anywhere in the vault
       let existingFile: TFile | null = null;
       if (granolaId) {
-        existingFile = await this.findFileByGranolaId(granolaId);
+        existingFile = this.findFileByGranolaId(granolaId);
       }
-      
+
       // If no file found by Granola ID, check by path
       if (!existingFile) {
         const fileByPath = this.app.vault.getAbstractFileByPath(filePath);
@@ -283,23 +269,38 @@ export default class GranolaSync extends Plugin {
           existingFile = fileByPath;
         }
       }
-      
+
       if (existingFile) {
         // Update existing file
         await this.app.vault.modify(existingFile, content);
-        
+
         // If the file path has changed (title changed), rename the file
         if (existingFile.path !== filePath) {
           try {
             await this.app.vault.rename(existingFile, filePath);
+            // Update cache entry if we have a granolaId
+            if (granolaId) {
+              this.granolaIdCache.set(granolaId, existingFile);
+            }
           } catch (renameError) {
             // If rename fails (e.g., file already exists at new path), just update content
-            console.warn(`Could not rename file from ${existingFile.path} to ${filePath}:`, renameError);
+            console.warn(
+              `Could not rename file from ${existingFile.path} to ${filePath}:`,
+              renameError
+            );
           }
+        }
+        // Ensure cache is up to date with the existing file
+        if (granolaId) {
+          this.granolaIdCache.set(granolaId, existingFile);
         }
       } else {
         // Create new file
-        await this.app.vault.create(filePath, content);
+        const newFile = await this.app.vault.create(filePath, content);
+        // Add to cache if we have a granolaId
+        if (granolaId) {
+          this.granolaIdCache.set(granolaId, newFile);
+        }
       }
       return true;
     } catch (e) {
@@ -379,7 +380,13 @@ export default class GranolaSync extends Plugin {
 
     // Use a modified ID for transcripts to distinguish them from notes
     const transcriptId = `${docId}-transcript`;
-    return this.saveToDisk(filename, transcriptContent, noteDate, true, transcriptId);
+    return this.saveToDisk(
+      filename,
+      transcriptContent,
+      noteDate,
+      true,
+      transcriptId
+    );
   }
 
   private async fetchDocuments(): Promise<GranolaDoc[]> {
@@ -444,7 +451,7 @@ export default class GranolaSync extends Plugin {
     // Add frontmatter with granola_id for transcript deduplication
     const escapedTitleForYaml = title.replace(/"/g, '\\"');
     let transcriptMd = `---\ngranola_id: ${granolaId}-transcript\ntitle: "${escapedTitleForYaml} - Transcript"\n---\n\n`;
-    
+
     transcriptMd += `# Transcript for: ${title}\n\n`;
     let currentSpeaker: string | null = null;
     let currentStart: string | null = null;
@@ -482,16 +489,27 @@ export default class GranolaSync extends Plugin {
     return transcriptMd;
   }
 
-  async syncNotes() {
-    // Check if note syncing is enabled
-    if (!this.settings.syncNotes) {
-      return;
-    }
+  // Top-level sync function that handles common setup once
+  async sync() {
+    // Build the Granola ID cache before syncing
+    await this.buildGranolaIdCache();
 
     // Fetch documents (now handles credentials)
     const documents = await this.fetchDocuments();
-    if (!documents) return;
+    if (!documents || documents.length === 0) {
+      return;
+    }
 
+    // Always sync transcripts first if enabled, so notes can link to them
+    if (this.settings.syncTranscripts) {
+      await this.syncTranscripts(documents);
+    }
+    if (this.settings.syncNotes) {
+      await this.syncNotes(documents);
+    }
+  }
+
+  private async syncNotes(documents: GranolaDoc[]): Promise<void> {
     let syncedCount = 0;
 
     if (this.settings.syncDestination === SyncDestination.DAILY_NOTES) {
@@ -649,16 +667,7 @@ export default class GranolaSync extends Plugin {
       );
   }
 
-  async syncTranscripts() {
-    // Check if transcript syncing is enabled
-    if (!this.settings.syncTranscripts) {
-      return;
-    }
-
-    // Fetch documents (now handles credentials)
-    const documents = await this.fetchDocuments();
-    if (!documents || documents.length === 0) return;
-
+  private async syncTranscripts(documents: GranolaDoc[]): Promise<void> {
     let syncedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
