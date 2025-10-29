@@ -28,6 +28,7 @@ import {
 } from "./services/credentials";
 import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
 import { DocumentProcessor } from "./services/documentProcessor";
+import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
@@ -35,10 +36,12 @@ export default class GranolaSync extends Plugin {
   syncIntervalId: number | null = null;
   private granolaIdCache: Map<string, TFile> = new Map();
   private documentProcessor: DocumentProcessor;
+  private dailyNoteBuilder: DailyNoteBuilder;
 
   async onload() {
     await this.loadSettings();
     this.documentProcessor = new DocumentProcessor();
+    this.dailyNoteBuilder = new DailyNoteBuilder();
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
     statusBarItemEl.setText("Granola sync idle"); // Updated status bar text
@@ -498,17 +501,24 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToDailyNotes(
     documents: GranolaDoc[]
   ): Promise<number> {
-    const dailyNotesMap = this.buildDailyNotesMap(documents);
+    const dailyNotesMap = this.dailyNoteBuilder.buildMap(documents);
     const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
 
     let syncedCount = 0;
 
     for (const [dateKey, notesForDay] of dailyNotesMap) {
-      const dailyNoteFile = await this.getOrCreateDailyNote(dateKey);
-      const sectionContent = this.buildDailyNoteSectionContent(
+      const dailyNoteFile = await this.dailyNoteBuilder.getOrCreate(dateKey);
+      const sectionContent = this.dailyNoteBuilder.buildSectionContent(
         notesForDay,
         sectionHeadingSetting,
-        dateKey
+        dateKey,
+        {
+          includeTranscriptLinks:
+            this.settings.syncTranscripts &&
+            this.settings.createLinkFromNoteToTranscript,
+          computeTranscriptPath: (title: string, noteDate: Date) =>
+            this.computeTranscriptPath(title, noteDate),
+        }
       );
 
       await this.updateDailyNoteSection(
@@ -523,120 +533,9 @@ export default class GranolaSync extends Plugin {
     return syncedCount;
   }
 
-  private buildDailyNotesMap(documents: GranolaDoc[]): Map<
-    string,
-    {
-      title: string;
-      docId: string;
-      createdAt?: string;
-      updatedAt?: string;
-      markdown: string;
-    }[]
-  > {
-    const dailyNotesMap = new Map<
-      string,
-      {
-        title: string;
-        docId: string;
-        createdAt?: string;
-        updatedAt?: string;
-        markdown: string;
-      }[]
-    >();
 
-    for (const doc of documents) {
-      const contentToParse = doc.last_viewed_panel?.content;
-      if (!contentToParse || contentToParse.type !== "doc") {
-        continue;
-      }
 
-      const title = doc.title || "Untitled Granola Note";
-      const docId = doc.id || "unknown_id";
-      const markdownContent = convertProsemirrorToMarkdown(contentToParse);
-      const noteDate = getNoteDate(doc);
-      const mapKey = moment(noteDate).format("YYYY-MM-DD");
 
-      if (!dailyNotesMap.has(mapKey)) {
-        dailyNotesMap.set(mapKey, []);
-      }
-
-      dailyNotesMap.get(mapKey)!.push({
-        title,
-        docId,
-        createdAt: doc.created_at,
-        updatedAt: doc.updated_at,
-        markdown: markdownContent,
-      });
-    }
-
-    return dailyNotesMap;
-  }
-
-  private async getOrCreateDailyNote(dateKey: string): Promise<TFile> {
-    const noteMoment = moment(dateKey, "YYYY-MM-DD");
-    let dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
-
-    if (!dailyNoteFile) {
-      dailyNoteFile = await createDailyNote(noteMoment);
-    }
-
-    return dailyNoteFile;
-  }
-
-  private buildDailyNoteSectionContent(
-    notesForDay: {
-      title: string;
-      docId: string;
-      createdAt?: string;
-      updatedAt?: string;
-      markdown: string;
-    }[],
-    sectionHeading: string,
-    dateKey: string
-  ): string {
-    if (notesForDay.length === 0) {
-      return sectionHeading;
-    }
-
-    let content = sectionHeading;
-
-    for (const note of notesForDay) {
-      content += `\n### ${note.title}\n`;
-      content += `**Granola ID:** ${note.docId}\n`;
-
-      if (note.createdAt) {
-        content += `**Created:** ${note.createdAt}\n`;
-      }
-      if (note.updatedAt) {
-        content += `**Updated:** ${note.updatedAt}\n`;
-      }
-
-      if (
-        this.settings.syncTranscripts &&
-        this.settings.createLinkFromNoteToTranscript
-      ) {
-        const noteDate = this.getNoteDateFromNote(note, dateKey);
-        const transcriptPath = this.computeTranscriptPath(note.title, noteDate);
-        content += `**Transcript:** [[${transcriptPath}]]\n`;
-      }
-
-      content += `\n${note.markdown}\n`;
-    }
-
-    return content.trim() + "\n";
-  }
-
-  private getNoteDateFromNote(
-    note: {
-      createdAt?: string;
-      updatedAt?: string;
-    },
-    fallbackDateKey: string
-  ): Date {
-    if (note.createdAt) return new Date(note.createdAt);
-    if (note.updatedAt) return new Date(note.updatedAt);
-    return new Date(fallbackDateKey);
-  }
 
   private async updateDailyNoteSection(
     dailyNoteFile: TFile,
