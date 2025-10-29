@@ -25,6 +25,7 @@ import {
   stopCredentialsServer,
 } from "./services/credentials";
 import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
+import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
@@ -518,11 +519,16 @@ export default class GranolaSync extends Plugin {
     // Fetch documents (now handles credentials)
     const documents = await this.fetchDocuments(accessToken);
     if (!documents || documents.length === 0) {
+      log.debug("No documents fetched from Granola API");
       return;
     }
+    log.debug(`Fetched ${documents.length} documents from Granola API`);
 
     // Filter documents based on syncDaysBack setting
     const filteredDocuments = this.filterDocumentsByDate(documents);
+    log.debug(
+      `Filtered to ${filteredDocuments.length} documents (from ${documents.length} total)`
+    );
     if (filteredDocuments.length === 0) {
       new Notice(
         `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
@@ -674,6 +680,8 @@ export default class GranolaSync extends Plugin {
     this.settings.latestSyncTime = Date.now();
     await this.saveSettings(); // Save settings to persist latestSyncTime
 
+    log.debug(`Saved ${syncedCount} note(s)`);
+
     let locationMessage: string;
     switch (this.settings.syncDestination) {
       case SyncDestination.DAILY_NOTES:
@@ -731,6 +739,8 @@ export default class GranolaSync extends Plugin {
         console.error(`Transcript fetch error for doc ${docId}:`, e);
       }
     }
+
+    log.debug(`Saved ${syncedCount} transcript(s)`);
 
     let locationMessage: string;
     switch (this.settings.transcriptDestination) {
