@@ -3,9 +3,10 @@ import {
   createDailyNote,
   getDailyNote,
   getAllDailyNotes,
-  getDailyNoteSettings,
 } from "obsidian-daily-notes-interface";
 import { updateSection } from "./utils/textUtils";
+import { sanitizeFilename } from "./utils/filenameUtils";
+import { getNoteDate } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -25,15 +26,27 @@ import {
   stopCredentialsServer,
 } from "./services/credentials";
 import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
+import { formatTranscriptBySpeaker } from "./services/transcriptFormatter";
+import { PathResolver } from "./services/pathResolver";
+import { FileSyncService } from "./services/fileSyncService";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
-  private granolaIdCache: Map<string, TFile> = new Map();
+  private pathResolver!: PathResolver;
+  private fileSyncService!: FileSyncService;
 
   async onload() {
     await this.loadSettings();
+
+    // Initialize services
+    this.pathResolver = new PathResolver({
+      transcriptDestination: this.settings.transcriptDestination,
+      granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
+    });
+    this.fileSyncService = new FileSyncService(this.app);
+
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
     statusBarItemEl.setText("Granola sync idle"); // Updated status bar text
@@ -117,91 +130,10 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-  private sanitizeFilename(title: string): string {
-    const invalidChars = /[<>:"/\\|?*]/g;
-    let filename = title.replace(invalidChars, "");
-    filename = filename.replace(/\s+/g, "_"); // Replace one or more spaces with a single underscore
-    // Truncate filename if too long (e.g., 200 chars, common limit)
-    const maxLength = 200;
-    if (filename.length > maxLength) {
-      filename = filename.substring(0, maxLength);
-    }
-    return filename;
-  }
 
   // Build the Granola ID cache by scanning all markdown files in the vault
-  private async buildGranolaIdCache(): Promise<void> {
-    this.granolaIdCache.clear();
-    const files = this.app.vault.getMarkdownFiles();
-
-    for (const file of files) {
-      try {
-        const cache = this.app.metadataCache.getFileCache(file);
-        if (cache?.frontmatter?.granola_id) {
-          const granolaId = cache.frontmatter.granola_id as string;
-          this.granolaIdCache.set(granolaId, file);
-        }
-      } catch (e) {
-        console.error(`Error reading frontmatter for ${file.path}:`, e);
-      }
-    }
-  }
-
-  // Find an existing file with the given Granola ID using the cache
-  private findFileByGranolaId(granolaId: string): TFile | null {
-    return this.granolaIdCache.get(granolaId) || null;
-  }
-
-  // Update the Granola ID cache if granolaId is provided
-  private updateGranolaIdCache(
-    granolaId: string | undefined,
-    file: TFile
-  ): void {
-    if (granolaId) {
-      this.granolaIdCache.set(granolaId, file);
-    }
-  }
 
   // Compute the folder path for a note based on daily note settings
-  private computeDailyNoteFolderPath(noteDate: Date): string {
-    const dailyNoteSettings = getDailyNoteSettings();
-    const noteMoment = moment(noteDate);
-
-    // Format the date according to the daily note format
-    const formattedPath = noteMoment.format(
-      dailyNoteSettings.format || "YYYY-MM-DD"
-    );
-
-    // Extract just the folder part (everything except the filename)
-    const pathParts = formattedPath.split("/");
-    const folderParts = pathParts.slice(0, -1); // Remove the last part (filename)
-
-    // Combine with the base daily notes folder
-    const baseFolder = dailyNoteSettings.folder || "";
-    if (folderParts.length > 0) {
-      return normalizePath(`${baseFolder}/${folderParts.join("/")}`);
-    } else {
-      return normalizePath(baseFolder);
-    }
-  }
-
-  // Compute the full path for a transcript file based on settings
-  private computeTranscriptPath(title: string, noteDate: Date): string {
-    const transcriptFilename = this.sanitizeFilename(title) + "-transcript.md";
-
-    if (
-      this.settings.transcriptDestination ===
-      TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE
-    ) {
-      const folderPath = this.computeDailyNoteFolderPath(noteDate);
-      return normalizePath(`${folderPath}/${transcriptFilename}`);
-    } else {
-      // GRANOLA_TRANSCRIPTS_FOLDER
-      return normalizePath(
-        `${this.settings.granolaTranscriptsFolder}/${transcriptFilename}`
-      );
-    }
-  }
 
   // Generic save to disk method
   // Returns: true if a new file was created or an existing file was updated, false if skipped or error
@@ -220,7 +152,7 @@ export default class GranolaSync extends Plugin {
         // Handle transcript destinations
         switch (this.settings.transcriptDestination) {
           case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.computeDailyNoteFolderPath(noteDate);
+            folderPath = this.pathResolver.computeDailyNoteFolderPath(noteDate);
             break;
           case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
             folderPath = normalizePath(this.settings.granolaTranscriptsFolder);
@@ -230,7 +162,7 @@ export default class GranolaSync extends Plugin {
         // Handle note destinations
         switch (this.settings.syncDestination) {
           case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.computeDailyNoteFolderPath(noteDate);
+            folderPath = this.pathResolver.computeDailyNoteFolderPath(noteDate);
             break;
           case SyncDestination.GRANOLA_FOLDER:
             folderPath = normalizePath(this.settings.granolaFolder);
@@ -246,7 +178,7 @@ export default class GranolaSync extends Plugin {
       }
 
       // Ensure the folder exists
-      if (!(await this.ensureFolderExists(folderPath))) {
+      if (!(await this.fileSyncService.ensureFolder(folderPath))) {
         new Notice(
           `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
           7000
@@ -259,7 +191,7 @@ export default class GranolaSync extends Plugin {
       // First, check if a file with this Granola ID already exists anywhere in the vault
       let existingFile: TFile | null = null;
       if (granolaId) {
-        existingFile = this.findFileByGranolaId(granolaId);
+        existingFile = this.fileSyncService.findByGranolaId(granolaId);
       }
 
       // If no file found by Granola ID, check by path
@@ -280,7 +212,7 @@ export default class GranolaSync extends Plugin {
           if (existingFile.path !== filePath) {
             try {
               await this.app.vault.rename(existingFile, filePath);
-              this.updateGranolaIdCache(granolaId, existingFile);
+              this.fileSyncService.updateCache(granolaId, existingFile);
             } catch (renameError) {
               // If rename fails (e.g., file already exists at new path), just update content
               console.warn(
@@ -289,15 +221,15 @@ export default class GranolaSync extends Plugin {
               );
             }
           }
-          this.updateGranolaIdCache(granolaId, existingFile);
+          this.fileSyncService.updateCache(granolaId, existingFile);
           return true; // Content was updated
         } else {
-          this.updateGranolaIdCache(granolaId, existingFile);
+          this.fileSyncService.updateCache(granolaId, existingFile);
           return false; // No change needed
         }
       } else {
         const newFile = await this.app.vault.create(filePath, content);
-        this.updateGranolaIdCache(granolaId, newFile);
+        this.fileSyncService.updateCache(granolaId, newFile);
         return true; // New file created
       }
     } catch (e) {
@@ -340,7 +272,7 @@ export default class GranolaSync extends Plugin {
       else noteDate = new Date();
 
       // Compute transcript path using the helper method
-      const transcriptPath = this.computeTranscriptPath(title, noteDate);
+      const transcriptPath = this.pathResolver.computeTranscriptPath(title, noteDate);
 
       // Add the link
       finalMarkdown += `[Transcript](${transcriptPath})\n\n`;
@@ -349,7 +281,7 @@ export default class GranolaSync extends Plugin {
     // Add the actual note content
     finalMarkdown += markdownContent;
 
-    const filename = this.sanitizeFilename(title) + ".md";
+    const filename = sanitizeFilename(title) + ".md";
 
     // Get the note date
     let noteDate: Date;
@@ -367,7 +299,7 @@ export default class GranolaSync extends Plugin {
   ): Promise<boolean> {
     const title = doc.title || "Untitled Granola Note";
     const docId = doc.id || "unknown_id";
-    const filename = this.sanitizeFilename(title) + "-transcript.md";
+    const filename = sanitizeFilename(title) + "-transcript.md";
 
     // Get the note date
     let noteDate: Date;
@@ -423,68 +355,6 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-  private async ensureFolderExists(folderPath: string): Promise<boolean> {
-    try {
-      const folderExists = this.app.vault.getAbstractFileByPath(folderPath);
-      if (!folderExists) {
-        await this.app.vault.createFolder(folderPath);
-      }
-      return true;
-    } catch (error) {
-      new Notice(
-        `Granola sync error: Could not create folder '${folderPath}'. Check console.`,
-        10000
-      );
-      console.error("Folder creation error:", error);
-      return false;
-    }
-  }
-
-  private formatTranscriptBySpeaker(
-    transcriptData: TranscriptEntry[],
-    title: string,
-    granolaId: string
-  ): string {
-    // Add frontmatter with granola_id for transcript deduplication
-    const escapedTitleForYaml = title.replace(/"/g, '\\"');
-    let transcriptMd = `---\ngranola_id: ${granolaId}-transcript\ntitle: "${escapedTitleForYaml} - Transcript"\n---\n\n`;
-
-    transcriptMd += `# Transcript for: ${title}\n\n`;
-    let currentSpeaker: string | null = null;
-    let currentStart: string | null = null;
-    let currentText: string[] = [];
-    const getSpeaker = (source: string) =>
-      source === "microphone" ? "You" : "Guest";
-
-    for (let i = 0; i < transcriptData.length; i++) {
-      const entry = transcriptData[i];
-      const speaker = getSpeaker(entry.source);
-
-      if (currentSpeaker === null) {
-        currentSpeaker = speaker;
-        currentStart = entry.start_timestamp;
-        currentText = [entry.text];
-      } else if (speaker === currentSpeaker) {
-        currentText.push(entry.text);
-      } else {
-        // Write previous block
-        transcriptMd += `## ${currentSpeaker} (${currentStart})\n\n`;
-        transcriptMd += currentText.join(" ") + "\n\n";
-        // Start new block
-        currentSpeaker = speaker;
-        currentStart = entry.start_timestamp;
-        currentText = [entry.text];
-      }
-    }
-
-    // Write last block
-    if (currentSpeaker !== null) {
-      transcriptMd += `## ${currentSpeaker} (${currentStart})\n\n`;
-      transcriptMd += currentText.join(" ") + "\n\n";
-    }
-
-    return transcriptMd;
-  }
 
   // Filter documents based on syncDaysBack setting
   private filterDocumentsByDate(documents: GranolaDoc[]): GranolaDoc[] {
@@ -522,7 +392,7 @@ export default class GranolaSync extends Plugin {
     }
 
     // Build the Granola ID cache before syncing
-    await this.buildGranolaIdCache();
+    await this.fileSyncService.buildCache();
 
     // Fetch documents (now handles credentials)
     const documents = await this.fetchDocuments(accessToken);
@@ -624,7 +494,7 @@ export default class GranolaSync extends Plugin {
       const title = doc.title || "Untitled Granola Note";
       const docId = doc.id || "unknown_id";
       const markdownContent = convertProsemirrorToMarkdown(contentToParse);
-      const noteDate = this.getNoteDate(doc);
+      const noteDate = getNoteDate(doc);
       const mapKey = moment(noteDate).format("YYYY-MM-DD");
 
       if (!dailyNotesMap.has(mapKey)) {
@@ -687,7 +557,7 @@ export default class GranolaSync extends Plugin {
         this.settings.createLinkFromNoteToTranscript
       ) {
         const noteDate = this.getNoteDateFromNote(note, dateKey);
-        const transcriptPath = this.computeTranscriptPath(note.title, noteDate);
+        const transcriptPath = this.pathResolver.computeTranscriptPath(note.title, noteDate);
         content += `**Transcript:** [[${transcriptPath}]]\n`;
       }
 
@@ -751,11 +621,6 @@ export default class GranolaSync extends Plugin {
     return syncedCount;
   }
 
-  private getNoteDate(doc: GranolaDoc): Date {
-    if (doc.created_at) return new Date(doc.created_at);
-    if (doc.updated_at) return new Date(doc.updated_at);
-    return new Date();
-  }
 
   private updateSyncStatusBar(): void {
     const statusBarItemEl = this.app.workspace.containerEl.querySelector(
@@ -787,7 +652,7 @@ export default class GranolaSync extends Plugin {
           continue;
         }
         // Use the extracted formatting function
-        const transcriptMd = this.formatTranscriptBySpeaker(
+        const transcriptMd = formatTranscriptBySpeaker(
           transcriptData,
           title,
           docId

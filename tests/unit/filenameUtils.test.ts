@@ -1,0 +1,71 @@
+import { sanitizeFilename } from "../../src/utils/filenameUtils";
+
+describe("sanitizeFilename", () => {
+  it("should remove invalid characters", () => {
+    const filename = 'test<file>name:with"invalid/chars\\and|more?*chars';
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("testfilenamewithinvalidcharsandmorechars");
+  });
+
+  it("should replace spaces with underscores", () => {
+    const filename = "test file name with spaces";
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("test_file_name_with_spaces");
+  });
+
+  it("should replace multiple consecutive spaces with single underscore", () => {
+    const filename = "test    file     name";
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("test_file_name");
+  });
+
+  it("should truncate long filenames to 200 characters", () => {
+    const longFilename = "a".repeat(250);
+    const result = sanitizeFilename(longFilename);
+    expect(result.length).toBe(200);
+    expect(result).toBe("a".repeat(200));
+  });
+
+  it("should handle empty strings", () => {
+    const filename = "";
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("");
+  });
+
+  it("should handle strings with only invalid characters", () => {
+    const filename = '<>:"/\\|?*';
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("");
+  });
+
+  it("should handle strings with only spaces", () => {
+    const filename = "   ";
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("_");
+  });
+
+  it("should handle normal filenames without changes (except spaces)", () => {
+    const filename = "normal file name";
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("normal_file_name");
+  });
+
+  it("should handle filenames with special characters that are valid", () => {
+    const filename = "file-name_with.special!chars@#$%^&()[]{}";
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("file-name_with.special!chars@#$%^&()[]{}");
+  });
+
+  it("should handle mixed invalid characters and spaces", () => {
+    const filename = "test: file / name * with ? invalid | chars";
+    const result = sanitizeFilename(filename);
+    expect(result).toBe("test_file_name_with_invalid_chars");
+  });
+
+  it("should handle filenames at exactly 200 characters", () => {
+    const filename = "b".repeat(200);
+    const result = sanitizeFilename(filename);
+    expect(result.length).toBe(200);
+    expect(result).toBe("b".repeat(200));
+  });
+});
