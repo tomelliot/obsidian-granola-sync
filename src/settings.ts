@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
+import os from "os";
 
 export enum SyncDestination {
   GRANOLA_FOLDER = "granola_folder",
@@ -29,7 +30,6 @@ export interface TranscriptSettings {
 export interface AutomaticSyncSettings {
   isSyncEnabled: boolean;
   syncInterval: number;
-  tokenPath: string;
   latestSyncTime: number;
   syncDaysBack: number;
 }
@@ -40,7 +40,6 @@ export type GranolaSyncSettings = NoteSettings &
 
 export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   // AutomaticSyncSettings
-  tokenPath: "configs/supabase.json",
   latestSyncTime: 0,
   isSyncEnabled: false,
   syncInterval: 30 * 60, // every 30 minutes
@@ -69,20 +68,66 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     const { containerEl } = this;
 
     containerEl.empty();
-    new Setting(containerEl).setName("Granola sync settings").setHeading();
+
+    // Automatic Sync Section
+    new Setting(containerEl).setName("Automatic sync").setHeading();
 
     new Setting(containerEl)
-      .setName("Path to Granola access token file")
+      .setName("Periodic sync enabled")
       .setDesc(
-        'Path to the JSON file containing your Granola authentication token, relative to your vault root (e.g., "configs/supabase.json"). On macOS, copy this file from ~/Library/Application Support/Granola/supabase.json.'
+        "Automatically sync your Granola notes at regular intervals. When disabled, you'll need to manually run the sync command."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.isSyncEnabled)
+          .onChange(async (value) => {
+            this.plugin.settings.isSyncEnabled = value;
+            await this.plugin.saveSettings();
+            // Refresh the display to show/hide sync interval
+            this.display();
+          })
+      );
+
+    // Only show sync interval when periodic sync is enabled
+    if (this.plugin.settings.isSyncEnabled) {
+      new Setting(containerEl)
+        .setName("Sync interval")
+        .setDesc(
+          "How often to automatically sync notes when periodic sync is enabled. Enter value in seconds (default: 1800 = 30 minutes)."
+        )
+        .addText((text) =>
+          text
+            .setPlaceholder("Enter the interval in seconds")
+            .setValue(this.plugin.settings.syncInterval.toString())
+            .onChange(async (value) => {
+              const numValue = parseInt(value);
+              if (!isNaN(numValue) && numValue >= 0) {
+                this.plugin.settings.syncInterval = numValue;
+                await this.plugin.saveSettings();
+              } else {
+                new Notice("Please enter a valid number for sync interval.");
+              }
+            })
+        );
+    }
+
+    new Setting(containerEl)
+      .setName("Sync history (days)")
+      .setDesc(
+        "How far back to sync notes and transcripts from Granola, in days. For example, setting this to 7 will only sync notes from the last 7 days. Set to 0 to sync all notes (max 100 notes)."
       )
       .addText((text) =>
         text
-          .setPlaceholder("Enter the path to the Granola token file")
-          .setValue(this.plugin.settings.tokenPath)
+          .setPlaceholder("Enter number of days")
+          .setValue(this.plugin.settings.syncDaysBack.toString())
           .onChange(async (value) => {
-            this.plugin.settings.tokenPath = value;
-            await this.plugin.saveSettings();
+            const numValue = parseInt(value);
+            if (!isNaN(numValue) && numValue >= 0) {
+              this.plugin.settings.syncDaysBack = numValue;
+              await this.plugin.saveSettings();
+            } else {
+              new Notice("Please enter a valid number for sync days.");
+            }
           })
       );
 
@@ -287,67 +332,5 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           );
       }
     }
-
-    // Automatic Sync Section
-    new Setting(containerEl).setName("Automatic sync").setHeading();
-
-    new Setting(containerEl)
-      .setName("Periodic sync enabled")
-      .setDesc(
-        "Automatically sync your Granola notes at regular intervals. When disabled, you'll need to manually run the sync command."
-      )
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.isSyncEnabled)
-          .onChange(async (value) => {
-            this.plugin.settings.isSyncEnabled = value;
-            await this.plugin.saveSettings();
-            // Refresh the display to show/hide sync interval
-            this.display();
-          })
-      );
-
-    // Only show sync interval when periodic sync is enabled
-    if (this.plugin.settings.isSyncEnabled) {
-      new Setting(containerEl)
-        .setName("Sync interval")
-        .setDesc(
-          "How often to automatically sync notes when periodic sync is enabled. Enter value in seconds (default: 1800 = 30 minutes)."
-        )
-        .addText((text) =>
-          text
-            .setPlaceholder("Enter the interval in seconds")
-            .setValue(this.plugin.settings.syncInterval.toString())
-            .onChange(async (value) => {
-              const numValue = parseInt(value);
-              if (!isNaN(numValue) && numValue >= 0) {
-                this.plugin.settings.syncInterval = numValue;
-                await this.plugin.saveSettings();
-              } else {
-                new Notice("Please enter a valid number for sync interval.");
-              }
-            })
-        );
-    }
-
-    new Setting(containerEl)
-      .setName("Sync history (days)")
-      .setDesc(
-        "How far back to sync notes and transcripts from Granola, in days. For example, setting this to 7 will only sync notes from the last 7 days. Set to 0 to sync all notes (max 100 notes)."
-      )
-      .addText((text) =>
-        text
-          .setPlaceholder("Enter number of days")
-          .setValue(this.plugin.settings.syncDaysBack.toString())
-          .onChange(async (value) => {
-            const numValue = parseInt(value);
-            if (!isNaN(numValue) && numValue >= 0) {
-              this.plugin.settings.syncDaysBack = numValue;
-              await this.plugin.saveSettings();
-            } else {
-              new Notice("Please enter a valid number for sync days.");
-            }
-          })
-      );
   }
 }

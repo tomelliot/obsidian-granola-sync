@@ -454,7 +454,7 @@ export default class GranolaSync extends Plugin {
     let currentStart: string | null = null;
     let currentText: string[] = [];
     const getSpeaker = (source: string) =>
-      source === "microphone" ? "Tom Elliot" : "Guest";
+      source === "microphone" ? "You" : "Guest";
 
     for (let i = 0; i < transcriptData.length; i++) {
       const entry = transcriptData[i];
