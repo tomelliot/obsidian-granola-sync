@@ -6,6 +6,7 @@ import {
   getDailyNoteSettings,
 } from "obsidian-daily-notes-interface";
 import { updateSection } from "./utils/textUtils";
+import { sanitizeFilename } from "./utils/filenameUtils";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -117,17 +118,6 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-  private sanitizeFilename(title: string): string {
-    const invalidChars = /[<>:"/\\|?*]/g;
-    let filename = title.replace(invalidChars, "");
-    filename = filename.replace(/\s+/g, "_"); // Replace one or more spaces with a single underscore
-    // Truncate filename if too long (e.g., 200 chars, common limit)
-    const maxLength = 200;
-    if (filename.length > maxLength) {
-      filename = filename.substring(0, maxLength);
-    }
-    return filename;
-  }
 
   // Build the Granola ID cache by scanning all markdown files in the vault
   private async buildGranolaIdCache(): Promise<void> {
@@ -187,7 +177,7 @@ export default class GranolaSync extends Plugin {
 
   // Compute the full path for a transcript file based on settings
   private computeTranscriptPath(title: string, noteDate: Date): string {
-    const transcriptFilename = this.sanitizeFilename(title) + "-transcript.md";
+    const transcriptFilename = sanitizeFilename(title) + "-transcript.md";
 
     if (
       this.settings.transcriptDestination ===
@@ -349,7 +339,7 @@ export default class GranolaSync extends Plugin {
     // Add the actual note content
     finalMarkdown += markdownContent;
 
-    const filename = this.sanitizeFilename(title) + ".md";
+    const filename = sanitizeFilename(title) + ".md";
 
     // Get the note date
     let noteDate: Date;
@@ -367,7 +357,7 @@ export default class GranolaSync extends Plugin {
   ): Promise<boolean> {
     const title = doc.title || "Untitled Granola Note";
     const docId = doc.id || "unknown_id";
-    const filename = this.sanitizeFilename(title) + "-transcript.md";
+    const filename = sanitizeFilename(title) + "-transcript.md";
 
     // Get the note date
     let noteDate: Date;
