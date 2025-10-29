@@ -1,6 +1,6 @@
 # Obsidian Granola Sync
 
-[![Tests](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml/badge.svg)](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml)
+[![Tests](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml)
 
 This plugin allows you to synchronize your notes and transcripts from Granola (https://granola.ai) directly into your Obsidian vault. It fetches documents from Granola, converts them from ProseMirror JSON format to Markdown, and saves them as `.md` files.
 
