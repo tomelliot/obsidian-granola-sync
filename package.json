@@ -4,7 +4,7 @@
   "description": "Sync Granola notes to your vault.",
   "main": "main.js",
   "scripts": {
-    "dev": "tsc -p . -noEmit -skipLibCheck && node esbuild.config.mjs",
+    "dev": "node esbuild.config.mjs",
     "build": "tsc -p . -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "test": "jest",
     "test:watch": "jest --watch",
