@@ -3,11 +3,7 @@ import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename } from "../utils/filenameUtils";
 import { getNoteDate } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
-
-export interface DocumentProcessorSettings {
-  syncTranscripts: boolean;
-  createLinkFromNoteToTranscript: boolean;
-}
+import { TranscriptSettings } from "../settings";
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
@@ -15,7 +11,7 @@ export interface DocumentProcessorSettings {
  */
 export class DocumentProcessor {
   constructor(
-    private settings: DocumentProcessorSettings,
+    private settings: Pick<TranscriptSettings, 'syncTranscripts' | 'createLinkFromNoteToTranscript'>,
     private pathResolver: PathResolver
   ) {}
 
