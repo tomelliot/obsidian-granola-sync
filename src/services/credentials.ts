@@ -18,7 +18,6 @@ export async function startCredentialsServer(): Promise<void> {
     process.on("SIGTERM", stopCredentialsServer);
     process.on("exit", stopCredentialsServer);
 
-    console.debug("Starting credentials server");
     server = http.createServer((req, res) => {
       if (req.url === "/supabase.json" || req.url === "/") {
         fs.readFile(filePath, (err, data) => {
@@ -43,7 +42,6 @@ export async function startCredentialsServer(): Promise<void> {
     });
 
     server.listen(2590, "127.0.0.1", () => {
-      console.debug("Credentials server started");
       resolve();
     });
   });
@@ -67,9 +65,8 @@ export async function loadCredentials(): Promise<{
     await startCredentialsServer();
 
     // Add a small delay to ensure the server is fully ready
-    console.debug("Waiting for credentials server to be ready");
+
     await new Promise((resolve) => setTimeout(resolve, 100));
-    console.debug("Credentials server ready");
   } catch (serverError) {
     const errorMessage =
       serverError instanceof Error ? serverError.message : String(serverError);
