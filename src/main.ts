@@ -27,6 +27,7 @@ import {
   stopCredentialsServer,
 } from "./services/credentials";
 import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
+import { formatTranscriptBySpeaker } from "./services/transcriptFormatter";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
@@ -431,51 +432,6 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-  private formatTranscriptBySpeaker(
-    transcriptData: TranscriptEntry[],
-    title: string,
-    granolaId: string
-  ): string {
-    // Add frontmatter with granola_id for transcript deduplication
-    const escapedTitleForYaml = title.replace(/"/g, '\\"');
-    let transcriptMd = `---\ngranola_id: ${granolaId}-transcript\ntitle: "${escapedTitleForYaml} - Transcript"\n---\n\n`;
-
-    transcriptMd += `# Transcript for: ${title}\n\n`;
-    let currentSpeaker: string | null = null;
-    let currentStart: string | null = null;
-    let currentText: string[] = [];
-    const getSpeaker = (source: string) =>
-      source === "microphone" ? "You" : "Guest";
-
-    for (let i = 0; i < transcriptData.length; i++) {
-      const entry = transcriptData[i];
-      const speaker = getSpeaker(entry.source);
-
-      if (currentSpeaker === null) {
-        currentSpeaker = speaker;
-        currentStart = entry.start_timestamp;
-        currentText = [entry.text];
-      } else if (speaker === currentSpeaker) {
-        currentText.push(entry.text);
-      } else {
-        // Write previous block
-        transcriptMd += `## ${currentSpeaker} (${currentStart})\n\n`;
-        transcriptMd += currentText.join(" ") + "\n\n";
-        // Start new block
-        currentSpeaker = speaker;
-        currentStart = entry.start_timestamp;
-        currentText = [entry.text];
-      }
-    }
-
-    // Write last block
-    if (currentSpeaker !== null) {
-      transcriptMd += `## ${currentSpeaker} (${currentStart})\n\n`;
-      transcriptMd += currentText.join(" ") + "\n\n";
-    }
-
-    return transcriptMd;
-  }
 
   // Filter documents based on syncDaysBack setting
   private filterDocumentsByDate(documents: GranolaDoc[]): GranolaDoc[] {
@@ -773,7 +729,7 @@ export default class GranolaSync extends Plugin {
           continue;
         }
         // Use the extracted formatting function
-        const transcriptMd = this.formatTranscriptBySpeaker(
+        const transcriptMd = formatTranscriptBySpeaker(
           transcriptData,
           title,
           docId
