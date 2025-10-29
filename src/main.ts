@@ -1,10 +1,4 @@
 import { Notice, Plugin, normalizePath, TFile } from "obsidian";
-import {
-  createDailyNote,
-  getDailyNote,
-  getAllDailyNotes,
-} from "obsidian-daily-notes-interface";
-import { updateSection } from "./utils/textUtils";
 import { getNoteDate } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
@@ -13,7 +7,6 @@ import {
   SyncDestination,
   TranscriptDestination,
 } from "./settings";
-import moment from "moment";
 import {
   fetchGranolaDocuments,
   fetchGranolaTranscript,
@@ -28,6 +21,7 @@ import { formatTranscriptBySpeaker } from "./services/transcriptFormatter";
 import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
+import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
@@ -36,6 +30,7 @@ export default class GranolaSync extends Plugin {
   private pathResolver!: PathResolver;
   private fileSyncService!: FileSyncService;
   private documentProcessor!: DocumentProcessor;
+  private dailyNoteBuilder!: DailyNoteBuilder;
 
   async onload() {
     await this.loadSettings();
@@ -52,6 +47,16 @@ export default class GranolaSync extends Plugin {
         createLinkFromNoteToTranscript: this.settings.createLinkFromNoteToTranscript,
       },
       this.pathResolver
+    );
+    this.dailyNoteBuilder = new DailyNoteBuilder(
+      this.app,
+      this.documentProcessor,
+      this.pathResolver,
+      {
+        syncTranscripts: this.settings.syncTranscripts,
+        createLinkFromNoteToTranscript: this.settings.createLinkFromNoteToTranscript,
+        dailyNoteSectionHeading: this.settings.dailyNoteSectionHeading,
+      }
     );
 
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
@@ -393,20 +398,20 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToDailyNotes(
     documents: GranolaDoc[]
   ): Promise<number> {
-    const dailyNotesMap = this.buildDailyNotesMap(documents);
+    const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
 
     let syncedCount = 0;
 
     for (const [dateKey, notesForDay] of dailyNotesMap) {
-      const dailyNoteFile = await this.getOrCreateDailyNote(dateKey);
-      const sectionContent = this.buildDailyNoteSectionContent(
+      const dailyNoteFile = await this.dailyNoteBuilder.getOrCreateDailyNote(dateKey);
+      const sectionContent = this.dailyNoteBuilder.buildDailyNoteSectionContent(
         notesForDay,
         sectionHeadingSetting,
         dateKey
       );
 
-      await this.updateDailyNoteSection(
+      await this.dailyNoteBuilder.updateDailyNoteSection(
         dailyNoteFile,
         sectionHeadingSetting,
         sectionContent
@@ -416,133 +421,6 @@ export default class GranolaSync extends Plugin {
     }
 
     return syncedCount;
-  }
-
-  private buildDailyNotesMap(documents: GranolaDoc[]): Map<
-    string,
-    {
-      title: string;
-      docId: string;
-      createdAt?: string;
-      updatedAt?: string;
-      markdown: string;
-    }[]
-  > {
-    const dailyNotesMap = new Map<
-      string,
-      {
-        title: string;
-        docId: string;
-        createdAt?: string;
-        updatedAt?: string;
-        markdown: string;
-      }[]
-    >();
-
-    for (const doc of documents) {
-      const noteData = this.documentProcessor.extractNoteForDailyNote(doc);
-      if (!noteData) {
-        continue;
-      }
-
-      const noteDate = getNoteDate(doc);
-      const mapKey = moment(noteDate).format("YYYY-MM-DD");
-
-      if (!dailyNotesMap.has(mapKey)) {
-        dailyNotesMap.set(mapKey, []);
-      }
-
-      dailyNotesMap.get(mapKey)!.push(noteData);
-    }
-
-    return dailyNotesMap;
-  }
-
-  private async getOrCreateDailyNote(dateKey: string): Promise<TFile> {
-    const noteMoment = moment(dateKey, "YYYY-MM-DD");
-    let dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
-
-    if (!dailyNoteFile) {
-      dailyNoteFile = await createDailyNote(noteMoment);
-    }
-
-    return dailyNoteFile;
-  }
-
-  private buildDailyNoteSectionContent(
-    notesForDay: {
-      title: string;
-      docId: string;
-      createdAt?: string;
-      updatedAt?: string;
-      markdown: string;
-    }[],
-    sectionHeading: string,
-    dateKey: string
-  ): string {
-    if (notesForDay.length === 0) {
-      return sectionHeading;
-    }
-
-    let content = sectionHeading;
-
-    for (const note of notesForDay) {
-      content += `\n### ${note.title}\n`;
-      content += `**Granola ID:** ${note.docId}\n`;
-
-      if (note.createdAt) {
-        content += `**Created:** ${note.createdAt}\n`;
-      }
-      if (note.updatedAt) {
-        content += `**Updated:** ${note.updatedAt}\n`;
-      }
-
-      if (
-        this.settings.syncTranscripts &&
-        this.settings.createLinkFromNoteToTranscript
-      ) {
-        const noteDate = this.getNoteDateFromNote(note, dateKey);
-        const transcriptPath = this.pathResolver.computeTranscriptPath(note.title, noteDate);
-        content += `**Transcript:** [[${transcriptPath}]]\n`;
-      }
-
-      content += `\n${note.markdown}\n`;
-    }
-
-    return content.trim() + "\n";
-  }
-
-  private getNoteDateFromNote(
-    note: {
-      createdAt?: string;
-      updatedAt?: string;
-    },
-    fallbackDateKey: string
-  ): Date {
-    if (note.createdAt) return new Date(note.createdAt);
-    if (note.updatedAt) return new Date(note.updatedAt);
-    return new Date(fallbackDateKey);
-  }
-
-  private async updateDailyNoteSection(
-    dailyNoteFile: TFile,
-    sectionHeading: string,
-    sectionContent: string
-  ): Promise<void> {
-    try {
-      await updateSection(
-        this.app,
-        dailyNoteFile,
-        sectionHeading,
-        sectionContent
-      );
-    } catch (error) {
-      new Notice(
-        `Error updating section in ${dailyNoteFile.path}. Check console.`,
-        7000
-      );
-      console.error("Error updating daily note section:", error);
-    }
   }
 
   private async syncNotesToIndividualFiles(
