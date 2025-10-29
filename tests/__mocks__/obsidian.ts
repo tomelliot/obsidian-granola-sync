@@ -1,5 +1,5 @@
 export const requestUrl = jest.fn();
-export const normalizePath = (path: string) => path.replace(/\\/g, '/');
+export const normalizePath = (path: string) => path.replace(/\\/g, "/");
 export const App = jest.fn();
 export const Editor = jest.fn();
 export const MarkdownView = jest.fn();
@@ -10,12 +10,12 @@ export const Notice = jest.fn();
 export class Plugin {
   app: any;
   manifest: any;
-  
+
   constructor(app: any, manifest: any) {
     this.app = app;
     this.manifest = manifest;
   }
-  
+
   addStatusBarItem = jest.fn(() => ({ setText: jest.fn() }));
   addCommand = jest.fn();
   addSettingTab = jest.fn();
@@ -28,5 +28,13 @@ export const PluginSettingTab = jest.fn();
 export const Setting = jest.fn();
 export const moment = {
   format: jest.fn(),
-  parseZone: jest.fn()
-}; 
+  parseZone: jest.fn(),
+};
+
+export const Platform = {
+  isWin: false,
+  isLinux: false,
+  isMacOS: true,
+  isMobile: false,
+  isDesktop: true,
+};
