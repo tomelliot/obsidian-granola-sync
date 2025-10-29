@@ -1,0 +1,13 @@
+---
+description: 
+globs: .md,.mdc
+alwaysApply: false
+---
+When writing documentation files:
+
+- be clear, but concise
+- use diagrams to illustrate where it adds clarity
+    - use mermaid diagrams
+- if a documentation file is over 200 lines long, break it into multiple smaller files
+- avoid putting code snippets from the repo into the README.md (they'll get stale). Reference the filename instead
+- add README.md files throughout the repo hierarchy, not just at the root
