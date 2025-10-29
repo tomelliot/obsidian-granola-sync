@@ -27,16 +27,15 @@ Inspired by [Automatt/obsidian-granola-sync/](https://github.com/Automatt/obsidi
 
 > **Note:** Granola credentials are fetched by the plugin using a local web server that temporarily serves your credentials file to the plugin. You can review the implementation of this mechanism in [`src/services/credentials.ts`](src/services/credentials.ts).
 
-1. Set the path to your Granola token file in the plugin settings
-2. Configure note syncing:
+1. Configure note syncing:
    - Choose whether to sync notes
    - Select the destination: a specific folder, daily notes, or daily note folder structure
    - Optionally set a section heading for daily notes
-3. Configure transcript syncing:
+2. Configure transcript syncing:
    - Choose whether to sync transcripts
    - Select the destination: a dedicated transcripts folder or daily note folder structure
    - Optionally enable linking from notes to their transcripts
-4. Set up periodic sync and adjust the interval as desired
+3. Set up periodic sync and adjust the interval as desired
 
 ## Documentation
 

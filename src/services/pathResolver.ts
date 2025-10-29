@@ -2,19 +2,14 @@ import { normalizePath } from "obsidian";
 import { getDailyNoteSettings } from "obsidian-daily-notes-interface";
 import moment from "moment";
 import { sanitizeFilename } from "../utils/filenameUtils";
-import { TranscriptDestination } from "../settings";
-
-export interface PathResolverSettings {
-  transcriptDestination: TranscriptDestination;
-  granolaTranscriptsFolder: string;
-}
+import { TranscriptSettings, TranscriptDestination } from "../settings";
 
 /**
  * Resolves file paths for notes and transcripts based on plugin settings
  * and daily note configuration.
  */
 export class PathResolver {
-  constructor(private settings: PathResolverSettings) {}
+  constructor(private settings: Pick<TranscriptSettings, 'transcriptDestination' | 'granolaTranscriptsFolder'>) {}
 
   /**
    * Computes the folder path for a daily note based on its date.

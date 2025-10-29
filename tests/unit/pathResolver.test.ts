@@ -1,5 +1,5 @@
-import { PathResolver, PathResolverSettings } from "../../src/services/pathResolver";
-import { TranscriptDestination } from "../../src/settings";
+import { PathResolver } from "../../src/services/pathResolver";
+import { TranscriptDestination, TranscriptSettings } from "../../src/settings";
 
 // Mock obsidian-daily-notes-interface
 jest.mock("obsidian-daily-notes-interface", () => ({
@@ -10,7 +10,7 @@ jest.mock("obsidian-daily-notes-interface", () => ({
 }));
 
 describe("PathResolver", () => {
-  let settings: PathResolverSettings;
+  let settings: Pick<TranscriptSettings, 'transcriptDestination' | 'granolaTranscriptsFolder'>;
   let pathResolver: PathResolver;
 
   beforeEach(() => {
