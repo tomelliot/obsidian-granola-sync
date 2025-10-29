@@ -1,4 +1,4 @@
-import { requestUrl } from "obsidian";
+import { requestUrl, Platform } from "obsidian";
 import http from "http";
 import fs from "fs";
 import path from "path";
@@ -7,10 +7,20 @@ import { log } from "../utils/logger";
 
 let server: http.Server | null = null;
 
-const filePath = path.join(
-  os.homedir(),
-  "Library/Application Support/Granola/supabase.json"
-);
+function getTokenFilePath(): string {
+  if (Platform.isWin) {
+    return path.resolve("AppData/Roaming/Granola/supabase.json");
+  } else if (Platform.isLinux) {
+    return ".config/Granola/supabase.json";
+  } else {
+    return path.join(
+      os.homedir(),
+      "Library/Application Support/Granola/supabase.json"
+    );
+  }
+}
+
+const filePath = getTokenFilePath();
 
 export async function startCredentialsServer(): Promise<void> {
   return new Promise((resolve, reject) => {
