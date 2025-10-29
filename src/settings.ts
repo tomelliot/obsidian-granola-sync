@@ -31,6 +31,7 @@ export interface AutomaticSyncSettings {
   syncInterval: number;
   tokenPath: string;
   latestSyncTime: number;
+  syncDaysBack: number;
 }
 
 export type GranolaSyncSettings = NoteSettings &
@@ -43,6 +44,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   latestSyncTime: 0,
   isSyncEnabled: false,
   syncInterval: 30 * 60, // every 30 minutes
+  syncDaysBack: 7, // sync notes from last 7 days
   // NoteSettings
   syncNotes: true,
   syncDestination: SyncDestination.DAILY_NOTES,
@@ -327,5 +329,25 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             })
         );
     }
+
+    new Setting(containerEl)
+      .setName("Sync history (days)")
+      .setDesc(
+        "How far back to sync notes and transcripts from Granola, in days. For example, setting this to 7 will only sync notes from the last 7 days. Set to 0 to sync all notes (max 100 notes)."
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder("Enter number of days")
+          .setValue(this.plugin.settings.syncDaysBack.toString())
+          .onChange(async (value) => {
+            const numValue = parseInt(value);
+            if (!isNaN(numValue) && numValue >= 0) {
+              this.plugin.settings.syncDaysBack = numValue;
+              await this.plugin.saveSettings();
+            } else {
+              new Notice("Please enter a valid number for sync days.");
+            }
+          })
+      );
   }
 }
