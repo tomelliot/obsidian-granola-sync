@@ -1,5 +1,6 @@
-import { Notice, Plugin, normalizePath, TFile } from "obsidian";
+import { Notice, Plugin, normalizePath } from "obsidian";
 import { getNoteDate } from "./utils/dateUtils";
+import { filterDocumentsByDate } from "./utils/documentFilter";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -147,8 +148,40 @@ export default class GranolaSync extends Plugin {
 
   // Compute the folder path for a note based on daily note settings
 
-  // Generic save to disk method
-  // Returns: true if a new file was created or an existing file was updated, false if skipped or error
+  /**
+   * Resolves the folder path for a file based on settings and file type.
+   */
+  private resolveFolderPath(noteDate: Date, isTranscript: boolean): string | null {
+    if (isTranscript) {
+      // Handle transcript destinations
+      switch (this.settings.transcriptDestination) {
+        case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
+          return this.pathResolver.computeDailyNoteFolderPath(noteDate);
+        case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
+          return normalizePath(this.settings.granolaTranscriptsFolder);
+      }
+    } else {
+      // Handle note destinations
+      switch (this.settings.syncDestination) {
+        case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
+          return this.pathResolver.computeDailyNoteFolderPath(noteDate);
+        case SyncDestination.GRANOLA_FOLDER:
+          return normalizePath(this.settings.granolaFolder);
+        default:
+          // This shouldn't happen for individual files
+          new Notice(
+            `Invalid sync destination for individual files: ${this.settings.syncDestination}`,
+            7000
+          );
+          return null;
+      }
+    }
+  }
+
+  /**
+   * Generic save to disk method that resolves the folder path and delegates to FileSyncService.
+   * Returns: true if a new file was created or an existing file was updated, false if skipped or error
+   */
   private async saveToDisk(
     filename: string,
     content: string,
@@ -156,99 +189,24 @@ export default class GranolaSync extends Plugin {
     isTranscript: boolean = false,
     granolaId?: string
   ): Promise<boolean> {
-    try {
-      // Determine the folder path based on settings and file type
-      let folderPath: string;
-
-      if (isTranscript) {
-        // Handle transcript destinations
-        switch (this.settings.transcriptDestination) {
-          case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.pathResolver.computeDailyNoteFolderPath(noteDate);
-            break;
-          case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-            folderPath = normalizePath(this.settings.granolaTranscriptsFolder);
-            break;
-        }
-      } else {
-        // Handle note destinations
-        switch (this.settings.syncDestination) {
-          case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.pathResolver.computeDailyNoteFolderPath(noteDate);
-            break;
-          case SyncDestination.GRANOLA_FOLDER:
-            folderPath = normalizePath(this.settings.granolaFolder);
-            break;
-          default:
-            // This shouldn't happen for individual files
-            new Notice(
-              `Invalid sync destination for individual files: ${this.settings.syncDestination}`,
-              7000
-            );
-            return false;
-        }
-      }
-
-      // Ensure the folder exists
-      if (!(await this.fileSyncService.ensureFolder(folderPath))) {
-        new Notice(
-          `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
-          7000
-        );
-        return false;
-      }
-
-      const filePath = normalizePath(`${folderPath}/${filename}`);
-
-      // First, check if a file with this Granola ID already exists anywhere in the vault
-      let existingFile: TFile | null = null;
-      if (granolaId) {
-        existingFile = this.fileSyncService.findByGranolaId(granolaId);
-      }
-
-      // If no file found by Granola ID, check by path
-      if (!existingFile) {
-        const fileByPath = this.app.vault.getAbstractFileByPath(filePath);
-        if (fileByPath instanceof TFile) {
-          existingFile = fileByPath;
-        }
-      }
-
-      if (existingFile) {
-        const existingContent = await this.app.vault.read(existingFile);
-
-        if (existingContent !== content) {
-          await this.app.vault.modify(existingFile, content);
-
-          // If the file path has changed (title changed), rename the file
-          if (existingFile.path !== filePath) {
-            try {
-              await this.app.vault.rename(existingFile, filePath);
-              this.fileSyncService.updateCache(granolaId, existingFile);
-            } catch (renameError) {
-              // If rename fails (e.g., file already exists at new path), just update content
-              console.warn(
-                `Could not rename file from ${existingFile.path} to ${filePath}:`,
-                renameError
-              );
-            }
-          }
-          this.fileSyncService.updateCache(granolaId, existingFile);
-          return true; // Content was updated
-        } else {
-          this.fileSyncService.updateCache(granolaId, existingFile);
-          return false; // No change needed
-        }
-      } else {
-        const newFile = await this.app.vault.create(filePath, content);
-        this.fileSyncService.updateCache(granolaId, newFile);
-        return true; // New file created
-      }
-    } catch (e) {
-      new Notice(`Error saving file: ${filename}. Check console.`, 7000);
-      console.error("Error saving file to disk:", e);
+    // Resolve the folder path
+    const folderPath = this.resolveFolderPath(noteDate, isTranscript);
+    if (!folderPath) {
       return false;
     }
+
+    // Ensure the folder exists
+    if (!(await this.fileSyncService.ensureFolder(folderPath))) {
+      new Notice(
+        `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
+        7000
+      );
+      return false;
+    }
+
+    // Build the full file path and delegate to FileSyncService
+    const filePath = normalizePath(`${folderPath}/${filename}`);
+    return this.fileSyncService.saveFile(filePath, content, granolaId);
   }
 
   // Save a note to disk based on the sync destination setting
@@ -315,28 +273,6 @@ export default class GranolaSync extends Plugin {
   }
 
 
-  // Filter documents based on syncDaysBack setting
-  private filterDocumentsByDate(documents: GranolaDoc[]): GranolaDoc[] {
-    // If syncDaysBack is 0, sync all documents (no filtering)
-    if (this.settings.syncDaysBack === 0) {
-      return documents;
-    }
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - this.settings.syncDaysBack);
-
-    return documents.filter((doc) => {
-      // Use created_at if available, otherwise fall back to updated_at
-      const docDate = doc.created_at
-        ? new Date(doc.created_at)
-        : doc.updated_at
-        ? new Date(doc.updated_at)
-        : new Date();
-
-      return docDate >= cutoffDate;
-    });
-  }
-
   // Top-level sync function that handles common setup once
   async sync() {
     // Load credentials at the start of each sync
@@ -362,7 +298,7 @@ export default class GranolaSync extends Plugin {
     log.debug(`Granola API: Fetched ${documents.length} documents from`);
 
     // Filter documents based on syncDaysBack setting
-    const filteredDocuments = this.filterDocumentsByDate(documents);
+    const filteredDocuments = filterDocumentsByDate(documents, this.settings.syncDaysBack);
     log.debug(`Filtered to ${filteredDocuments.length} documents`);
     if (filteredDocuments.length === 0) {
       new Notice(
