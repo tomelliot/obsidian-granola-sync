@@ -6,7 +6,8 @@
       "Bash(git commit:*)",
       "Bash(mkdir:*)",
       "Bash(npm test:*)",
-      "Bash(npm run test:coverage:*)"
+      "Bash(npm run test:coverage:*)",
+      "Bash(gh issue comment*)"
     ],
     "deny": [],
     "ask": []
