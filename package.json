@@ -1,6 +1,6 @@
 {
   "name": "obsidian-granola-sync",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Sync Granola notes to your vault.",
   "main": "main.js",
   "scripts": {
