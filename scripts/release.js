@@ -135,12 +135,14 @@ function main() {
   const currentVersion = getCurrentVersion();
   let version = process.argv[2];
 
-  // If no version specified, auto-bump patch version
-  version = bumpPatchVersion(currentVersion);
   log(`🚀 Starting release process...`, colors.bright);
+
+  // If no version specified, auto-bump patch version
   if (!version) {
+    version = bumpPatchVersion(currentVersion);
     log(`No version specified, auto-bumping patch version`, colors.cyan);
   }
+
   log(`Current version: ${currentVersion}`, colors.cyan);
   log(`New version: ${version}`, colors.cyan);
 
