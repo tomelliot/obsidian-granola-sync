@@ -6,6 +6,11 @@ describe("FileSyncService", () => {
   let fileSyncService: FileSyncService;
 
   beforeEach(() => {
+    // Suppress console output for error handling tests
+    // Note: You can still verify calls with expect(console.error).toHaveBeenCalled()
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+
     // Create a mock app with vault and metadataCache
     mockApp = {
       vault: {
@@ -23,6 +28,10 @@ describe("FileSyncService", () => {
     } as any;
 
     fileSyncService = new FileSyncService(mockApp);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe("buildCache", () => {
@@ -157,7 +166,9 @@ describe("FileSyncService", () => {
 
     it("should return false on error", async () => {
       mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
-      mockApp.vault.createFolder.mockRejectedValue(new Error("Permission denied"));
+      mockApp.vault.createFolder.mockRejectedValue(
+        new Error("Permission denied")
+      );
 
       const result = await fileSyncService.ensureFolder("bad-folder");
 
@@ -178,7 +189,10 @@ describe("FileSyncService", () => {
       );
 
       expect(result).toBe(true);
-      expect(mockApp.vault.create).toHaveBeenCalledWith("new-note.md", "content");
+      expect(mockApp.vault.create).toHaveBeenCalledWith(
+        "new-note.md",
+        "content"
+      );
       expect(fileSyncService.findByGranolaId("id-1")).toBe(mockNewFile);
     });
 
@@ -195,7 +209,10 @@ describe("FileSyncService", () => {
       );
 
       expect(result).toBe(true);
-      expect(mockApp.vault.modify).toHaveBeenCalledWith(mockFile, "new content");
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(
+        mockFile,
+        "new content"
+      );
     });
 
     it("should return false when content is unchanged", async () => {
@@ -230,8 +247,14 @@ describe("FileSyncService", () => {
       );
 
       expect(result).toBe(true);
-      expect(mockApp.vault.modify).toHaveBeenCalledWith(mockFile, "new content");
-      expect(mockApp.vault.rename).toHaveBeenCalledWith(mockFile, "new-path.md");
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(
+        mockFile,
+        "new content"
+      );
+      expect(mockApp.vault.rename).toHaveBeenCalledWith(
+        mockFile,
+        "new-path.md"
+      );
     });
 
     it("should handle rename failures gracefully", async () => {
