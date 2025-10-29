@@ -30,6 +30,7 @@ import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
 import { FileSyncService } from "./services/fileSyncService";
+import { PathResolver } from "./services/pathResolver";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
@@ -38,12 +39,19 @@ export default class GranolaSync extends Plugin {
   private documentProcessor: DocumentProcessor;
   private dailyNoteBuilder: DailyNoteBuilder;
   private fileSyncService: FileSyncService;
+  private pathResolver: PathResolver;
 
   async onload() {
     await this.loadSettings();
     this.documentProcessor = new DocumentProcessor();
     this.dailyNoteBuilder = new DailyNoteBuilder();
     this.fileSyncService = new FileSyncService(this.app.vault, this.app.metadataCache);
+    this.pathResolver = new PathResolver({
+      granolaFolder: this.settings.granolaFolder,
+      granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
+      syncDestination: this.settings.syncDestination,
+      transcriptDestination: this.settings.transcriptDestination,
+    });
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
     statusBarItemEl.setText("Granola sync idle"); // Updated status bar text
@@ -131,45 +139,10 @@ export default class GranolaSync extends Plugin {
 
 
 
-  // Compute the folder path for a note based on daily note settings
-  private computeDailyNoteFolderPath(noteDate: Date): string {
-    const dailyNoteSettings = getDailyNoteSettings();
-    const noteMoment = moment(noteDate);
-
-    // Format the date according to the daily note format
-    const formattedPath = noteMoment.format(
-      dailyNoteSettings.format || "YYYY-MM-DD"
-    );
-
-    // Extract just the folder part (everything except the filename)
-    const pathParts = formattedPath.split("/");
-    const folderParts = pathParts.slice(0, -1); // Remove the last part (filename)
-
-    // Combine with the base daily notes folder
-    const baseFolder = dailyNoteSettings.folder || "";
-    if (folderParts.length > 0) {
-      return normalizePath(`${baseFolder}/${folderParts.join("/")}`);
-    } else {
-      return normalizePath(baseFolder);
-    }
-  }
 
   // Compute the full path for a transcript file based on settings
   private computeTranscriptPath(title: string, noteDate: Date): string {
-    const transcriptFilename = sanitizeFilename(title) + "-transcript.md";
-
-    if (
-      this.settings.transcriptDestination ===
-      TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE
-    ) {
-      const folderPath = this.computeDailyNoteFolderPath(noteDate);
-      return normalizePath(`${folderPath}/${transcriptFilename}`);
-    } else {
-      // GRANOLA_TRANSCRIPTS_FOLDER
-      return normalizePath(
-        `${this.settings.granolaTranscriptsFolder}/${transcriptFilename}`
-      );
-    }
+    return this.pathResolver.resolveTranscriptPath(title, noteDate);
   }
 
   // Generic save to disk method
@@ -183,35 +156,15 @@ export default class GranolaSync extends Plugin {
   ): Promise<boolean> {
     try {
       // Determine the folder path based on settings and file type
-      let folderPath: string;
+      const folderPath = this.pathResolver.resolveFolderPath(noteDate, isTranscript);
 
-      if (isTranscript) {
-        // Handle transcript destinations
-        switch (this.settings.transcriptDestination) {
-          case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.computeDailyNoteFolderPath(noteDate);
-            break;
-          case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-            folderPath = normalizePath(this.settings.granolaTranscriptsFolder);
-            break;
-        }
-      } else {
-        // Handle note destinations
-        switch (this.settings.syncDestination) {
-          case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.computeDailyNoteFolderPath(noteDate);
-            break;
-          case SyncDestination.GRANOLA_FOLDER:
-            folderPath = normalizePath(this.settings.granolaFolder);
-            break;
-          default:
-            // This shouldn't happen for individual files
-            new Notice(
-              `Invalid sync destination for individual files: ${this.settings.syncDestination}`,
-              7000
-            );
-            return false;
-        }
+      // Validate sync destination for individual notes
+      if (!isTranscript && this.settings.syncDestination === SyncDestination.DAILY_NOTES) {
+        new Notice(
+          `Invalid sync destination for individual files: ${this.settings.syncDestination}`,
+          7000
+        );
+        return false;
       }
 
       // Ensure the folder exists
