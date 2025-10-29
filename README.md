@@ -38,6 +38,10 @@ Inspired by [Automatt/obsidian-granola-sync/](https://github.com/Automatt/obsidi
    - Optionally enable linking from notes to their transcripts
 4. Set up periodic sync and adjust the interval as desired
 
+## Documentation
+
+For detailed information about how the sync process works, see [Sync Process Documentation](docs/sync-process.md). This document explains the credentials loading, document fetching, note syncing, transcript syncing, file deduplication, and error handling mechanisms.
+
 ## Development
 
 ### Prerequisites
