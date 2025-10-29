@@ -3,7 +3,6 @@ import {
   createDailyNote,
   getDailyNote,
   getAllDailyNotes,
-  getDailyNoteSettings,
 } from "obsidian-daily-notes-interface";
 import { updateSection } from "./utils/textUtils";
 import { sanitizeFilename } from "./utils/filenameUtils";
@@ -28,15 +27,24 @@ import {
 } from "./services/credentials";
 import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
 import { formatTranscriptBySpeaker } from "./services/transcriptFormatter";
+import { PathResolver } from "./services/pathResolver";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
   private granolaIdCache: Map<string, TFile> = new Map();
+  private pathResolver!: PathResolver;
 
   async onload() {
     await this.loadSettings();
+
+    // Initialize services
+    this.pathResolver = new PathResolver({
+      transcriptDestination: this.settings.transcriptDestination,
+      granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
+    });
+
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
     statusBarItemEl.setText("Granola sync idle"); // Updated status bar text
@@ -155,45 +163,6 @@ export default class GranolaSync extends Plugin {
   }
 
   // Compute the folder path for a note based on daily note settings
-  private computeDailyNoteFolderPath(noteDate: Date): string {
-    const dailyNoteSettings = getDailyNoteSettings();
-    const noteMoment = moment(noteDate);
-
-    // Format the date according to the daily note format
-    const formattedPath = noteMoment.format(
-      dailyNoteSettings.format || "YYYY-MM-DD"
-    );
-
-    // Extract just the folder part (everything except the filename)
-    const pathParts = formattedPath.split("/");
-    const folderParts = pathParts.slice(0, -1); // Remove the last part (filename)
-
-    // Combine with the base daily notes folder
-    const baseFolder = dailyNoteSettings.folder || "";
-    if (folderParts.length > 0) {
-      return normalizePath(`${baseFolder}/${folderParts.join("/")}`);
-    } else {
-      return normalizePath(baseFolder);
-    }
-  }
-
-  // Compute the full path for a transcript file based on settings
-  private computeTranscriptPath(title: string, noteDate: Date): string {
-    const transcriptFilename = sanitizeFilename(title) + "-transcript.md";
-
-    if (
-      this.settings.transcriptDestination ===
-      TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE
-    ) {
-      const folderPath = this.computeDailyNoteFolderPath(noteDate);
-      return normalizePath(`${folderPath}/${transcriptFilename}`);
-    } else {
-      // GRANOLA_TRANSCRIPTS_FOLDER
-      return normalizePath(
-        `${this.settings.granolaTranscriptsFolder}/${transcriptFilename}`
-      );
-    }
-  }
 
   // Generic save to disk method
   // Returns: true if a new file was created or an existing file was updated, false if skipped or error
@@ -212,7 +181,7 @@ export default class GranolaSync extends Plugin {
         // Handle transcript destinations
         switch (this.settings.transcriptDestination) {
           case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.computeDailyNoteFolderPath(noteDate);
+            folderPath = this.pathResolver.computeDailyNoteFolderPath(noteDate);
             break;
           case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
             folderPath = normalizePath(this.settings.granolaTranscriptsFolder);
@@ -222,7 +191,7 @@ export default class GranolaSync extends Plugin {
         // Handle note destinations
         switch (this.settings.syncDestination) {
           case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            folderPath = this.computeDailyNoteFolderPath(noteDate);
+            folderPath = this.pathResolver.computeDailyNoteFolderPath(noteDate);
             break;
           case SyncDestination.GRANOLA_FOLDER:
             folderPath = normalizePath(this.settings.granolaFolder);
@@ -332,7 +301,7 @@ export default class GranolaSync extends Plugin {
       else noteDate = new Date();
 
       // Compute transcript path using the helper method
-      const transcriptPath = this.computeTranscriptPath(title, noteDate);
+      const transcriptPath = this.pathResolver.computeTranscriptPath(title, noteDate);
 
       // Add the link
       finalMarkdown += `[Transcript](${transcriptPath})\n\n`;
@@ -634,7 +603,7 @@ export default class GranolaSync extends Plugin {
         this.settings.createLinkFromNoteToTranscript
       ) {
         const noteDate = this.getNoteDateFromNote(note, dateKey);
-        const transcriptPath = this.computeTranscriptPath(note.title, noteDate);
+        const transcriptPath = this.pathResolver.computeTranscriptPath(note.title, noteDate);
         content += `**Transcript:** [[${transcriptPath}]]\n`;
       }
 
