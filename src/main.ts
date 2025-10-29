@@ -28,13 +28,14 @@ import {
 import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
 import { formatTranscriptBySpeaker } from "./services/transcriptFormatter";
 import { PathResolver } from "./services/pathResolver";
+import { FileSyncService } from "./services/fileSyncService";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
-  private granolaIdCache: Map<string, TFile> = new Map();
   private pathResolver!: PathResolver;
+  private fileSyncService!: FileSyncService;
 
   async onload() {
     await this.loadSettings();
@@ -44,6 +45,7 @@ export default class GranolaSync extends Plugin {
       transcriptDestination: this.settings.transcriptDestination,
       granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
     });
+    this.fileSyncService = new FileSyncService(this.app);
 
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
@@ -130,37 +132,6 @@ export default class GranolaSync extends Plugin {
 
 
   // Build the Granola ID cache by scanning all markdown files in the vault
-  private async buildGranolaIdCache(): Promise<void> {
-    this.granolaIdCache.clear();
-    const files = this.app.vault.getMarkdownFiles();
-
-    for (const file of files) {
-      try {
-        const cache = this.app.metadataCache.getFileCache(file);
-        if (cache?.frontmatter?.granola_id) {
-          const granolaId = cache.frontmatter.granola_id as string;
-          this.granolaIdCache.set(granolaId, file);
-        }
-      } catch (e) {
-        console.error(`Error reading frontmatter for ${file.path}:`, e);
-      }
-    }
-  }
-
-  // Find an existing file with the given Granola ID using the cache
-  private findFileByGranolaId(granolaId: string): TFile | null {
-    return this.granolaIdCache.get(granolaId) || null;
-  }
-
-  // Update the Granola ID cache if granolaId is provided
-  private updateGranolaIdCache(
-    granolaId: string | undefined,
-    file: TFile
-  ): void {
-    if (granolaId) {
-      this.granolaIdCache.set(granolaId, file);
-    }
-  }
 
   // Compute the folder path for a note based on daily note settings
 
@@ -207,7 +178,7 @@ export default class GranolaSync extends Plugin {
       }
 
       // Ensure the folder exists
-      if (!(await this.ensureFolderExists(folderPath))) {
+      if (!(await this.fileSyncService.ensureFolder(folderPath))) {
         new Notice(
           `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
           7000
@@ -220,7 +191,7 @@ export default class GranolaSync extends Plugin {
       // First, check if a file with this Granola ID already exists anywhere in the vault
       let existingFile: TFile | null = null;
       if (granolaId) {
-        existingFile = this.findFileByGranolaId(granolaId);
+        existingFile = this.fileSyncService.findByGranolaId(granolaId);
       }
 
       // If no file found by Granola ID, check by path
@@ -241,7 +212,7 @@ export default class GranolaSync extends Plugin {
           if (existingFile.path !== filePath) {
             try {
               await this.app.vault.rename(existingFile, filePath);
-              this.updateGranolaIdCache(granolaId, existingFile);
+              this.fileSyncService.updateCache(granolaId, existingFile);
             } catch (renameError) {
               // If rename fails (e.g., file already exists at new path), just update content
               console.warn(
@@ -250,15 +221,15 @@ export default class GranolaSync extends Plugin {
               );
             }
           }
-          this.updateGranolaIdCache(granolaId, existingFile);
+          this.fileSyncService.updateCache(granolaId, existingFile);
           return true; // Content was updated
         } else {
-          this.updateGranolaIdCache(granolaId, existingFile);
+          this.fileSyncService.updateCache(granolaId, existingFile);
           return false; // No change needed
         }
       } else {
         const newFile = await this.app.vault.create(filePath, content);
-        this.updateGranolaIdCache(granolaId, newFile);
+        this.fileSyncService.updateCache(granolaId, newFile);
         return true; // New file created
       }
     } catch (e) {
@@ -384,23 +355,6 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-  private async ensureFolderExists(folderPath: string): Promise<boolean> {
-    try {
-      const folderExists = this.app.vault.getAbstractFileByPath(folderPath);
-      if (!folderExists) {
-        await this.app.vault.createFolder(folderPath);
-      }
-      return true;
-    } catch (error) {
-      new Notice(
-        `Granola sync error: Could not create folder '${folderPath}'. Check console.`,
-        10000
-      );
-      console.error("Folder creation error:", error);
-      return false;
-    }
-  }
-
 
   // Filter documents based on syncDaysBack setting
   private filterDocumentsByDate(documents: GranolaDoc[]): GranolaDoc[] {
@@ -438,7 +392,7 @@ export default class GranolaSync extends Plugin {
     }
 
     // Build the Granola ID cache before syncing
-    await this.buildGranolaIdCache();
+    await this.fileSyncService.buildCache();
 
     // Fetch documents (now handles credentials)
     const documents = await this.fetchDocuments(accessToken);
