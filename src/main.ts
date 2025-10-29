@@ -7,6 +7,7 @@ import {
 } from "obsidian-daily-notes-interface";
 import { updateSection } from "./utils/textUtils";
 import { sanitizeFilename } from "./utils/filenameUtils";
+import { getNoteDate } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -614,7 +615,7 @@ export default class GranolaSync extends Plugin {
       const title = doc.title || "Untitled Granola Note";
       const docId = doc.id || "unknown_id";
       const markdownContent = convertProsemirrorToMarkdown(contentToParse);
-      const noteDate = this.getNoteDate(doc);
+      const noteDate = getNoteDate(doc);
       const mapKey = moment(noteDate).format("YYYY-MM-DD");
 
       if (!dailyNotesMap.has(mapKey)) {
@@ -741,11 +742,6 @@ export default class GranolaSync extends Plugin {
     return syncedCount;
   }
 
-  private getNoteDate(doc: GranolaDoc): Date {
-    if (doc.created_at) return new Date(doc.created_at);
-    if (doc.updated_at) return new Date(doc.updated_at);
-    return new Date();
-  }
 
   private updateSyncStatusBar(): void {
     const statusBarItemEl = this.app.workspace.containerEl.querySelector(
