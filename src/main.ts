@@ -27,15 +27,18 @@ import {
   stopCredentialsServer,
 } from "./services/credentials";
 import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
+import { DocumentProcessor } from "./services/documentProcessor";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
   private granolaIdCache: Map<string, TFile> = new Map();
+  private documentProcessor: DocumentProcessor;
 
   async onload() {
     await this.loadSettings();
+    this.documentProcessor = new DocumentProcessor();
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
     statusBarItemEl.setText("Granola sync idle"); // Updated status bar text
@@ -303,52 +306,28 @@ export default class GranolaSync extends Plugin {
     doc: GranolaDoc,
     markdownContent: string
   ): Promise<boolean> {
-    const title = doc.title || "Untitled Granola Note";
-    const docId = doc.id || "unknown_id";
-
-    // Prepare frontmatter
-    const escapedTitleForYaml = title.replace(/"/g, '\\"');
-    const frontmatterLines = [
-      "---",
-      `granola_id: ${docId}`,
-      `title: "${escapedTitleForYaml}"`,
-    ];
-    if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
-    if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
-    frontmatterLines.push("---", "");
-
-    let finalMarkdown = frontmatterLines.join("\n");
-
-    // Add transcript link if enabled
-    if (
+    const includeTranscriptLink =
       this.settings.syncTranscripts &&
-      this.settings.createLinkFromNoteToTranscript
-    ) {
-      // Use the date from the note
-      let noteDate: Date;
-      if (doc.created_at) noteDate = new Date(doc.created_at);
-      else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-      else noteDate = new Date();
+      this.settings.createLinkFromNoteToTranscript;
 
-      // Compute transcript path using the helper method
-      const transcriptPath = this.computeTranscriptPath(title, noteDate);
+    const computeTranscriptPath = includeTranscriptLink
+      ? (title: string, noteDate: Date) => this.computeTranscriptPath(title, noteDate)
+      : undefined;
 
-      // Add the link
-      finalMarkdown += `[Transcript](${transcriptPath})\n\n`;
-    }
+    const processed = this.documentProcessor.processNote(
+      doc,
+      markdownContent,
+      includeTranscriptLink,
+      computeTranscriptPath
+    );
 
-    // Add the actual note content
-    finalMarkdown += markdownContent;
-
-    const filename = sanitizeFilename(title) + ".md";
-
-    // Get the note date
-    let noteDate: Date;
-    if (doc.created_at) noteDate = new Date(doc.created_at);
-    else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-    else noteDate = new Date();
-
-    return this.saveToDisk(filename, finalMarkdown, noteDate, false, docId);
+    return this.saveToDisk(
+      processed.filename,
+      processed.content,
+      processed.noteDate,
+      false,
+      doc.id || "unknown_id"
+    );
   }
 
   // Save a transcript to disk based on the transcript destination setting
@@ -356,24 +335,17 @@ export default class GranolaSync extends Plugin {
     doc: GranolaDoc,
     transcriptContent: string
   ): Promise<boolean> {
-    const title = doc.title || "Untitled Granola Note";
-    const docId = doc.id || "unknown_id";
-    const filename = sanitizeFilename(title) + "-transcript.md";
+    const processed = this.documentProcessor.processTranscript(
+      doc,
+      transcriptContent
+    );
 
-    // Get the note date
-    let noteDate: Date;
-    if (doc.created_at) noteDate = new Date(doc.created_at);
-    else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-    else noteDate = new Date();
-
-    // Use a modified ID for transcripts to distinguish them from notes
-    const transcriptId = `${docId}-transcript`;
     return this.saveToDisk(
-      filename,
-      transcriptContent,
-      noteDate,
+      processed.filename,
+      processed.content,
+      processed.noteDate,
       true,
-      transcriptId
+      processed.transcriptId
     );
   }
 
@@ -436,45 +408,11 @@ export default class GranolaSync extends Plugin {
     title: string,
     granolaId: string
   ): string {
-    // Add frontmatter with granola_id for transcript deduplication
-    const escapedTitleForYaml = title.replace(/"/g, '\\"');
-    let transcriptMd = `---\ngranola_id: ${granolaId}-transcript\ntitle: "${escapedTitleForYaml} - Transcript"\n---\n\n`;
-
-    transcriptMd += `# Transcript for: ${title}\n\n`;
-    let currentSpeaker: string | null = null;
-    let currentStart: string | null = null;
-    let currentText: string[] = [];
-    const getSpeaker = (source: string) =>
-      source === "microphone" ? "You" : "Guest";
-
-    for (let i = 0; i < transcriptData.length; i++) {
-      const entry = transcriptData[i];
-      const speaker = getSpeaker(entry.source);
-
-      if (currentSpeaker === null) {
-        currentSpeaker = speaker;
-        currentStart = entry.start_timestamp;
-        currentText = [entry.text];
-      } else if (speaker === currentSpeaker) {
-        currentText.push(entry.text);
-      } else {
-        // Write previous block
-        transcriptMd += `## ${currentSpeaker} (${currentStart})\n\n`;
-        transcriptMd += currentText.join(" ") + "\n\n";
-        // Start new block
-        currentSpeaker = speaker;
-        currentStart = entry.start_timestamp;
-        currentText = [entry.text];
-      }
-    }
-
-    // Write last block
-    if (currentSpeaker !== null) {
-      transcriptMd += `## ${currentSpeaker} (${currentStart})\n\n`;
-      transcriptMd += currentText.join(" ") + "\n\n";
-    }
-
-    return transcriptMd;
+    return this.documentProcessor.formatTranscript(
+      transcriptData,
+      title,
+      granolaId
+    );
   }
 
   // Filter documents based on syncDaysBack setting
