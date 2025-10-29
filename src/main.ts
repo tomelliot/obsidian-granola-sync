@@ -5,7 +5,6 @@ import {
   getAllDailyNotes,
 } from "obsidian-daily-notes-interface";
 import { updateSection } from "./utils/textUtils";
-import { sanitizeFilename } from "./utils/filenameUtils";
 import { getNoteDate } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
@@ -25,10 +24,10 @@ import {
   loadCredentials as loadGranolaCredentials,
   stopCredentialsServer,
 } from "./services/credentials";
-import { convertProsemirrorToMarkdown } from "./services/prosemirrorMarkdown";
 import { formatTranscriptBySpeaker } from "./services/transcriptFormatter";
 import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
+import { DocumentProcessor } from "./services/documentProcessor";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
@@ -36,6 +35,7 @@ export default class GranolaSync extends Plugin {
   syncIntervalId: number | null = null;
   private pathResolver!: PathResolver;
   private fileSyncService!: FileSyncService;
+  private documentProcessor!: DocumentProcessor;
 
   async onload() {
     await this.loadSettings();
@@ -46,6 +46,13 @@ export default class GranolaSync extends Plugin {
       granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
     });
     this.fileSyncService = new FileSyncService(this.app);
+    this.documentProcessor = new DocumentProcessor(
+      {
+        syncTranscripts: this.settings.syncTranscripts,
+        createLinkFromNoteToTranscript: this.settings.createLinkFromNoteToTranscript,
+      },
+      this.pathResolver
+    );
 
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
@@ -240,56 +247,12 @@ export default class GranolaSync extends Plugin {
   }
 
   // Save a note to disk based on the sync destination setting
-  private async saveNoteToDisk(
-    doc: GranolaDoc,
-    markdownContent: string
-  ): Promise<boolean> {
-    const title = doc.title || "Untitled Granola Note";
+  private async saveNoteToDisk(doc: GranolaDoc): Promise<boolean> {
+    const { filename, content } = this.documentProcessor.prepareNote(doc);
     const docId = doc.id || "unknown_id";
+    const noteDate = getNoteDate(doc);
 
-    // Prepare frontmatter
-    const escapedTitleForYaml = title.replace(/"/g, '\\"');
-    const frontmatterLines = [
-      "---",
-      `granola_id: ${docId}`,
-      `title: "${escapedTitleForYaml}"`,
-    ];
-    if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
-    if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
-    frontmatterLines.push("---", "");
-
-    let finalMarkdown = frontmatterLines.join("\n");
-
-    // Add transcript link if enabled
-    if (
-      this.settings.syncTranscripts &&
-      this.settings.createLinkFromNoteToTranscript
-    ) {
-      // Use the date from the note
-      let noteDate: Date;
-      if (doc.created_at) noteDate = new Date(doc.created_at);
-      else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-      else noteDate = new Date();
-
-      // Compute transcript path using the helper method
-      const transcriptPath = this.pathResolver.computeTranscriptPath(title, noteDate);
-
-      // Add the link
-      finalMarkdown += `[Transcript](${transcriptPath})\n\n`;
-    }
-
-    // Add the actual note content
-    finalMarkdown += markdownContent;
-
-    const filename = sanitizeFilename(title) + ".md";
-
-    // Get the note date
-    let noteDate: Date;
-    if (doc.created_at) noteDate = new Date(doc.created_at);
-    else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-    else noteDate = new Date();
-
-    return this.saveToDisk(filename, finalMarkdown, noteDate, false, docId);
+    return this.saveToDisk(filename, content, noteDate, false, docId);
   }
 
   // Save a transcript to disk based on the transcript destination setting
@@ -297,25 +260,16 @@ export default class GranolaSync extends Plugin {
     doc: GranolaDoc,
     transcriptContent: string
   ): Promise<boolean> {
-    const title = doc.title || "Untitled Granola Note";
+    const { filename, content } = this.documentProcessor.prepareTranscript(
+      doc,
+      transcriptContent
+    );
     const docId = doc.id || "unknown_id";
-    const filename = sanitizeFilename(title) + "-transcript.md";
-
-    // Get the note date
-    let noteDate: Date;
-    if (doc.created_at) noteDate = new Date(doc.created_at);
-    else if (doc.updated_at) noteDate = new Date(doc.updated_at);
-    else noteDate = new Date();
+    const noteDate = getNoteDate(doc);
 
     // Use a modified ID for transcripts to distinguish them from notes
     const transcriptId = `${docId}-transcript`;
-    return this.saveToDisk(
-      filename,
-      transcriptContent,
-      noteDate,
-      true,
-      transcriptId
-    );
+    return this.saveToDisk(filename, content, noteDate, true, transcriptId);
   }
 
   private async fetchDocuments(accessToken: string): Promise<GranolaDoc[]> {
@@ -486,14 +440,11 @@ export default class GranolaSync extends Plugin {
     >();
 
     for (const doc of documents) {
-      const contentToParse = doc.last_viewed_panel?.content;
-      if (!contentToParse || contentToParse.type !== "doc") {
+      const noteData = this.documentProcessor.extractNoteForDailyNote(doc);
+      if (!noteData) {
         continue;
       }
 
-      const title = doc.title || "Untitled Granola Note";
-      const docId = doc.id || "unknown_id";
-      const markdownContent = convertProsemirrorToMarkdown(contentToParse);
       const noteDate = getNoteDate(doc);
       const mapKey = moment(noteDate).format("YYYY-MM-DD");
 
@@ -501,13 +452,7 @@ export default class GranolaSync extends Plugin {
         dailyNotesMap.set(mapKey, []);
       }
 
-      dailyNotesMap.get(mapKey)!.push({
-        title,
-        docId,
-        createdAt: doc.created_at,
-        updatedAt: doc.updated_at,
-        markdown: markdownContent,
-      });
+      dailyNotesMap.get(mapKey)!.push(noteData);
     }
 
     return dailyNotesMap;
@@ -611,9 +556,7 @@ export default class GranolaSync extends Plugin {
         continue;
       }
 
-      const markdownContent = convertProsemirrorToMarkdown(contentToParse);
-
-      if (await this.saveNoteToDisk(doc, markdownContent)) {
+      if (await this.saveNoteToDisk(doc)) {
         syncedCount++;
       }
     }
