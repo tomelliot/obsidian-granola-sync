@@ -230,9 +230,8 @@ export default class GranolaSync extends Plugin {
     const docId = doc.id || "unknown_id";
     const noteDate = getNoteDate(doc);
 
-    // Use a modified ID for transcripts to distinguish them from notes
-    const transcriptId = `${docId}-transcript`;
-    return this.saveToDisk(filename, content, noteDate, true, transcriptId);
+    // Use the original docId - transcripts now distinguished by type field in frontmatter
+    return this.saveToDisk(filename, content, noteDate, true, docId);
   }
 
   private async fetchDocuments(accessToken: string): Promise<GranolaDoc[]> {
@@ -412,7 +411,9 @@ export default class GranolaSync extends Plugin {
         const transcriptMd = formatTranscriptBySpeaker(
           transcriptData,
           title,
-          docId
+          docId,
+          doc.created_at,
+          doc.updated_at
         );
         if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
           syncedCount++;
