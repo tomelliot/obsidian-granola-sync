@@ -23,6 +23,7 @@ import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
+import { FrontmatterMigrationService } from "./services/frontmatterMigration";
 import { log } from "./utils/logger";
 
 export default class GranolaSync extends Plugin {
@@ -59,6 +60,12 @@ export default class GranolaSync extends Plugin {
         dailyNoteSectionHeading: this.settings.dailyNoteSectionHeading,
       }
     );
+
+    // Run silent migration for legacy frontmatter formats
+    const migrationService = new FrontmatterMigrationService(this.app);
+    migrationService.migrateLegacyFrontmatter().catch((error) => {
+      console.error("Error during frontmatter migration:", error);
+    });
 
     // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
     const statusBarItemEl = this.addStatusBarItem();
