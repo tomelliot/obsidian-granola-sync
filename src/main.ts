@@ -206,7 +206,8 @@ export default class GranolaSync extends Plugin {
 
     // Build the full file path and delegate to FileSyncService
     const filePath = normalizePath(`${folderPath}/${filename}`);
-    return this.fileSyncService.saveFile(filePath, content, granolaId);
+    const type = isTranscript ? 'transcript' : 'note';
+    return this.fileSyncService.saveFile(filePath, content, granolaId, type);
   }
 
   // Save a note to disk based on the sync destination setting
