@@ -6,16 +6,30 @@ import { TranscriptEntry } from "./granolaApi";
  * @param transcriptData - Array of transcript entries from Granola API
  * @param title - Title of the note/transcript
  * @param granolaId - Granola document ID
+ * @param createdAt - Optional creation timestamp
+ * @param updatedAt - Optional update timestamp
  * @returns Formatted markdown string with frontmatter and speaker-grouped content
  */
 export function formatTranscriptBySpeaker(
   transcriptData: TranscriptEntry[],
   title: string,
-  granolaId: string
+  granolaId: string,
+  createdAt?: string,
+  updatedAt?: string
 ): string {
   // Add frontmatter with granola_id for transcript deduplication
   const escapedTitleForYaml = title.replace(/"/g, '\\"');
-  let transcriptMd = `---\ngranola_id: ${granolaId}-transcript\ntitle: "${escapedTitleForYaml} - Transcript"\n---\n\n`;
+  const frontmatterLines = [
+    "---",
+    `granola_id: ${granolaId}`,
+    `title: "${escapedTitleForYaml} - Transcript"`,
+    `type: transcript`,
+  ];
+  if (createdAt) frontmatterLines.push(`created_at: ${createdAt}`);
+  if (updatedAt) frontmatterLines.push(`updated_at: ${updatedAt}`);
+  frontmatterLines.push("---", "");
+
+  let transcriptMd = frontmatterLines.join("\n") + "\n";
 
   transcriptMd += `# Transcript for: ${title}\n\n`;
   let currentSpeaker: string | null = null;

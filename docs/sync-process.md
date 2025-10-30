@@ -49,7 +49,7 @@ sequenceDiagram
     HTTPServer-->>CredentialsService: Server Ready
 
     CredentialsService->>HTTPServer: GET http://127.0.0.1:2590/
-    HTTPServer->>FileSystem: Read ~/Library/Application Support/Granola/supabase.json
+    HTTPServer->>FileSystem: Read {OS-specific}/supabase.json
     FileSystem-->>HTTPServer: JSON Content
     HTTPServer-->>CredentialsService: JSON Response
 
@@ -61,7 +61,7 @@ sequenceDiagram
 
 ### Credentials Service Details
 
-- **File Location**: `~/Library/Application Support/Granola/supabase.json`
+- **File Location**: `{OS-specific}/supabase.json`
 - **Server Port**: `2590` (localhost only)
 - **Token Path**: `workos_tokens.access_token` within the JSON structure
 - **Server Lifecycle**: Started before each sync, closed immediately after token extraction
@@ -125,10 +125,56 @@ flowchart LR
     G -->|No| H[Cache Ready]
 ```
 
-**Cache Structure**: `Map<granolaId, TFile>`
+**Cache Structure**: `Map<cacheKey, TFile>`
 
-- Key: Granola document ID (or `{docId}-transcript` for transcripts)
+- Key: Composite key in format `{granolaId}-{type}` where type is 'note' or 'transcript'
 - Value: Obsidian `TFile` reference
+- This allows notes and transcripts with the same Granola ID to coexist without conflicts
+
+## Frontmatter Structure
+
+All synced files include frontmatter with metadata for tracking and identification.
+
+### Note Frontmatter
+
+```yaml
+---
+granola_id: doc-123
+title: "Meeting Title"
+type: note
+created_at: 2024-01-15T10:00:00Z
+updated_at: 2024-01-15T12:00:00Z
+---
+```
+
+### Transcript Frontmatter
+
+```yaml
+---
+granola_id: doc-123
+title: "Meeting Title - Transcript"
+type: transcript
+created_at: 2024-01-15T10:00:00Z
+updated_at: 2024-01-15T12:00:00Z
+---
+```
+
+**Key Features**:
+
+- `granola_id`: Consistent across both note and transcript for the same source document
+- `type`: Distinguishes between 'note' and 'transcript' files
+- `created_at` and `updated_at`: Timestamps from Granola API (when available)
+- Both file types can share the same `granola_id` while being uniquely identified by `type`
+
+### Legacy Frontmatter Migration
+
+The plugin automatically migrates legacy frontmatter formats on load:
+
+- Removes `-transcript` suffix from `granola_id` in transcript files
+- Adds `type` field to all files (note/transcript)
+- Adds missing timestamps to transcript files (when available)
+- Migration runs silently in the background
+- Will be removed in version 2.0.0
 
 ## Note Syncing
 

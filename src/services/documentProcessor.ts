@@ -37,6 +37,7 @@ export class DocumentProcessor {
       "---",
       `granola_id: ${docId}`,
       `title: "${escapedTitleForYaml}"`,
+      `type: note`,
     ];
     if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
     if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);

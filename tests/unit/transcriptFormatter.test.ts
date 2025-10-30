@@ -31,8 +31,9 @@ describe("formatTranscriptBySpeaker", () => {
     );
 
     expect(result).toContain("---");
-    expect(result).toContain("granola_id: test-id-transcript");
+    expect(result).toContain("granola_id: test-id");
     expect(result).toContain('title: "Test Meeting - Transcript"');
+    expect(result).toContain("type: transcript");
     expect(result).toContain("# Transcript for: Test Meeting");
     expect(result).toContain("## You (00:00:01)");
     expect(result).toContain("Hello, how are you?");
@@ -90,7 +91,8 @@ describe("formatTranscriptBySpeaker", () => {
     const result = formatTranscriptBySpeaker(transcriptData, "Empty", "empty-id");
 
     expect(result).toContain("---");
-    expect(result).toContain("granola_id: empty-id-transcript");
+    expect(result).toContain("granola_id: empty-id");
+    expect(result).toContain("type: transcript");
     expect(result).toContain("# Transcript for: Empty");
     // Should not have any speaker sections
     expect(result).not.toContain("## You");
@@ -235,5 +237,64 @@ describe("formatTranscriptBySpeaker", () => {
     );
 
     expect(result).toContain("## You (01:23:45)");
+  });
+
+  it("should include created_at and updated_at in frontmatter when provided", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const createdAt = "2024-01-15T10:00:00Z";
+    const updatedAt = "2024-01-15T12:00:00Z";
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Meeting with Timestamps",
+      "meeting-123",
+      createdAt,
+      updatedAt
+    );
+
+    expect(result).toContain("---");
+    expect(result).toContain("granola_id: meeting-123");
+    expect(result).toContain("type: transcript");
+    expect(result).toContain(`created_at: ${createdAt}`);
+    expect(result).toContain(`updated_at: ${updatedAt}`);
+    expect(result).toContain("---");
+  });
+
+  it("should not include timestamps in frontmatter when not provided", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Meeting without Timestamps",
+      "meeting-456"
+    );
+
+    expect(result).toContain("---");
+    expect(result).toContain("granola_id: meeting-456");
+    expect(result).toContain("type: transcript");
+    expect(result).not.toContain("created_at:");
+    expect(result).not.toContain("updated_at:");
+    expect(result).toContain("---");
   });
 });

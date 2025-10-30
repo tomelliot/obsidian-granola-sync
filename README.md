@@ -4,8 +4,6 @@
 
 This plugin allows you to synchronize your notes and transcripts from Granola (https://granola.ai) directly into your Obsidian vault. It fetches documents from Granola, converts them from ProseMirror JSON format to Markdown, and saves them as `.md` files.
 
-Inspired by [Automatt/obsidian-granola-sync/](https://github.com/Automatt/obsidian-granola-sync/)
-
 ## Features
 
 - Sync Granola notes to your Obsidian vault
@@ -37,9 +35,46 @@ Inspired by [Automatt/obsidian-granola-sync/](https://github.com/Automatt/obsidi
    - Optionally enable linking from notes to their transcripts
 3. Set up periodic sync and adjust the interval as desired
 
+## Frontmatter Structure
+
+All synced files include structured frontmatter for tracking and identification:
+
+**Notes:**
+```yaml
+---
+granola_id: doc-123
+title: "Meeting Title"
+type: note
+created_at: 2024-01-15T10:00:00Z
+updated_at: 2024-01-15T12:00:00Z
+---
+```
+
+**Transcripts:**
+```yaml
+---
+granola_id: doc-123
+title: "Meeting Title - Transcript"
+type: transcript
+created_at: 2024-01-15T10:00:00Z
+updated_at: 2024-01-15T12:00:00Z
+---
+```
+
+The `granola_id` is consistent across both note and transcript files for the same source document, while the `type` field distinguishes between them. This allows both file types to coexist with proper duplicate detection.
+
+### Legacy Format Migration
+
+If you have existing files from a previous version, the plugin will automatically migrate them on load:
+- Remove `-transcript` suffix from `granola_id` in transcript files
+- Add `type` field to all files
+- Add timestamps to transcript files (when available)
+
+This migration runs silently in the background and only affects files that need updating.
+
 ## Documentation
 
-For detailed information about how the sync process works, see [Sync Process Documentation](docs/sync-process.md). This document explains the credentials loading, document fetching, note syncing, transcript syncing, file deduplication, and error handling mechanisms.
+For detailed information about how the sync process works, see [Sync Process Documentation](docs/sync-process.md). This document explains the credentials loading, document fetching, note syncing, transcript syncing, frontmatter structure, file deduplication, and error handling mechanisms.
 
 ## Development
 

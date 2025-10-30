@@ -300,4 +300,126 @@ describe("FileSyncService", () => {
       expect(fileSyncService.getCacheSize()).toBe(0);
     });
   });
+
+  describe("type-based cache keys", () => {
+    it("should distinguish between notes and transcripts with same granola_id", async () => {
+      const mockNote = { path: "note.md" } as TFile;
+      const mockTranscript = { path: "transcript.md" } as TFile;
+
+      mockApp.vault.getMarkdownFiles.mockReturnValue([
+        mockNote,
+        mockTranscript,
+      ]);
+      mockApp.metadataCache.getFileCache
+        .mockReturnValueOnce({
+          frontmatter: { granola_id: "doc-123", type: "note" },
+        } as any)
+        .mockReturnValueOnce({
+          frontmatter: { granola_id: "doc-123", type: "transcript" },
+        } as any);
+
+      await fileSyncService.buildCache();
+
+      expect(fileSyncService.getCacheSize()).toBe(2);
+      expect(fileSyncService.findByGranolaId("doc-123", "note")).toBe(mockNote);
+      expect(fileSyncService.findByGranolaId("doc-123", "transcript")).toBe(
+        mockTranscript
+      );
+    });
+
+    it("should default type to note for backward compatibility", async () => {
+      const mockFile = { path: "legacy.md" } as TFile;
+
+      mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: { granola_id: "doc-456" }, // No type field
+      } as any);
+
+      await fileSyncService.buildCache();
+
+      expect(fileSyncService.getCacheSize()).toBe(1);
+      expect(fileSyncService.findByGranolaId("doc-456")).toBe(mockFile);
+      expect(fileSyncService.findByGranolaId("doc-456", "note")).toBe(mockFile);
+    });
+
+    it("should save and retrieve files by type", async () => {
+      const mockNote = { path: "note.md", extension: "md" } as TFile;
+      const mockTranscript = { path: "transcript.md", extension: "md" } as TFile;
+
+      mockApp.vault.getAbstractFileByPath
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce(null);
+      mockApp.vault.create
+        .mockResolvedValueOnce(mockNote)
+        .mockResolvedValueOnce(mockTranscript);
+
+      // Save a note
+      await fileSyncService.saveFile("note.md", "note content", "doc-123", "note");
+
+      // Save a transcript with same granola_id
+      await fileSyncService.saveFile(
+        "transcript.md",
+        "transcript content",
+        "doc-123",
+        "transcript"
+      );
+
+      // Both should be cached separately
+      expect(fileSyncService.findByGranolaId("doc-123", "note")).toBe(mockNote);
+      expect(fileSyncService.findByGranolaId("doc-123", "transcript")).toBe(
+        mockTranscript
+      );
+    });
+
+    it("should update cache with correct type", async () => {
+      const mockFile = { path: "note.md", extension: "md" } as TFile;
+
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+      mockApp.vault.create.mockResolvedValue(mockFile);
+
+      await fileSyncService.saveFile(
+        "note.md",
+        "content",
+        "doc-789",
+        "transcript"
+      );
+
+      // Should be findable with transcript type
+      expect(fileSyncService.findByGranolaId("doc-789", "transcript")).toBe(
+        mockFile
+      );
+      // Should NOT be findable with note type (different cache key)
+      expect(fileSyncService.findByGranolaId("doc-789", "note")).toBeNull();
+    });
+
+    it("should handle file update with type parameter", async () => {
+      const mockFile = { path: "existing.md", extension: "md" } as TFile;
+
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+      mockApp.vault.read.mockResolvedValue("old content");
+      mockApp.vault.modify.mockResolvedValue(undefined);
+
+      // First save to populate cache
+      await fileSyncService.saveFile(
+        "existing.md",
+        "old content",
+        "doc-999",
+        "note"
+      );
+
+      // Manually add to mock vault for second call
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(mockFile);
+
+      // Update with same type should find existing file
+      const result = await fileSyncService.saveFile(
+        "existing.md",
+        "new content",
+        "doc-999",
+        "note"
+      );
+
+      expect(result).toBe(true);
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(mockFile, "new content");
+    });
+  });
 });

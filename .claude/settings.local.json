@@ -1,13 +1,19 @@
 {
   "permissions": {
     "allow": [
+      "Bash(gh issue create:*)",
       "Bash(gh issue view:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(mkdir:*)",
       "Bash(npm test:*)",
       "Bash(npm run test:coverage:*)",
-      "Bash(gh issue comment*)"
+      "Bash(git checkout:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
     ],
     "deny": [],
     "ask": []
