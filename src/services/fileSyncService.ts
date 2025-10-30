@@ -24,7 +24,7 @@ export class FileSyncService {
         const cache = this.app.metadataCache.getFileCache(file);
         if (cache?.frontmatter?.granola_id) {
           const granolaId = cache.frontmatter.granola_id as string;
-          const type = cache.frontmatter.type || 'note'; // Default for backward compatibility
+          const type = cache.frontmatter.type || "note"; // Default for backward compatibility
           const cacheKey = `${granolaId}-${type}`;
           this.granolaIdCache.set(cacheKey, file);
         }
@@ -41,7 +41,10 @@ export class FileSyncService {
    * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
    * @returns The file if found, null otherwise
    */
-  findByGranolaId(granolaId: string, type: 'note' | 'transcript' = 'note'): TFile | null {
+  findByGranolaId(
+    granolaId: string,
+    type: "note" | "transcript" = "note"
+  ): TFile | null {
     const cacheKey = `${granolaId}-${type}`;
     return this.granolaIdCache.get(cacheKey) || null;
   }
@@ -53,7 +56,11 @@ export class FileSyncService {
    * @param file - The file to associate with the ID
    * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
    */
-  updateCache(granolaId: string | undefined, file: TFile, type: 'note' | 'transcript' = 'note'): void {
+  updateCache(
+    granolaId: string | undefined,
+    file: TFile,
+    type: "note" | "transcript" = "note"
+  ): void {
     if (granolaId) {
       const cacheKey = `${granolaId}-${type}`;
       this.granolaIdCache.set(cacheKey, file);
@@ -96,7 +103,7 @@ export class FileSyncService {
     filePath: string,
     content: string,
     granolaId?: string,
-    type: 'note' | 'transcript' = 'note'
+    type: "note" | "transcript" = "note"
   ): Promise<boolean> {
     try {
       const normalizedPath = normalizePath(filePath);
@@ -111,7 +118,7 @@ export class FileSyncService {
       if (!existingFile) {
         const fileByPath = this.app.vault.getAbstractFileByPath(normalizedPath);
         // Check if it's a TFile (has extension property, not a folder)
-        if (fileByPath && 'extension' in fileByPath) {
+        if (fileByPath && "extension" in fileByPath) {
           existingFile = fileByPath as TFile;
         }
       }

@@ -46,7 +46,8 @@ export default class GranolaSync extends Plugin {
     this.documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: this.settings.syncTranscripts,
-        createLinkFromNoteToTranscript: this.settings.createLinkFromNoteToTranscript,
+        createLinkFromNoteToTranscript:
+          this.settings.createLinkFromNoteToTranscript,
       },
       this.pathResolver
     );
@@ -56,7 +57,8 @@ export default class GranolaSync extends Plugin {
       this.pathResolver,
       {
         syncTranscripts: this.settings.syncTranscripts,
-        createLinkFromNoteToTranscript: this.settings.createLinkFromNoteToTranscript,
+        createLinkFromNoteToTranscript:
+          this.settings.createLinkFromNoteToTranscript,
         dailyNoteSectionHeading: this.settings.dailyNoteSectionHeading,
       }
     );
@@ -150,7 +152,6 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-
   // Build the Granola ID cache by scanning all markdown files in the vault
 
   // Compute the folder path for a note based on daily note settings
@@ -158,7 +159,10 @@ export default class GranolaSync extends Plugin {
   /**
    * Resolves the folder path for a file based on settings and file type.
    */
-  private resolveFolderPath(noteDate: Date, isTranscript: boolean): string | null {
+  private resolveFolderPath(
+    noteDate: Date,
+    isTranscript: boolean
+  ): string | null {
     if (isTranscript) {
       // Handle transcript destinations
       switch (this.settings.transcriptDestination) {
@@ -213,7 +217,7 @@ export default class GranolaSync extends Plugin {
 
     // Build the full file path and delegate to FileSyncService
     const filePath = normalizePath(`${folderPath}/${filename}`);
-    const type = isTranscript ? 'transcript' : 'note';
+    const type = isTranscript ? "transcript" : "note";
     return this.fileSyncService.saveFile(filePath, content, granolaId, type);
   }
 
@@ -279,7 +283,6 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-
   // Top-level sync function that handles common setup once
   async sync() {
     // Load credentials at the start of each sync
@@ -305,7 +308,10 @@ export default class GranolaSync extends Plugin {
     log.debug(`Granola API: Fetched ${documents.length} documents from`);
 
     // Filter documents based on syncDaysBack setting
-    const filteredDocuments = filterDocumentsByDate(documents, this.settings.syncDaysBack);
+    const filteredDocuments = filterDocumentsByDate(
+      documents,
+      this.settings.syncDaysBack
+    );
     log.debug(`Filtered to ${filteredDocuments.length} documents`);
     if (filteredDocuments.length === 0) {
       new Notice(
@@ -347,7 +353,9 @@ export default class GranolaSync extends Plugin {
     let syncedCount = 0;
 
     for (const [dateKey, notesForDay] of dailyNotesMap) {
-      const dailyNoteFile = await this.dailyNoteBuilder.getOrCreateDailyNote(dateKey);
+      const dailyNoteFile = await this.dailyNoteBuilder.getOrCreateDailyNote(
+        dateKey
+      );
       const sectionContent = this.dailyNoteBuilder.buildDailyNoteSectionContent(
         notesForDay,
         sectionHeadingSetting,
@@ -384,7 +392,6 @@ export default class GranolaSync extends Plugin {
 
     return syncedCount;
   }
-
 
   private updateSyncStatusBar(): void {
     const statusBarItemEl = this.app.workspace.containerEl.querySelector(
