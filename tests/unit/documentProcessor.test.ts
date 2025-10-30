@@ -68,6 +68,7 @@ describe("DocumentProcessor", () => {
       expect(result.content).toContain("---");
       expect(result.content).toContain("granola_id: doc-123");
       expect(result.content).toContain('title: "Test Note"');
+      expect(result.content).toContain("type: note");
       expect(result.content).toContain("created_at: 2024-01-15T10:00:00Z");
       expect(result.content).toContain("updated_at: 2024-01-15T12:00:00Z");
       expect(result.content).toContain("# Mock Content");
@@ -89,6 +90,7 @@ describe("DocumentProcessor", () => {
 
       expect(result.filename).toBe("Minimal Note.md");
       expect(result.content).toContain("granola_id: doc-456");
+      expect(result.content).toContain("type: note");
       expect(result.content).not.toContain("created_at:");
       expect(result.content).not.toContain("updated_at:");
     });
