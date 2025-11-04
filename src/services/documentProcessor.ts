@@ -41,6 +41,11 @@ export class DocumentProcessor {
     ];
     if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
     if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
+    if (doc.attendees && doc.attendees.length > 0) {
+      // Format attendees as YAML array
+      const attendeesYaml = doc.attendees.map(name => `  - ${name}`).join("\n");
+      frontmatterLines.push(`Attendees:\n${attendeesYaml}`);
+    }
     frontmatterLines.push("---", "");
 
     let finalMarkdown = frontmatterLines.join("\n");

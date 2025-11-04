@@ -297,4 +297,83 @@ describe("formatTranscriptBySpeaker", () => {
     expect(result).not.toContain("updated_at:");
     expect(result).toContain("---");
   });
+
+  it("should include Attendees in frontmatter when provided", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const attendees = ["John Doe", "Jane Smith", "Bob Johnson"];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Meeting with Attendees",
+      "meeting-789",
+      undefined,
+      undefined,
+      attendees
+    );
+
+    expect(result).toContain("Attendees:");
+    expect(result).toContain('  - John Doe');
+    expect(result).toContain('  - Jane Smith');
+    expect(result).toContain('  - Bob Johnson');
+  });
+
+  it("should not include Attendees in frontmatter when not provided", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Meeting without Attendees",
+      "meeting-999"
+    );
+
+    expect(result).not.toContain("Attendees:");
+  });
+
+  it("should escape quotes in attendee names", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const attendees = ['John "Johnny" Doe'];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Meeting",
+      "meeting-quotes",
+      undefined,
+      undefined,
+      attendees
+    );
+
+    expect(result).toContain('  - John "Johnny" Doe');
+  });
 });

@@ -428,7 +428,8 @@ export default class GranolaSync extends Plugin {
           title,
           docId,
           doc.created_at,
-          doc.updated_at
+          doc.updated_at,
+          doc.attendees
         );
         if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
           syncedCount++;

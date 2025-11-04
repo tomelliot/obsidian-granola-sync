@@ -205,6 +205,83 @@ describe("DocumentProcessor", () => {
         "Document has no valid content to parse"
       );
     });
+
+    it("should include Attendees in frontmatter when provided", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Team Meeting",
+        created_at: "2024-01-15T10:00:00Z",
+        attendees: ["Alice Johnson", "Bob Smith", "Charlie Brown"],
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).toContain("Attendees:");
+      expect(result.content).toContain('  - Alice Johnson');
+      expect(result.content).toContain('  - Bob Smith');
+      expect(result.content).toContain('  - Charlie Brown');
+    });
+
+    it("should not include Attendees in frontmatter when not provided", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Solo Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).not.toContain("Attendees:");
+    });
+
+    it("should not include Attendees when array is empty", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Empty Attendees",
+        created_at: "2024-01-15T10:00:00Z",
+        attendees: [],
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).not.toContain("Attendees:");
+    });
+
+    it("should escape quotes in attendee names", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Meeting",
+        attendees: ['John "Johnny" Doe'],
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).toContain('  - John "Johnny" Doe');
+    });
   });
 
   describe("prepareTranscript", () => {
