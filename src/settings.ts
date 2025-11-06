@@ -34,9 +34,15 @@ export interface AutomaticSyncSettings {
   syncDaysBack: number;
 }
 
+export interface FrontmatterSettings {
+  includeAttendees: boolean;
+  attendeesFieldName: string;
+}
+
 export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
-  AutomaticSyncSettings;
+  AutomaticSyncSettings &
+  FrontmatterSettings;
 
 export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   // AutomaticSyncSettings
@@ -54,6 +60,9 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
   granolaTranscriptsFolder: "Granola/Transcripts",
   createLinkFromNoteToTranscript: false,
+  // FrontmatterSettings
+  includeAttendees: true,
+  attendeesFieldName: "Attendees",
 };
 
 export class GranolaSyncSettingTab extends PluginSettingTab {
@@ -331,6 +340,43 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               })
           );
       }
+    }
+
+    // Frontmatter Settings Section
+    new Setting(containerEl).setName("Frontmatter Settings").setHeading();
+
+    new Setting(containerEl)
+      .setName("Include attendees in frontmatter")
+      .setDesc(
+        "When enabled, attendee names from Granola documents will be added to the frontmatter as an array. This allows you to query and filter notes by attendees."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.includeAttendees)
+          .onChange(async (value) => {
+            this.plugin.settings.includeAttendees = value;
+            await this.plugin.saveSettings();
+            // Refresh display to show/hide attendees field name setting
+            this.display();
+          })
+      );
+
+    // Only show attendees field name when includeAttendees is enabled
+    if (this.plugin.settings.includeAttendees) {
+      new Setting(containerEl)
+        .setName("Attendees field name")
+        .setDesc(
+          "The name of the frontmatter property to use for attendees. Default is 'Attendees'. Change this if you prefer a different property name like 'People' or 'Participants'."
+        )
+        .addText((text) =>
+          text
+            .setPlaceholder("Attendees")
+            .setValue(this.plugin.settings.attendeesFieldName)
+            .onChange(async (value) => {
+              this.plugin.settings.attendeesFieldName = value || "Attendees";
+              await this.plugin.saveSettings();
+            })
+        );
     }
   }
 }

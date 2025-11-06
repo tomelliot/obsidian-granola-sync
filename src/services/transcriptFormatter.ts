@@ -9,6 +9,8 @@ import { TranscriptEntry } from "./granolaApi";
  * @param createdAt - Optional creation timestamp
  * @param updatedAt - Optional update timestamp
  * @param attendees - Optional array of attendee names
+ * @param includeAttendees - Whether to include attendees in frontmatter
+ * @param attendeesFieldName - Name of the attendees field in frontmatter
  * @returns Formatted markdown string with frontmatter and speaker-grouped content
  */
 export function formatTranscriptBySpeaker(
@@ -17,7 +19,9 @@ export function formatTranscriptBySpeaker(
   granolaId: string,
   createdAt?: string,
   updatedAt?: string,
-  attendees?: string[]
+  attendees?: string[],
+  includeAttendees: boolean = true,
+  attendeesFieldName: string = "Attendees"
 ): string {
   // Add frontmatter with granola_id for transcript deduplication
   const escapedTitleForYaml = title.replace(/"/g, '\\"');
@@ -29,10 +33,14 @@ export function formatTranscriptBySpeaker(
   ];
   if (createdAt) frontmatterLines.push(`created_at: ${createdAt}`);
   if (updatedAt) frontmatterLines.push(`updated_at: ${updatedAt}`);
-  if (attendees && attendees.length > 0) {
-    // Format attendees as YAML array
+  if (
+    includeAttendees &&
+    attendees &&
+    attendees.length > 0
+  ) {
+    // Format attendees as YAML array using the configured field name
     const attendeesYaml = attendees.map(name => `  - ${name}`).join("\n");
-    frontmatterLines.push(`Attendees:\n${attendeesYaml}`);
+    frontmatterLines.push(`${attendeesFieldName}:\n${attendeesYaml}`);
   }
   frontmatterLines.push("---", "");
 

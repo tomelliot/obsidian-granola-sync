@@ -38,6 +38,8 @@ describe("DocumentProcessor", () => {
       {
         syncTranscripts: false,
         createLinkFromNoteToTranscript: false,
+        includeAttendees: true,
+        attendeesFieldName: "Attendees",
       },
       mockPathResolver
     );
@@ -117,6 +119,8 @@ describe("DocumentProcessor", () => {
         {
           syncTranscripts: true,
           createLinkFromNoteToTranscript: true,
+          includeAttendees: true,
+          attendeesFieldName: "Attendees",
         },
         mockPathResolver
       );

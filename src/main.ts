@@ -55,6 +55,8 @@ export default class GranolaSync extends Plugin {
         syncTranscripts: this.settings.syncTranscripts,
         createLinkFromNoteToTranscript:
           this.settings.createLinkFromNoteToTranscript,
+        includeAttendees: this.settings.includeAttendees,
+        attendeesFieldName: this.settings.attendeesFieldName,
       },
       this.pathResolver
     );
@@ -410,7 +412,9 @@ export default class GranolaSync extends Plugin {
           docId,
           doc.created_at,
           doc.updated_at,
-          doc.attendees
+          doc.attendees,
+          this.settings.includeAttendees,
+          this.settings.attendeesFieldName
         );
         if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
           syncedCount++;
