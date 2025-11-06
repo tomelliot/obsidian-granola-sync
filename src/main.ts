@@ -25,6 +25,11 @@ import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
 import { FrontmatterMigrationService } from "./services/frontmatterMigration";
 import { log } from "./utils/logger";
+import {
+  showStatusBar,
+  hideStatusBar,
+  showStatusBarTemporary,
+} from "./utils/statusBar";
 
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
@@ -33,6 +38,8 @@ export default class GranolaSync extends Plugin {
   private fileSyncService!: FileSyncService;
   private documentProcessor!: DocumentProcessor;
   private dailyNoteBuilder!: DailyNoteBuilder;
+  statusBarItemEl: HTMLElement | null = null;
+  statusBarTimeoutId: number | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -69,18 +76,12 @@ export default class GranolaSync extends Plugin {
       console.error("Error during frontmatter migration:", error);
     });
 
-    // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-    const statusBarItemEl = this.addStatusBarItem();
-    statusBarItemEl.setText("Granola sync idle"); // Updated status bar text
-
     // This adds a simple command that can be triggered anywhere
     this.addCommand({
       id: "sync-granola",
       name: "Sync from Granola",
       callback: async () => {
         new Notice("Granola sync: Starting manual sync.");
-        statusBarItemEl.setText("Granola sync: Syncing...");
-
         await this.sync();
         new Notice("Granola sync: Manual sync complete.");
 
@@ -89,12 +90,6 @@ export default class GranolaSync extends Plugin {
             "Granola sync: No sync options enabled. Please enable either notes or transcripts in settings."
           );
         }
-
-        statusBarItemEl.setText(
-          `Granola sync: Last synced ${new Date(
-            this.settings.latestSyncTime
-          ).toLocaleString()}`
-        );
       },
     });
 
@@ -111,6 +106,8 @@ export default class GranolaSync extends Plugin {
 
   async onunload() {
     stopCredentialsServer();
+    // Clean up status bar (includes clearing timeout)
+    hideStatusBar(this);
   }
 
   async loadSettings() {
@@ -126,20 +123,7 @@ export default class GranolaSync extends Plugin {
     this.clearPeriodicSync(); // Clear any existing interval first
     if (this.settings.isSyncEnabled && this.settings.syncInterval > 0) {
       this.syncIntervalId = window.setInterval(async () => {
-        const statusBarItemEl = this.app.workspace.containerEl.querySelector(
-          ".status-bar-item .status-bar-item-segment"
-        );
-        if (statusBarItemEl)
-          statusBarItemEl.setText("Granola sync: Auto-syncing...");
-
         await this.sync();
-
-        if (statusBarItemEl)
-          statusBarItemEl.setText(
-            `Granola sync: Last synced ${new Date(
-              this.settings.latestSyncTime
-            ).toLocaleString()}`
-          );
       }, this.settings.syncInterval * 1000);
       this.registerInterval(this.syncIntervalId); // Register with Obsidian to auto-clear on disable
     }
@@ -285,6 +269,8 @@ export default class GranolaSync extends Plugin {
 
   // Top-level sync function that handles common setup once
   async sync() {
+    showStatusBar(this, "Granola sync: Syncing...");
+
     // Load credentials at the start of each sync
     const { accessToken, error } = await loadGranolaCredentials();
     if (!accessToken || error) {
@@ -293,6 +279,7 @@ export default class GranolaSync extends Plugin {
         `Granola sync error: ${error || "No access token loaded."}`,
         10000
       );
+      hideStatusBar(this);
       return;
     }
 
@@ -303,6 +290,7 @@ export default class GranolaSync extends Plugin {
     const documents = await this.fetchDocuments(accessToken);
     if (!documents || documents.length === 0) {
       log.debug("No documents fetched from Granola API");
+      hideStatusBar(this);
       return;
     }
     log.debug(`Granola API: Fetched ${documents.length} documents from`);
@@ -318,6 +306,7 @@ export default class GranolaSync extends Plugin {
         `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
         5000
       );
+      hideStatusBar(this);
       return;
     }
 
@@ -328,6 +317,9 @@ export default class GranolaSync extends Plugin {
     if (this.settings.syncNotes) {
       await this.syncNotes(filteredDocuments);
     }
+
+    // Show success message
+    showStatusBarTemporary(this, "Granola sync: Complete");
   }
 
   private async syncNotes(documents: GranolaDoc[]): Promise<void> {
@@ -340,8 +332,6 @@ export default class GranolaSync extends Plugin {
     await this.saveSettings();
 
     log.debug(`Saved ${syncedCount} note(s)`);
-
-    this.updateSyncStatusBar();
   }
 
   private async syncNotesToDailyNotes(
@@ -395,19 +385,6 @@ export default class GranolaSync extends Plugin {
     }
 
     return syncedCount;
-  }
-
-  private updateSyncStatusBar(): void {
-    const statusBarItemEl = this.app.workspace.containerEl.querySelector(
-      ".status-bar-item .status-bar-item-segment"
-    );
-    if (statusBarItemEl) {
-      statusBarItemEl.setText(
-        `Granola sync: Last synced ${new Date(
-          this.settings.latestSyncTime
-        ).toLocaleString()}`
-      );
-    }
   }
 
   private async syncTranscripts(
