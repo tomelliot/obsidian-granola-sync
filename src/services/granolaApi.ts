@@ -56,15 +56,30 @@ export async function fetchGranolaDocuments(
 
   try {
     // Debug: Log raw API response before validation
-    console.log("[Granola Sync] Raw API response (first doc):", 
-      response.json?.docs?.[0] ? {
-        id: response.json.docs[0].id,
-        title: response.json.docs[0].title,
-        hasAttendees: "attendees" in (response.json.docs[0] || {}),
-        attendees: response.json.docs[0]?.attendees,
-        allKeys: Object.keys(response.json.docs[0] || {}),
-      } : "No docs in response"
-    );
+    const firstDoc = response.json?.docs?.[0];
+    if (firstDoc) {
+      const allKeys = Object.keys(firstDoc);
+      console.log("[Granola Sync] Raw API response (first doc):", {
+        id: firstDoc.id,
+        title: firstDoc.title,
+        hasAttendees: "attendees" in firstDoc,
+        attendees: firstDoc.attendees,
+        allKeys: allKeys,
+        // Look for fields that might contain attendee/people information
+        possibleAttendeeFields: allKeys.filter(key => 
+          key.toLowerCase().includes('attendee') || 
+          key.toLowerCase().includes('people') || 
+          key.toLowerCase().includes('participant') ||
+          key.toLowerCase().includes('person')
+        ),
+        // Show a few sample values to help identify the structure
+        sampleValues: Object.fromEntries(
+          allKeys.slice(0, 10).map(key => [key, firstDoc[key]])
+        ),
+      });
+      // Also log the full first doc structure (but limit size)
+      console.log("[Granola Sync] Full first doc (truncated):", JSON.stringify(firstDoc, null, 2).substring(0, 2000));
+    }
     
     const apiResponse = v.parse(GranolaApiResponseSchema, response.json);
     
