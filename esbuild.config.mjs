@@ -21,7 +21,8 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === "production";
 
-const DEV_PLUGIN_PATH = path.join(
+// Use DEV_PLUGIN_PATH env var if set, otherwise use default path
+const DEV_PLUGIN_PATH = process.env.DEV_PLUGIN_PATH || path.join(
   process.env.HOME,
   "Documents/Obsidian Vault/.obsidian/plugins/obsidian-granola-sync/main.js"
 );
