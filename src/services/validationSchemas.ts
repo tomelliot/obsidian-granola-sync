@@ -21,6 +21,7 @@ export const GranolaDocSchema = v.object({
   title: v.nullish(v.string()),
   created_at: v.optional(v.string()),
   updated_at: v.optional(v.string()),
+  attendees: v.optional(v.array(v.string())),
   last_viewed_panel: v.nullish(
     v.object({
       // Content can be either a ProseMirrorDoc object or an HTML string
