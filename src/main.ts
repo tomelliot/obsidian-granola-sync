@@ -270,8 +270,8 @@ export default class GranolaSync extends Plugin {
   }
 
   // Top-level sync function that handles common setup once
-  async sync() {
-    showStatusBar(this, "Granola sync: Syncing...");
+  async sync(fullHistory: boolean = false) {
+    showStatusBar(this, fullHistory ? "Granola sync: Syncing full history..." : "Granola sync: Syncing...");
 
     // Load credentials at the start of each sync
     const { accessToken, error } = await loadGranolaCredentials();
@@ -289,50 +289,49 @@ export default class GranolaSync extends Plugin {
     await this.fileSyncService.buildCache();
 
     // Fetch documents (now handles credentials)
+    // API limit is 100 documents
     const documents = await this.fetchDocuments(accessToken);
     if (!documents || documents.length === 0) {
       log.debug("No documents fetched from Granola API");
       hideStatusBar(this);
       return;
     }
-    log.debug(`Granola API: Fetched ${documents.length} documents from`);
-    
-    // Debug: Log first document structure to see what fields are available
-    if (documents.length > 0) {
-      console.log("[Granola Sync] Sample document structure:", {
-        id: documents[0].id,
-        title: documents[0].title,
-        hasAttendees: "attendees" in documents[0],
-        attendees: documents[0].attendees,
-        allKeys: Object.keys(documents[0]),
-      });
-    }
+    log.debug(`Granola API: Fetched ${documents.length} documents`);
 
-    // Filter documents based on syncDaysBack setting
-    const filteredDocuments = filterDocumentsByDate(
-      documents,
-      this.settings.syncDaysBack
-    );
-    log.debug(`Filtered to ${filteredDocuments.length} documents`);
-    if (filteredDocuments.length === 0) {
-      new Notice(
-        `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
-        5000
+    // Filter documents based on syncDaysBack setting (unless full history)
+    let documentsToSync = documents;
+    if (!fullHistory) {
+      documentsToSync = filterDocumentsByDate(
+        documents,
+        this.settings.syncDaysBack
       );
-      hideStatusBar(this);
-      return;
+      log.debug(`Filtered to ${documentsToSync.length} documents`);
+      if (documentsToSync.length === 0) {
+        new Notice(
+          `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
+          5000
+        );
+        hideStatusBar(this);
+        return;
+      }
+    } else {
+      log.debug(`Full history sync: Processing all ${documentsToSync.length} documents`);
     }
 
     // Always sync transcripts first if enabled, so notes can link to them
     if (this.settings.syncTranscripts) {
-      await this.syncTranscripts(filteredDocuments, accessToken);
+      await this.syncTranscripts(documentsToSync, accessToken);
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(filteredDocuments);
+      await this.syncNotes(documentsToSync);
     }
 
     // Show success message
-    showStatusBarTemporary(this, "Granola sync: Complete");
+    const message = fullHistory 
+      ? `Granola sync: Full history complete. Synced ${documentsToSync.length} documents.`
+      : "Granola sync: Complete";
+    showStatusBarTemporary(this, message);
+    new Notice(message, 5000);
   }
 
   private async syncNotes(documents: GranolaDoc[]): Promise<void> {
@@ -398,11 +397,6 @@ export default class GranolaSync extends Plugin {
         doc.attendees = doc.people.attendees
           .map((attendee) => attendee.name || attendee.email || "Unknown")
           .filter((name) => name !== "Unknown");
-        console.log(`[Granola Sync] Document ${doc.id} extracted attendees from people.attendees:`, doc.attendees);
-      } else if (doc.attendees && doc.attendees.length > 0) {
-        console.log(`[Granola Sync] Document ${doc.id} has attendees:`, doc.attendees);
-      } else {
-        console.log(`[Granola Sync] Document ${doc.id} has no attendees`);
       }
       const contentToParse = doc.last_viewed_panel?.content;
       if (

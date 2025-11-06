@@ -61,45 +61,7 @@ export async function fetchGranolaDocuments(
   });
 
   try {
-    // Debug: Log raw API response before validation
-    const firstDoc = response.json?.docs?.[0];
-    if (firstDoc) {
-      const allKeys = Object.keys(firstDoc);
-      console.log("[Granola Sync] Raw API response (first doc):", {
-        id: firstDoc.id,
-        title: firstDoc.title,
-        hasAttendees: "attendees" in firstDoc,
-        attendees: firstDoc.attendees,
-        allKeys: allKeys,
-        // Look for fields that might contain attendee/people information
-        possibleAttendeeFields: allKeys.filter(key => 
-          key.toLowerCase().includes('attendee') || 
-          key.toLowerCase().includes('people') || 
-          key.toLowerCase().includes('participant') ||
-          key.toLowerCase().includes('person')
-        ),
-        // Show a few sample values to help identify the structure
-        sampleValues: Object.fromEntries(
-          allKeys.slice(0, 10).map(key => [key, firstDoc[key]])
-        ),
-      });
-      // Also log the full first doc structure (but limit size)
-      console.log("[Granola Sync] Full first doc (truncated):", JSON.stringify(firstDoc, null, 2).substring(0, 2000));
-    }
-    
     const apiResponse = v.parse(GranolaApiResponseSchema, response.json);
-    
-    // Debug: Log after validation
-    console.log("[Granola Sync] After validation (first doc):", 
-      apiResponse.docs[0] ? {
-        id: apiResponse.docs[0].id,
-        title: apiResponse.docs[0].title,
-        hasAttendees: "attendees" in (apiResponse.docs[0] || {}),
-        attendees: (apiResponse.docs[0] as any)?.attendees,
-        allKeys: Object.keys(apiResponse.docs[0] || {}),
-      } : "No docs after validation"
-    );
-    
     return apiResponse.docs as GranolaDoc[];
   } catch (error) {
     const errorMessage = `Invalid response from Granola API: ${

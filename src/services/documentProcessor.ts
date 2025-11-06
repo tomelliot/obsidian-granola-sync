@@ -48,16 +48,6 @@ export class DocumentProcessor {
     ];
     if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
     if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
-    
-    // Debug logging for attendees
-    console.log(`[Granola Sync] Processing note ${docId}:`, {
-      includeAttendees: this.settings.includeAttendees,
-      hasAttendees: "attendees" in doc,
-      attendees: doc.attendees,
-      attendeesType: typeof doc.attendees,
-      attendeesLength: Array.isArray(doc.attendees) ? doc.attendees.length : "not array",
-    });
-    
     if (
       this.settings.includeAttendees &&
       doc.attendees &&
@@ -67,9 +57,6 @@ export class DocumentProcessor {
       const attendeesYaml = doc.attendees.map(name => `  - ${name}`).join("\n");
       const fieldName = this.settings.attendeesFieldName || "Attendees";
       frontmatterLines.push(`${fieldName}:\n${attendeesYaml}`);
-      console.log(`[Granola Sync] Added attendees to frontmatter: ${fieldName}`, doc.attendees);
-    } else {
-      console.log(`[Granola Sync] NOT adding attendees - includeAttendees: ${this.settings.includeAttendees}, has attendees: ${!!doc.attendees}, length: ${doc.attendees?.length || 0}`);
     }
     frontmatterLines.push("---", "");
 

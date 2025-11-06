@@ -144,7 +144,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Manual sync")
       .setDesc(
-        "Manually trigger a sync from Granola right now. This will fetch and sync all notes and transcripts based on your current settings."
+        "Manually trigger a sync from Granola right now. This will fetch and sync notes and transcripts based on your current settings and sync history days."
       )
       .addButton((button) =>
         button
@@ -155,14 +155,39 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             button.setDisabled(true);
             try {
               new Notice("Granola sync: Starting manual sync.");
-              await this.plugin.sync();
-              new Notice("Granola sync: Manual sync complete.");
+              await this.plugin.sync(false);
             } catch (error) {
               new Notice(
                 `Granola sync error: ${error instanceof Error ? error.message : "Unknown error"}`
               );
             } finally {
               button.setButtonText("Sync Now");
+              button.setDisabled(false);
+            }
+          })
+      );
+
+    // Full History Sync Button
+    new Setting(containerEl)
+      .setName("Full history sync")
+      .setDesc(
+        "Sync ALL documents from Granola (up to 100), ignoring the 'Sync history (days)' setting. This will organize all notes and transcripts according to your directory structure settings. Use this for a one-time complete sync of your Granola history."
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Sync Full History")
+          .onClick(async () => {
+            button.setButtonText("Syncing...");
+            button.setDisabled(true);
+            try {
+              new Notice("Granola sync: Starting full history sync. This may take a while...");
+              await this.plugin.sync(true);
+            } catch (error) {
+              new Notice(
+                `Granola sync error: ${error instanceof Error ? error.message : "Unknown error"}`
+              );
+            } finally {
+              button.setButtonText("Sync Full History");
               button.setDisabled(false);
             }
           })
