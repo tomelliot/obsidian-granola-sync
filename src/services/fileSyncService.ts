@@ -21,7 +21,33 @@ export class FileSyncService {
 
     for (const file of files) {
       try {
-        const cache = this.app.metadataCache.getFileCache(file);
+        // Try metadata cache first (fastest)
+        let cache = this.app.metadataCache.getFileCache(file);
+        
+        // If metadata cache doesn't have frontmatter, read file directly
+        if (!cache?.frontmatter?.granola_id) {
+          try {
+            const content = await this.app.vault.read(file);
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
+            if (frontmatterMatch) {
+              const frontmatterText = frontmatterMatch[1];
+              const granolaIdMatch = frontmatterText.match(/granola_id:\s*(.+)/);
+              const typeMatch = frontmatterText.match(/type:\s*(.+)/);
+              if (granolaIdMatch) {
+                const granolaId = granolaIdMatch[1].trim();
+                const type = (typeMatch?.[1]?.trim() || "note") as "note" | "transcript";
+                const cacheKey = `${granolaId}-${type}`;
+                this.granolaIdCache.set(cacheKey, file);
+                continue;
+              }
+            }
+          } catch (readError) {
+            // If direct read fails, continue to next file
+            console.warn(`Could not read file ${file.path} for cache:`, readError);
+          }
+        }
+
+        // Use metadata cache if available
         if (cache?.frontmatter?.granola_id) {
           const granolaId = cache.frontmatter.granola_id as string;
           const type = cache.frontmatter.type || "note"; // Default for backward compatibility
@@ -32,6 +58,8 @@ export class FileSyncService {
         console.error(`Error reading frontmatter for ${file.path}:`, e);
       }
     }
+    
+    console.log(`[Granola Sync] Built cache with ${this.granolaIdCache.size} files`);
   }
 
   /**
@@ -124,9 +152,11 @@ export class FileSyncService {
       }
 
       if (existingFile) {
+        console.log(`[Granola Sync] Found existing file: ${existingFile.path} (granola_id: ${granolaId}, type: ${type})`);
         const existingContent = await this.app.vault.read(existingFile);
 
         if (existingContent !== content) {
+          console.log(`[Granola Sync] Updating existing file: ${existingFile.path}`);
           await this.app.vault.modify(existingFile, content);
 
           // If the file path has changed (title changed), rename the file
@@ -145,10 +175,12 @@ export class FileSyncService {
           this.updateCache(granolaId, existingFile, type);
           return true; // Content was updated
         } else {
+          console.log(`[Granola Sync] File unchanged: ${existingFile.path}`);
           this.updateCache(granolaId, existingFile, type);
           return false; // No change needed
         }
       } else {
+        console.log(`[Granola Sync] Creating new file: ${normalizedPath} (granola_id: ${granolaId}, type: ${type})`);
         const newFile = await this.app.vault.create(normalizedPath, content);
         this.updateCache(granolaId, newFile, type);
         return true; // New file created

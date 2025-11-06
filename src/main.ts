@@ -296,6 +296,17 @@ export default class GranolaSync extends Plugin {
       return;
     }
     log.debug(`Granola API: Fetched ${documents.length} documents from`);
+    
+    // Debug: Log first document structure to see what fields are available
+    if (documents.length > 0) {
+      console.log("[Granola Sync] Sample document structure:", {
+        id: documents[0].id,
+        title: documents[0].title,
+        hasAttendees: "attendees" in documents[0],
+        attendees: documents[0].attendees,
+        allKeys: Object.keys(documents[0]),
+      });
+    }
 
     // Filter documents based on syncDaysBack setting
     const filteredDocuments = filterDocumentsByDate(
@@ -372,6 +383,12 @@ export default class GranolaSync extends Plugin {
     let syncedCount = 0;
 
     for (const doc of documents) {
+      // Debug: Log attendees if they exist
+      if (doc.attendees && doc.attendees.length > 0) {
+        console.log(`[Granola Sync] Document ${doc.id} has attendees:`, doc.attendees);
+      } else {
+        console.log(`[Granola Sync] Document ${doc.id} has no attendees field or empty array`);
+      }
       const contentToParse = doc.last_viewed_panel?.content;
       if (
         !contentToParse ||
