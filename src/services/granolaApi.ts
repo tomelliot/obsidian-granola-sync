@@ -1,32 +1,41 @@
 import { requestUrl } from "obsidian";
-import { ProseMirrorDoc } from "./prosemirrorMarkdown";
+import * as v from "valibot";
+import {
+  GranolaApiResponseSchema,
+  TranscriptEntrySchema,
+  TranscriptResponseSchema,
+} from "./validationSchemas";
 
+// ProseMirror types (defined explicitly due to recursive nature)
+export interface ProseMirrorNode {
+  type: string;
+  content?: ProseMirrorNode[];
+  text?: string;
+  attrs?: { [key: string]: unknown };
+}
+
+export interface ProseMirrorDoc {
+  type: "doc";
+  content: ProseMirrorNode[];
+}
+
+// GranolaDoc type (defined explicitly due to recursive nature of ProseMirrorDoc)
 export interface GranolaDoc {
   id: string;
-  title: string;
+  title: string | null;
   created_at?: string;
   updated_at?: string;
   last_viewed_panel?: {
-    content?: ProseMirrorDoc;
-  };
+    content?: ProseMirrorDoc | string | null;
+  } | null;
 }
 
-export interface GranolaApiResponse {
-  docs: GranolaDoc[];
-}
-
-export interface TranscriptEntry {
-  document_id: string;
-  start_timestamp: string;
-  text: string;
-  source: string;
-  id: string;
-  is_final: boolean;
-  end_timestamp: string;
-}
+// Infer TypeScript type from validation schema
+export type TranscriptEntry = v.InferOutput<typeof TranscriptEntrySchema>;
 
 export async function fetchGranolaDocuments(
-  accessToken: string
+  accessToken: string,
+  limit: number = 100
 ): Promise<GranolaDoc[]> {
   const response = await requestUrl({
     url: "https://api.granola.ai/v2/get-documents",
@@ -38,19 +47,21 @@ export async function fetchGranolaDocuments(
       "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
     },
     body: JSON.stringify({
-      limit: 100,
+      limit: limit,
       offset: 0,
       include_last_viewed_panel: true,
     }),
   });
 
-  const apiResponse = response.json as GranolaApiResponse;
-
-  if (!apiResponse || !Array.isArray(apiResponse.docs)) {
-    const errorMessage = `Invalid response from Granola API`;
+  try {
+    const apiResponse = v.parse(GranolaApiResponseSchema, response.json);
+    return apiResponse.docs as GranolaDoc[];
+  } catch (error) {
+    const errorMessage = `Invalid response from Granola API: ${
+      error instanceof Error ? error.message : "Unknown error"
+    }`;
     throw new Error(errorMessage);
   }
-  return apiResponse.docs;
 }
 
 export async function fetchGranolaTranscript(
@@ -69,11 +80,15 @@ export async function fetchGranolaTranscript(
     body: JSON.stringify({ document_id: docId }),
   });
 
-  const data = transcriptResp.json;
-  if (!Array.isArray(data)) {
-    const errorMessage = `Error fetching Granola transcript`;
+  try {
+    return v.parse(
+      TranscriptResponseSchema,
+      transcriptResp.json
+    ) as TranscriptEntry[];
+  } catch (error) {
+    const errorMessage = `Invalid transcript response from Granola API: ${
+      error instanceof Error ? error.message : "Unknown error"
+    }`;
     throw new Error(errorMessage);
   }
-  // Optionally: validate each entry has required fields
-  return data as TranscriptEntry[];
 }

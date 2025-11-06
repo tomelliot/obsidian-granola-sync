@@ -381,7 +381,11 @@ export default class GranolaSync extends Plugin {
 
     for (const doc of documents) {
       const contentToParse = doc.last_viewed_panel?.content;
-      if (!contentToParse || contentToParse.type !== "doc") {
+      if (
+        !contentToParse ||
+        typeof contentToParse === "string" ||
+        contentToParse.type !== "doc"
+      ) {
         continue;
       }
 
