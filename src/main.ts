@@ -45,10 +45,13 @@ export default class GranolaSync extends Plugin {
     await this.loadSettings();
 
     // Initialize services
-    this.pathResolver = new PathResolver({
-      transcriptDestination: this.settings.transcriptDestination,
-      granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
-    });
+    this.pathResolver = new PathResolver(
+      {
+        transcriptDestination: this.settings.transcriptDestination,
+        granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
+      },
+      this.settings.granolaFolder
+    );
     this.fileSyncService = new FileSyncService(this.app);
     this.documentProcessor = new DocumentProcessor(
       {
@@ -78,33 +81,6 @@ export default class GranolaSync extends Plugin {
       console.error("Error during frontmatter migration:", error);
     });
 
-    // This adds a simple command that can be triggered anywhere
-    this.addCommand({
-      id: "sync-granola",
-      name: "Sync from Granola",
-      callback: async () => {
-        new Notice("Granola sync: Starting manual sync.");
-        await this.sync(false);
-        new Notice("Granola sync: Manual sync complete.");
-
-        if (!this.settings.syncNotes && !this.settings.syncTranscripts) {
-          new Notice(
-            "Granola sync: No sync options enabled. Please enable either notes or transcripts in settings."
-          );
-        }
-      },
-    });
-
-    // Add command for full history sync
-    this.addCommand({
-      id: "sync-granola-full-history",
-      name: "Sync Full History from Granola",
-      callback: async () => {
-        new Notice("Granola sync: Starting full history sync. This may take a while...");
-        await this.sync(true);
-        new Notice("Granola sync: Full history sync complete.");
-      },
-    });
 
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new GranolaSyncSettingTab(this.app, this));
@@ -155,8 +131,13 @@ export default class GranolaSync extends Plugin {
 
   /**
    * Resolves the folder path for a file based on settings and file type.
+   * @param doc - The Granola document (required for GRANOLA_FOLDERS destination)
+   * @param noteDate - The date of the note (required for date-based destinations)
+   * @param isTranscript - Whether this is a transcript file
+   * @returns The resolved folder path, or null if invalid
    */
   private resolveFolderPath(
+    doc: GranolaDoc | null,
     noteDate: Date,
     isTranscript: boolean
   ): string | null {
@@ -167,6 +148,18 @@ export default class GranolaSync extends Plugin {
           return this.pathResolver.computeDailyNoteFolderPath(noteDate);
         case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
           return normalizePath(this.settings.granolaTranscriptsFolder);
+        case TranscriptDestination.GRANOLA_FOLDERS:
+          if (!doc) {
+            new Notice(
+              "Granola sync error: Document required for Granola folder structure.",
+              7000
+            );
+            return null;
+          }
+          return this.pathResolver.computeGranolaFolderPath(
+            doc,
+            this.settings.granolaFolder
+          );
       }
     } else {
       // Handle note destinations
@@ -175,6 +168,18 @@ export default class GranolaSync extends Plugin {
           return this.pathResolver.computeDailyNoteFolderPath(noteDate);
         case SyncDestination.GRANOLA_FOLDER:
           return normalizePath(this.settings.granolaFolder);
+        case SyncDestination.GRANOLA_FOLDERS:
+          if (!doc) {
+            new Notice(
+              "Granola sync error: Document required for Granola folder structure.",
+              7000
+            );
+            return null;
+          }
+          return this.pathResolver.computeGranolaFolderPath(
+            doc,
+            this.settings.granolaFolder
+          );
         default:
           // This shouldn't happen for individual files
           new Notice(
@@ -193,12 +198,13 @@ export default class GranolaSync extends Plugin {
   private async saveToDisk(
     filename: string,
     content: string,
+    doc: GranolaDoc,
     noteDate: Date,
     isTranscript: boolean = false,
     granolaId?: string
   ): Promise<boolean> {
-    // Resolve the folder path
-    const folderPath = this.resolveFolderPath(noteDate, isTranscript);
+    // Resolve the folder path (pass doc for GRANOLA_FOLDERS destination)
+    const folderPath = this.resolveFolderPath(doc, noteDate, isTranscript);
     if (!folderPath) {
       return false;
     }
@@ -224,7 +230,7 @@ export default class GranolaSync extends Plugin {
     const docId = doc.id || "unknown_id";
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(filename, content, noteDate, false, docId);
+    return this.saveToDisk(filename, content, doc, noteDate, false, docId);
   }
 
   // Save a transcript to disk based on the transcript destination setting
@@ -240,7 +246,7 @@ export default class GranolaSync extends Plugin {
     const noteDate = getNoteDate(doc);
 
     // Use the original docId - transcripts now distinguished by type field in frontmatter
-    return this.saveToDisk(filename, content, noteDate, true, docId);
+    return this.saveToDisk(filename, content, doc, noteDate, true, docId);
   }
 
   private async fetchDocuments(accessToken: string): Promise<GranolaDoc[]> {
@@ -281,8 +287,8 @@ export default class GranolaSync extends Plugin {
   }
 
   // Top-level sync function that handles common setup once
-  async sync(fullHistory: boolean = false) {
-    showStatusBar(this, fullHistory ? "Granola sync: Syncing full history..." : "Granola sync: Syncing...");
+  async sync() {
+    showStatusBar(this, "Granola sync: Syncing...");
 
     // Load credentials at the start of each sync
     const { accessToken, error } = await loadGranolaCredentials();
@@ -309,24 +315,19 @@ export default class GranolaSync extends Plugin {
     }
     log.debug(`Granola API: Fetched ${documents.length} documents`);
 
-    // Filter documents based on syncDaysBack setting (unless full history)
-    let documentsToSync = documents;
-    if (!fullHistory) {
-      documentsToSync = filterDocumentsByDate(
-        documents,
-        this.settings.syncDaysBack
+    // Filter documents based on syncDaysBack setting
+    let documentsToSync = filterDocumentsByDate(
+      documents,
+      this.settings.syncDaysBack
+    );
+    log.debug(`Filtered to ${documentsToSync.length} documents`);
+    if (documentsToSync.length === 0) {
+      new Notice(
+        `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
+        5000
       );
-      log.debug(`Filtered to ${documentsToSync.length} documents`);
-      if (documentsToSync.length === 0) {
-        new Notice(
-          `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
-          5000
-        );
-        hideStatusBar(this);
-        return;
-      }
-    } else {
-      log.debug(`Full history sync: Processing all ${documentsToSync.length} documents`);
+      hideStatusBar(this);
+      return;
     }
 
     // Always sync transcripts first if enabled, so notes can link to them
@@ -338,11 +339,8 @@ export default class GranolaSync extends Plugin {
     }
 
     // Show success message
-    const message = fullHistory 
-      ? `Granola sync: Full history complete. Synced ${documentsToSync.length} documents.`
-      : "Granola sync: Complete";
-    showStatusBarTemporary(this, message);
-    new Notice(message, 5000);
+    showStatusBarTemporary(this, "Granola sync: Complete");
+    new Notice("Granola sync: Complete", 5000);
   }
 
   private async syncNotes(documents: GranolaDoc[]): Promise<void> {

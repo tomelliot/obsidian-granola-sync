@@ -253,6 +253,7 @@ describe("DailyNoteBuilder", () => {
       expect(mockPathResolver.computeTranscriptPath).toHaveBeenCalledWith(
         "Test Note",
         expect.any(Date)
+        // doc parameter is optional and not passed in daily note builder context
       );
     });
 

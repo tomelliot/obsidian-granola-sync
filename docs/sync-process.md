@@ -144,6 +144,10 @@ title: "Meeting Title"
 type: note
 created_at: 2024-01-15T10:00:00Z
 updated_at: 2024-01-15T12:00:00Z
+Attendees:
+  - Alice Johnson
+  - Bob Smith
+  - Charlie Brown
 ---
 ```
 
@@ -156,6 +160,10 @@ title: "Meeting Title - Transcript"
 type: transcript
 created_at: 2024-01-15T10:00:00Z
 updated_at: 2024-01-15T12:00:00Z
+Attendees:
+  - Alice Johnson
+  - Bob Smith
+  - Charlie Brown
 ---
 ```
 
@@ -164,6 +172,10 @@ updated_at: 2024-01-15T12:00:00Z
 - `granola_id`: Consistent across both note and transcript for the same source document
 - `type`: Distinguishes between 'note' and 'transcript' files
 - `created_at` and `updated_at`: Timestamps from Granola API (when available)
+- `Attendees`: Array of attendee names from the Granola document (optional, configurable in settings)
+  - Can be enabled/disabled via the "Include attendees in frontmatter" setting
+  - Field name can be customized (default: "Attendees")
+  - Only included when attendees are available from the Granola API
 - Both file types can share the same `granola_id` while being uniquely identified by `type`
 
 ### Legacy Frontmatter Migration

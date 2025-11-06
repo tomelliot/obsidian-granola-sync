@@ -70,7 +70,8 @@ export class DocumentProcessor {
       const noteDate = getNoteDate(doc);
       const transcriptPath = this.pathResolver.computeTranscriptPath(
         title,
-        noteDate
+        noteDate,
+        doc
       );
       finalMarkdown += `[Transcript](${transcriptPath})\n\n`;
     }

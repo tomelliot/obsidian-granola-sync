@@ -4,12 +4,14 @@ import os from "os";
 
 export enum SyncDestination {
   GRANOLA_FOLDER = "granola_folder",
+  GRANOLA_FOLDERS = "granola_folders",
   DAILY_NOTES = "daily_notes",
   DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
 }
 
 export enum TranscriptDestination {
   GRANOLA_TRANSCRIPTS_FOLDER = "granola_transcripts_folder",
+  GRANOLA_FOLDERS = "granola_folders",
   DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
 }
 
@@ -140,59 +142,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           })
       );
 
-    // Manual Sync Button
-    new Setting(containerEl)
-      .setName("Manual sync")
-      .setDesc(
-        "Manually trigger a sync from Granola right now. This will fetch and sync notes and transcripts based on your current settings and sync history days."
-      )
-      .addButton((button) =>
-        button
-          .setButtonText("Sync Now")
-          .setCta()
-          .onClick(async () => {
-            button.setButtonText("Syncing...");
-            button.setDisabled(true);
-            try {
-              new Notice("Granola sync: Starting manual sync.");
-              await this.plugin.sync(false);
-            } catch (error) {
-              new Notice(
-                `Granola sync error: ${error instanceof Error ? error.message : "Unknown error"}`
-              );
-            } finally {
-              button.setButtonText("Sync Now");
-              button.setDisabled(false);
-            }
-          })
-      );
-
-    // Full History Sync Button
-    new Setting(containerEl)
-      .setName("Full history sync")
-      .setDesc(
-        "Sync ALL documents from Granola (up to 100), ignoring the 'Sync history (days)' setting. This will organize all notes and transcripts according to your directory structure settings. Use this for a one-time complete sync of your Granola history."
-      )
-      .addButton((button) =>
-        button
-          .setButtonText("Sync Full History")
-          .onClick(async () => {
-            button.setButtonText("Syncing...");
-            button.setDisabled(true);
-            try {
-              new Notice("Granola sync: Starting full history sync. This may take a while...");
-              await this.plugin.sync(true);
-            } catch (error) {
-              new Notice(
-                `Granola sync error: ${error instanceof Error ? error.message : "Unknown error"}`
-              );
-            } finally {
-              button.setButtonText("Sync Full History");
-              button.setDisabled(false);
-            }
-          })
-      );
-
     // Notes Section
     new Setting(containerEl).setName("Notes").setHeading();
 
@@ -225,6 +174,10 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE,
               "Use daily note folder structure"
             )
+            .addOption(
+              SyncDestination.GRANOLA_FOLDERS,
+              "Use Granola folder structure"
+            )
             .setValue(this.plugin.settings.syncDestination)
             .onChange(async (value) => {
               this.plugin.settings.syncDestination = value as SyncDestination;
@@ -254,10 +207,32 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             "Notes will be saved as individual files but organized in the same date-based folder structure as your daily notes. Best of both worlds - individual files with chronological organization."
           );
           break;
+        case SyncDestination.GRANOLA_FOLDERS:
+          explanationEl.setText(
+            "Notes will be organized by the folder structure from Granola. Files will be saved in folders matching your Granola workspace organization."
+          );
+          break;
       }
 
       // Show relevant settings based on sync destination
       if (
+        this.plugin.settings.syncDestination === SyncDestination.GRANOLA_FOLDERS
+      ) {
+        new Setting(containerEl)
+          .setName("Base folder for Granola folders")
+          .setDesc(
+            "The base folder where Granola folder structure will be created. For example, if set to 'Granola', notes in Granola folder 'Projects' will be saved to 'Granola/Projects'."
+          )
+          .addText((text) =>
+            text
+              .setPlaceholder("Granola")
+              .setValue(this.plugin.settings.granolaFolder)
+              .onChange(async (value) => {
+                this.plugin.settings.granolaFolder = value || "Granola";
+                await this.plugin.saveSettings();
+              })
+          );
+      } else if (
         this.plugin.settings.syncDestination === SyncDestination.DAILY_NOTES
       ) {
         new Setting(containerEl)
@@ -329,6 +304,10 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE,
               "Use daily note folder structure"
             )
+            .addOption(
+              TranscriptDestination.GRANOLA_FOLDERS,
+              "Use Granola folder structure"
+            )
             .setValue(this.plugin.settings.transcriptDestination)
             .onChange(async (value) => {
               this.plugin.settings.transcriptDestination =
@@ -352,6 +331,11 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
           transcriptExplanationEl.setText(
             "Transcripts will be saved in the same date-based folder structure as your daily notes."
+          );
+          break;
+        case TranscriptDestination.GRANOLA_FOLDERS:
+          transcriptExplanationEl.setText(
+            "Transcripts will be organized by the folder structure from Granola, matching your Granola workspace organization."
           );
           break;
       }

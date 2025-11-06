@@ -34,6 +34,10 @@ export const GranolaDocSchema = v.object({
       ),
     })
   ),
+  folder: v.optional(v.nullish(v.string())),
+  folder_path: v.optional(v.nullish(v.string())),
+  collection: v.optional(v.nullish(v.string())),
+  workspace: v.optional(v.nullish(v.string())),
   last_viewed_panel: v.nullish(
     v.object({
       // Content can be either a ProseMirrorDoc object or an HTML string
