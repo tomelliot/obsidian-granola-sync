@@ -55,7 +55,30 @@ export async function fetchGranolaDocuments(
   });
 
   try {
+    // Debug: Log raw API response before validation
+    console.log("[Granola Sync] Raw API response (first doc):", 
+      response.json?.docs?.[0] ? {
+        id: response.json.docs[0].id,
+        title: response.json.docs[0].title,
+        hasAttendees: "attendees" in (response.json.docs[0] || {}),
+        attendees: response.json.docs[0]?.attendees,
+        allKeys: Object.keys(response.json.docs[0] || {}),
+      } : "No docs in response"
+    );
+    
     const apiResponse = v.parse(GranolaApiResponseSchema, response.json);
+    
+    // Debug: Log after validation
+    console.log("[Granola Sync] After validation (first doc):", 
+      apiResponse.docs[0] ? {
+        id: apiResponse.docs[0].id,
+        title: apiResponse.docs[0].title,
+        hasAttendees: "attendees" in (apiResponse.docs[0] || {}),
+        attendees: (apiResponse.docs[0] as any)?.attendees,
+        allKeys: Object.keys(apiResponse.docs[0] || {}),
+      } : "No docs after validation"
+    );
+    
     return apiResponse.docs as GranolaDoc[];
   } catch (error) {
     const errorMessage = `Invalid response from Granola API: ${
