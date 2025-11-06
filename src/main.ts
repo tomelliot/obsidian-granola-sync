@@ -84,7 +84,7 @@ export default class GranolaSync extends Plugin {
       name: "Sync from Granola",
       callback: async () => {
         new Notice("Granola sync: Starting manual sync.");
-        await this.sync();
+        await this.sync(false);
         new Notice("Granola sync: Manual sync complete.");
 
         if (!this.settings.syncNotes && !this.settings.syncTranscripts) {
@@ -92,6 +92,17 @@ export default class GranolaSync extends Plugin {
             "Granola sync: No sync options enabled. Please enable either notes or transcripts in settings."
           );
         }
+      },
+    });
+
+    // Add command for full history sync
+    this.addCommand({
+      id: "sync-granola-full-history",
+      name: "Sync Full History from Granola",
+      callback: async () => {
+        new Notice("Granola sync: Starting full history sync. This may take a while...");
+        await this.sync(true);
+        new Notice("Granola sync: Full history sync complete.");
       },
     });
 
