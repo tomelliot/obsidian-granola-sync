@@ -11,7 +11,10 @@ import { TranscriptSettings } from "../settings";
  */
 export class DocumentProcessor {
   constructor(
-    private settings: Pick<TranscriptSettings, 'syncTranscripts' | 'createLinkFromNoteToTranscript'>,
+    private settings: Pick<
+      TranscriptSettings,
+      "syncTranscripts" | "createLinkFromNoteToTranscript"
+    >,
     private pathResolver: PathResolver
   ) {}
 
@@ -23,7 +26,11 @@ export class DocumentProcessor {
    */
   prepareNote(doc: GranolaDoc): { filename: string; content: string } {
     const contentToParse = doc.last_viewed_panel?.content;
-    if (!contentToParse || contentToParse.type !== "doc") {
+    if (
+      !contentToParse ||
+      typeof contentToParse === "string" ||
+      contentToParse.type !== "doc"
+    ) {
       throw new Error("Document has no valid content to parse");
     }
 
@@ -102,7 +109,11 @@ export class DocumentProcessor {
     markdown: string;
   } | null {
     const contentToParse = doc.last_viewed_panel?.content;
-    if (!contentToParse || contentToParse.type !== "doc") {
+    if (
+      !contentToParse ||
+      typeof contentToParse === "string" ||
+      contentToParse.type !== "doc"
+    ) {
       return null;
     }
 

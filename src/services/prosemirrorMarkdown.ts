@@ -1,14 +1,4 @@
-interface ProseMirrorNode {
-  type: string;
-  content?: ProseMirrorNode[];
-  text?: string;
-  attrs?: { [key: string]: unknown };
-}
-
-export interface ProseMirrorDoc {
-  type: "doc";
-  content: ProseMirrorNode[];
-}
+import type { ProseMirrorDoc, ProseMirrorNode } from "./granolaApi";
 
 export function convertProsemirrorToMarkdown(
   doc: ProseMirrorDoc | null | undefined

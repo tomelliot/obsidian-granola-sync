@@ -113,26 +113,7 @@ npm run test:watch
 npm run test:coverage
 ```
 
-### Testing Strategy
-
-The plugin uses a combination of unit and integration tests:
-
-1. Unit Tests:
-   - Test individual service classes and utilities in isolation
-   - Mock external dependencies
-   - Focus on business logic
-
-2. Integration Tests:
-   - Test interactions between components
-   - Test file system operations
-   - Test API integration
-
-### Adding New Tests
-
-1. Create a new test file in the appropriate test directory
-2. Follow the existing test patterns
-3. Use Jest's mocking capabilities for external dependencies
-4. Run tests to ensure they pass
+For detailed testing information, including testing strategy and development workflow, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Releasing
 
@@ -148,11 +129,7 @@ node scripts/release.js 1.2.3
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for info on contributing to this project.
 
 ## License
 
