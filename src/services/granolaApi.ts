@@ -35,8 +35,7 @@ export async function fetchGranolaDocuments(
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
       Accept: "*/*",
-      "User-Agent": "GranolaObsidianPlugin/0.1.7",
-      "X-Client-Version": "ObsidianPlugin-0.1.7",
+      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
     },
     body: JSON.stringify({
       limit: 100,
@@ -65,8 +64,7 @@ export async function fetchGranolaTranscript(
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
       Accept: "*/*",
-      "User-Agent": "GranolaObsidianPlugin/0.1.7",
-      "X-Client-Version": "ObsidianPlugin-0.1.7",
+      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
     },
     body: JSON.stringify({ document_id: docId }),
   });
