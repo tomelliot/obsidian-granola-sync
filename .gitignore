@@ -29,3 +29,5 @@ package-lock.json
 
 # Coverage reports
 coverage/
+
+docs/api-response/
