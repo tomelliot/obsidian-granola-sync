@@ -140,6 +140,34 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           })
       );
 
+    // Manual Sync Button
+    new Setting(containerEl)
+      .setName("Manual sync")
+      .setDesc(
+        "Manually trigger a sync from Granola right now. This will fetch and sync all notes and transcripts based on your current settings."
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Sync Now")
+          .setCta()
+          .onClick(async () => {
+            button.setButtonText("Syncing...");
+            button.setDisabled(true);
+            try {
+              new Notice("Granola sync: Starting manual sync.");
+              await this.plugin.sync();
+              new Notice("Granola sync: Manual sync complete.");
+            } catch (error) {
+              new Notice(
+                `Granola sync error: ${error instanceof Error ? error.message : "Unknown error"}`
+              );
+            } finally {
+              button.setButtonText("Sync Now");
+              button.setDisabled(false);
+            }
+          })
+      );
+
     // Notes Section
     new Setting(containerEl).setName("Notes").setHeading();
 
