@@ -350,6 +350,15 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToDailyNotes(
     documents: GranolaDoc[]
   ): Promise<number> {
+    // Extract attendees from people.attendees for all documents before processing
+    for (const doc of documents) {
+      if (doc.people?.attendees && doc.people.attendees.length > 0) {
+        doc.attendees = doc.people.attendees
+          .map((attendee) => attendee.name || attendee.email || "Unknown")
+          .filter((name) => name !== "Unknown");
+      }
+    }
+    
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
 
@@ -383,11 +392,17 @@ export default class GranolaSync extends Plugin {
     let syncedCount = 0;
 
     for (const doc of documents) {
-      // Debug: Log attendees if they exist
-      if (doc.attendees && doc.attendees.length > 0) {
+      // Extract attendees from people.attendees if available
+      if (doc.people?.attendees && doc.people.attendees.length > 0) {
+        // Map attendees to just their names
+        doc.attendees = doc.people.attendees
+          .map((attendee) => attendee.name || attendee.email || "Unknown")
+          .filter((name) => name !== "Unknown");
+        console.log(`[Granola Sync] Document ${doc.id} extracted attendees from people.attendees:`, doc.attendees);
+      } else if (doc.attendees && doc.attendees.length > 0) {
         console.log(`[Granola Sync] Document ${doc.id} has attendees:`, doc.attendees);
       } else {
-        console.log(`[Granola Sync] Document ${doc.id} has no attendees field or empty array`);
+        console.log(`[Granola Sync] Document ${doc.id} has no attendees`);
       }
       const contentToParse = doc.last_viewed_panel?.content;
       if (
@@ -410,6 +425,15 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     accessToken: string
   ): Promise<void> {
+    // Extract attendees from people.attendees for all documents before processing transcripts
+    for (const doc of documents) {
+      if (doc.people?.attendees && doc.people.attendees.length > 0) {
+        doc.attendees = doc.people.attendees
+          .map((attendee) => attendee.name || attendee.email || "Unknown")
+          .filter((name) => name !== "Unknown");
+      }
+    }
+    
     let syncedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
