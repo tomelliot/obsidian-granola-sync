@@ -21,33 +21,7 @@ export class FileSyncService {
 
     for (const file of files) {
       try {
-        // Try metadata cache first (fastest)
-        let cache = this.app.metadataCache.getFileCache(file);
-        
-        // If metadata cache doesn't have frontmatter, read file directly
-        if (!cache?.frontmatter?.granola_id) {
-          try {
-            const content = await this.app.vault.read(file);
-            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
-            if (frontmatterMatch) {
-              const frontmatterText = frontmatterMatch[1];
-              const granolaIdMatch = frontmatterText.match(/granola_id:\s*(.+)/);
-              const typeMatch = frontmatterText.match(/type:\s*(.+)/);
-              if (granolaIdMatch) {
-                const granolaId = granolaIdMatch[1].trim();
-                const type = (typeMatch?.[1]?.trim() || "note") as "note" | "transcript";
-                const cacheKey = `${granolaId}-${type}`;
-                this.granolaIdCache.set(cacheKey, file);
-                continue;
-              }
-            }
-          } catch (readError) {
-            // If direct read fails, continue to next file
-            console.warn(`Could not read file ${file.path} for cache:`, readError);
-          }
-        }
-
-        // Use metadata cache if available
+        const cache = this.app.metadataCache.getFileCache(file);
         if (cache?.frontmatter?.granola_id) {
           const granolaId = cache.frontmatter.granola_id as string;
           const type = cache.frontmatter.type || "note"; // Default for backward compatibility

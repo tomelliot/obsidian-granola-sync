@@ -38,8 +38,6 @@ describe("DocumentProcessor", () => {
       {
         syncTranscripts: false,
         createLinkFromNoteToTranscript: false,
-        includeAttendees: true,
-        attendeesFieldName: "Attendees",
       },
       mockPathResolver
     );
@@ -119,8 +117,6 @@ describe("DocumentProcessor", () => {
         {
           syncTranscripts: true,
           createLinkFromNoteToTranscript: true,
-          includeAttendees: true,
-          attendeesFieldName: "Attendees",
         },
         mockPathResolver
       );
@@ -211,7 +207,7 @@ describe("DocumentProcessor", () => {
       );
     });
 
-    it("should include Attendees in frontmatter when provided", () => {
+    it("should include attendees in frontmatter when provided", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Team Meeting",
@@ -227,13 +223,13 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      expect(result.content).toContain("Attendees:");
+      expect(result.content).toContain("attendees:");
       expect(result.content).toContain('  - Alice Johnson');
       expect(result.content).toContain('  - Bob Smith');
       expect(result.content).toContain('  - Charlie Brown');
     });
 
-    it("should not include Attendees in frontmatter when not provided", () => {
+    it("should not include attendees in frontmatter when not provided", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Solo Note",
@@ -248,10 +244,10 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      expect(result.content).not.toContain("Attendees:");
+      expect(result.content).not.toContain("attendees:");
     });
 
-    it("should not include Attendees when array is empty", () => {
+    it("should not include attendees when array is empty", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Empty Attendees",
@@ -267,7 +263,7 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      expect(result.content).not.toContain("Attendees:");
+      expect(result.content).not.toContain("attendees:");
     });
 
     it("should escape quotes in attendee names", () => {
@@ -286,69 +282,6 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain('  - John "Johnny" Doe');
-    });
-
-    it("should not include Attendees when includeAttendees is false", () => {
-      documentProcessor = new DocumentProcessor(
-        {
-          syncTranscripts: false,
-          createLinkFromNoteToTranscript: false,
-          includeAttendees: false,
-          attendeesFieldName: "Attendees",
-        },
-        mockPathResolver
-      );
-
-      const doc: GranolaDoc = {
-        id: "doc-123",
-        title: "Team Meeting",
-        created_at: "2024-01-15T10:00:00Z",
-        attendees: ["Alice Johnson", "Bob Smith"],
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
-      };
-
-      const result = documentProcessor.prepareNote(doc);
-
-      expect(result.content).not.toContain("Attendees:");
-      expect(result.content).not.toContain("Alice Johnson");
-      expect(result.content).not.toContain("Bob Smith");
-    });
-
-    it("should use custom attendeesFieldName when configured", () => {
-      documentProcessor = new DocumentProcessor(
-        {
-          syncTranscripts: false,
-          createLinkFromNoteToTranscript: false,
-          includeAttendees: true,
-          attendeesFieldName: "Participants",
-        },
-        mockPathResolver
-      );
-
-      const doc: GranolaDoc = {
-        id: "doc-123",
-        title: "Team Meeting",
-        created_at: "2024-01-15T10:00:00Z",
-        attendees: ["Alice Johnson", "Bob Smith"],
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
-      };
-
-      const result = documentProcessor.prepareNote(doc);
-
-      expect(result.content).toContain("Participants:");
-      expect(result.content).not.toContain("Attendees:");
-      expect(result.content).toContain('  - Alice Johnson');
-      expect(result.content).toContain('  - Bob Smith');
     });
   });
 

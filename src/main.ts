@@ -28,7 +28,6 @@ import { log } from "./utils/logger";
 import {
   showStatusBar,
   hideStatusBar,
-  showStatusBarTemporary,
 } from "./utils/statusBar";
 
 export default class GranolaSync extends Plugin {
@@ -58,8 +57,6 @@ export default class GranolaSync extends Plugin {
         syncTranscripts: this.settings.syncTranscripts,
         createLinkFromNoteToTranscript:
           this.settings.createLinkFromNoteToTranscript,
-        includeAttendees: this.settings.includeAttendees,
-        attendeesFieldName: this.settings.attendeesFieldName,
       },
       this.pathResolver
     );
@@ -338,9 +335,7 @@ export default class GranolaSync extends Plugin {
       await this.syncNotes(documentsToSync);
     }
 
-    // Show success message
-    showStatusBarTemporary(this, "Granola sync: Complete");
-    new Notice("Granola sync: Complete", 5000);
+    hideStatusBar(this);
   }
 
   private async syncNotes(documents: GranolaDoc[]): Promise<void> {
@@ -456,9 +451,7 @@ export default class GranolaSync extends Plugin {
           docId,
           doc.created_at,
           doc.updated_at,
-          doc.attendees,
-          this.settings.includeAttendees,
-          this.settings.attendeesFieldName
+          doc.attendees
         );
         if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
           syncedCount++;

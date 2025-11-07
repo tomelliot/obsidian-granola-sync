@@ -3,7 +3,7 @@ import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename } from "../utils/filenameUtils";
 import { getNoteDate } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
-import { TranscriptSettings, FrontmatterSettings } from "../settings";
+import { TranscriptSettings } from "../settings";
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
@@ -14,7 +14,7 @@ export class DocumentProcessor {
     private settings: Pick<
       TranscriptSettings,
       "syncTranscripts" | "createLinkFromNoteToTranscript"
-    > & Pick<FrontmatterSettings, "includeAttendees" | "attendeesFieldName">,
+    >,
     private pathResolver: PathResolver
   ) {}
 
@@ -48,15 +48,10 @@ export class DocumentProcessor {
     ];
     if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
     if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
-    if (
-      this.settings.includeAttendees &&
-      doc.attendees &&
-      doc.attendees.length > 0
-    ) {
-      // Format attendees as YAML array using the configured field name
+    if (doc.attendees && doc.attendees.length > 0) {
+      // Format attendees as YAML array with lowercase field name
       const attendeesYaml = doc.attendees.map(name => `  - ${name}`).join("\n");
-      const fieldName = this.settings.attendeesFieldName || "Attendees";
-      frontmatterLines.push(`${fieldName}:\n${attendeesYaml}`);
+      frontmatterLines.push(`attendees:\n${attendeesYaml}`);
     }
     frontmatterLines.push("---", "");
 

@@ -65,22 +65,6 @@ export async function fetchGranolaDocuments(
   });
 
   try {
-    // Debug: Check for folder information in API response
-    const firstDoc = response.json?.docs?.[0];
-    if (firstDoc) {
-      const folderFields = Object.keys(firstDoc).filter(key => 
-        key.toLowerCase().includes('folder') || 
-        key.toLowerCase().includes('collection') ||
-        key.toLowerCase().includes('workspace')
-      );
-      if (folderFields.length > 0) {
-        console.log("[Granola Sync] Found folder-related fields:", folderFields);
-        folderFields.forEach(field => {
-          console.log(`[Granola Sync] ${field}:`, firstDoc[field]);
-        });
-      }
-    }
-    
     const apiResponse = v.parse(GranolaApiResponseSchema, response.json);
     return apiResponse.docs as GranolaDoc[];
   } catch (error) {

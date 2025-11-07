@@ -298,7 +298,7 @@ describe("formatTranscriptBySpeaker", () => {
     expect(result).toContain("---");
   });
 
-  it("should include Attendees in frontmatter when provided", () => {
+  it("should include attendees in frontmatter when provided", () => {
     const transcriptData: TranscriptEntry[] = [
       {
         document_id: "doc1",
@@ -322,13 +322,13 @@ describe("formatTranscriptBySpeaker", () => {
       attendees
     );
 
-    expect(result).toContain("Attendees:");
+    expect(result).toContain("attendees:");
     expect(result).toContain('  - John Doe');
     expect(result).toContain('  - Jane Smith');
     expect(result).toContain('  - Bob Johnson');
   });
 
-  it("should not include Attendees in frontmatter when not provided", () => {
+  it("should not include attendees in frontmatter when not provided", () => {
     const transcriptData: TranscriptEntry[] = [
       {
         document_id: "doc1",
@@ -347,7 +347,7 @@ describe("formatTranscriptBySpeaker", () => {
       "meeting-999"
     );
 
-    expect(result).not.toContain("Attendees:");
+    expect(result).not.toContain("attendees:");
   });
 
     it("should escape quotes in attendee names", () => {
@@ -375,68 +375,5 @@ describe("formatTranscriptBySpeaker", () => {
       );
 
       expect(result).toContain('  - John "Johnny" Doe');
-    });
-
-    it("should not include Attendees when includeAttendees is false", () => {
-      const transcriptData: TranscriptEntry[] = [
-        {
-          document_id: "doc1",
-          start_timestamp: "00:00:01",
-          end_timestamp: "00:00:05",
-          text: "Test text",
-          source: "microphone",
-          id: "entry1",
-          is_final: true,
-        },
-      ];
-
-      const attendees = ["John Doe", "Jane Smith"];
-
-      const result = formatTranscriptBySpeaker(
-        transcriptData,
-        "Meeting with Attendees",
-        "meeting-no-attendees",
-        undefined,
-        undefined,
-        attendees,
-        false, // includeAttendees = false
-        "Attendees"
-      );
-
-      expect(result).not.toContain("Attendees:");
-      expect(result).not.toContain("John Doe");
-      expect(result).not.toContain("Jane Smith");
-    });
-
-    it("should use custom attendeesFieldName when configured", () => {
-      const transcriptData: TranscriptEntry[] = [
-        {
-          document_id: "doc1",
-          start_timestamp: "00:00:01",
-          end_timestamp: "00:00:05",
-          text: "Test text",
-          source: "microphone",
-          id: "entry1",
-          is_final: true,
-        },
-      ];
-
-      const attendees = ["John Doe", "Jane Smith"];
-
-      const result = formatTranscriptBySpeaker(
-        transcriptData,
-        "Meeting with Attendees",
-        "meeting-custom-field",
-        undefined,
-        undefined,
-        attendees,
-        true, // includeAttendees = true
-        "Participants" // custom field name
-      );
-
-      expect(result).toContain("Participants:");
-      expect(result).not.toContain("Attendees:");
-      expect(result).toContain('  - John Doe');
-      expect(result).toContain('  - Jane Smith');
     });
 });
