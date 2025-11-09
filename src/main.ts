@@ -292,7 +292,7 @@ export default class GranolaSync extends Plugin {
     // Build the Granola ID cache before syncing
     await this.fileSyncService.buildCache();
 
-    // Fetch documents (now handles credentials)
+    // Fetch documents
     const documents = await this.fetchDocuments(accessToken);
     if (!documents || documents.length === 0) {
       log.debug("No documents fetched from Granola API");

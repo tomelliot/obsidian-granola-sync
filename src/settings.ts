@@ -1,6 +1,5 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
-import os from "os";
 
 export enum SyncDestination {
   GRANOLA_FOLDER = "granola_folder",
