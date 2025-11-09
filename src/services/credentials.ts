@@ -38,14 +38,18 @@ export async function startCredentialsServer(): Promise<void> {
     process.on("SIGTERM", stopCredentialsServer);
     process.on("exit", stopCredentialsServer);
 
+    console.log(
+      `[GranolaCredentials] Attempting to start credentials server for file at ${filePath}`
+    );
     server = http.createServer((req, res) => {
+      console.log("Credentials server: Received request", req.url);
       if (req.url === "/supabase.json" || req.url === "/") {
         fs.readFile(filePath, (err, data) => {
           if (err) {
-            log.debug("Credentials server: File not found", err.message);
+            const errorMessage = `Failed to read credentials file at ${filePath}: ${err.message}`;
+            console.error(`[GranolaCredentials] ${errorMessage}`);
             res.writeHead(404, { "Content-Type": "text/plain" });
-            res.write(err.message);
-            res.end("File not found");
+            res.end(errorMessage);
           } else {
             log.debug(
               "Credentials server: Successfully served credentials file"
@@ -55,18 +59,25 @@ export async function startCredentialsServer(): Promise<void> {
           }
         });
       } else {
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Not found");
+        const message = `Unsupported credentials server route: ${
+          req.url ?? "unknown"
+        }`;
+        console.error(`[GranolaCredentials] ${message}`);
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end(message);
       }
     });
 
     server.on("error", (err) => {
-      console.error("Server startup error:", err);
+      console.error("[GranolaCredentials] Server startup error:", err);
       log.debug("Credentials server: Startup error", err);
       reject(err);
     });
 
     server.listen(2590, "127.0.0.1", () => {
+      console.log(
+        "[GranolaCredentials] Credentials server started at http://127.0.0.1:2590/"
+      );
       log.debug("Credentials server: Started");
       resolve();
     });
@@ -75,8 +86,10 @@ export async function startCredentialsServer(): Promise<void> {
 
 export function stopCredentialsServer() {
   if (server) {
+    console.log("[GranolaCredentials] Stopping credentials server");
     server.close(() => {
       server = null;
+      console.log("[GranolaCredentials] Credentials server stopped");
       log.debug("Credentials server: Stopped");
     });
   }
