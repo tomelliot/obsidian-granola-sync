@@ -21,10 +21,12 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === "production";
 
-const DEV_PLUGIN_PATH = path.join(
-  process.env.HOME,
-  "Documents/Obsidian Vault/.obsidian/plugins/obsidian-granola-sync/main.js"
-);
+const DEV_PLUGIN_PATH =
+  process.env.DEV_PLUGIN_PATH ||
+  path.join(
+    process.env.HOME,
+    "Documents/Obsidian Vault/.obsidian/plugins/obsidian-granola-sync/main.js"
+  );
 
 function copyToDevPlugin() {
   if (prod) return;
