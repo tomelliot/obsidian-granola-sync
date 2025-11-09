@@ -1,6 +1,5 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
-import os from "os";
 
 export enum SyncDestination {
   GRANOLA_FOLDER = "granola_folder",
@@ -332,5 +331,19 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           );
       }
     }
+
+    new Setting(containerEl)
+      .setName("Full sync")
+      .setDesc("Fetch all available documents from Granola right now.")
+      .addButton((button) =>
+        button
+          .setButtonText("Full sync")
+          .setCta()
+          .onClick(async () => {
+            new Notice("Granola sync: Starting full sync.");
+            await this.plugin.sync({ mode: "full" });
+            new Notice("Granola sync: Full sync complete.");
+          })
+      );
   }
 }

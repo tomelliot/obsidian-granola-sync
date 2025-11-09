@@ -1,6 +1,5 @@
 import { Notice, Plugin, normalizePath } from "obsidian";
 import { getNoteDate } from "./utils/dateUtils";
-import { filterDocumentsByDate } from "./utils/documentFilter";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -9,7 +8,8 @@ import {
   TranscriptDestination,
 } from "./settings";
 import {
-  fetchGranolaDocuments,
+  fetchAllGranolaDocuments,
+  fetchGranolaDocumentsByDaysBack,
   fetchGranolaTranscript,
   GranolaDoc,
   TranscriptEntry,
@@ -136,6 +136,20 @@ export default class GranolaSync extends Plugin {
     }
   }
 
+  private updateSyncStatus(
+    kind: "Note" | "Transcript",
+    current: number,
+    total: number
+  ): void {
+    if (total <= 0) {
+      return;
+    }
+
+    const clampedCurrent = Math.min(Math.max(current, 1), total);
+    const label = kind === "Note" ? "note" : "Transcript";
+    showStatusBar(this, `Granola sync: ${label} ${clampedCurrent}/${total}`);
+  }
+
   // Build the Granola ID cache by scanning all markdown files in the vault
 
   // Compute the folder path for a note based on daily note settings
@@ -181,8 +195,8 @@ export default class GranolaSync extends Plugin {
     filename: string,
     content: string,
     noteDate: Date,
-    isTranscript: boolean = false,
-    granolaId?: string
+    granolaId: string,
+    isTranscript: boolean = false
   ): Promise<boolean> {
     // Resolve the folder path
     const folderPath = this.resolveFolderPath(noteDate, isTranscript);
@@ -207,11 +221,14 @@ export default class GranolaSync extends Plugin {
 
   // Save a note to disk based on the sync destination setting
   private async saveNoteToDisk(doc: GranolaDoc): Promise<boolean> {
+    if (!doc.id) {
+      console.error("Document missing required id field:", doc);
+      return false;
+    }
     const { filename, content } = this.documentProcessor.prepareNote(doc);
-    const docId = doc.id || "unknown_id";
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(filename, content, noteDate, false, docId);
+    return this.saveToDisk(filename, content, noteDate, doc.id, false);
   }
 
   // Save a transcript to disk based on the transcript destination setting
@@ -219,22 +236,52 @@ export default class GranolaSync extends Plugin {
     doc: GranolaDoc,
     transcriptContent: string
   ): Promise<boolean> {
+    if (!doc.id) {
+      console.error("Document missing required id field:", doc);
+      return false;
+    }
     const { filename, content } = this.documentProcessor.prepareTranscript(
       doc,
       transcriptContent
     );
-    const docId = doc.id || "unknown_id";
     const noteDate = getNoteDate(doc);
 
     // Use the original docId - transcripts now distinguished by type field in frontmatter
-    return this.saveToDisk(filename, content, noteDate, true, docId);
+    return this.saveToDisk(filename, content, noteDate, doc.id, true);
   }
 
-  private async fetchDocuments(accessToken: string): Promise<GranolaDoc[]> {
+  // Top-level sync function that handles common setup once
+  async sync(options: { mode?: "standard" | "full" } = {}) {
+    const mode = options.mode ?? "standard";
+    showStatusBar(this, "Granola sync: Syncing...");
+
+    // Load credentials at the start of each sync
+    const { accessToken, error } = await loadGranolaCredentials();
+    if (!accessToken || error) {
+      console.error("Error loading Granola credentials:", error);
+      new Notice(
+        `Granola sync error: ${error || "No access token loaded."}`,
+        10000
+      );
+      hideStatusBar(this);
+      return;
+    }
+
+    // Build the Granola ID cache before syncing
+    await this.fileSyncService.buildCache();
+
+    // Fetch documents
+    let documents: GranolaDoc[] = [];
     try {
-      return await fetchGranolaDocuments(accessToken);
+      if (mode === "full") {
+        documents = await fetchAllGranolaDocuments(accessToken);
+      } else {
+        documents = await fetchGranolaDocumentsByDaysBack(
+          accessToken,
+          this.settings.syncDaysBack
+        );
+      }
     } catch (error: unknown) {
-      console.error("Error fetching Granola documents: ", error);
       const errorStatus = (error as { status?: number })?.status;
       if (errorStatus === 401) {
         new Notice(
@@ -262,60 +309,35 @@ export default class GranolaSync extends Plugin {
           10000
         );
       }
-      console.error("API request error:", error);
-      return [];
-    }
-  }
-
-  // Top-level sync function that handles common setup once
-  async sync() {
-    showStatusBar(this, "Granola sync: Syncing...");
-
-    // Load credentials at the start of each sync
-    const { accessToken, error } = await loadGranolaCredentials();
-    if (!accessToken || error) {
-      console.error("Error loading Granola credentials:", error);
-      new Notice(
-        `Granola sync error: ${error || "No access token loaded."}`,
-        10000
-      );
+      console.error("Error fetching Granola documents: ", error);
       hideStatusBar(this);
       return;
     }
 
-    // Build the Granola ID cache before syncing
-    await this.fileSyncService.buildCache();
-
-    // Fetch documents (now handles credentials)
-    const documents = await this.fetchDocuments(accessToken);
-    if (!documents || documents.length === 0) {
-      log.debug("No documents fetched from Granola API");
-      hideStatusBar(this);
-      return;
-    }
-    log.debug(`Granola API: Fetched ${documents.length} documents from`);
-
-    // Filter documents based on syncDaysBack setting
-    const filteredDocuments = filterDocumentsByDate(
-      documents,
-      this.settings.syncDaysBack
-    );
-    log.debug(`Filtered to ${filteredDocuments.length} documents`);
-    if (filteredDocuments.length === 0) {
+    if (documents.length === 0) {
       new Notice(
-        `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
+        mode === "full"
+          ? "Granola sync: No documents returned from Granola API."
+          : `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
         5000
       );
       hideStatusBar(this);
       return;
     }
 
+    showStatusBar(this, `Granola sync: Syncing ${documents.length} documents`);
+    log.debug(
+      mode === "full"
+        ? `Granola API: fetched ${documents.length} documents (full sync)`
+        : `Granola API: fetched ${documents.length} documents within ${this.settings.syncDaysBack} day(s)`
+    );
+
     // Always sync transcripts first if enabled, so notes can link to them
     if (this.settings.syncTranscripts) {
-      await this.syncTranscripts(filteredDocuments, accessToken);
+      await this.syncTranscripts(documents, accessToken);
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(filteredDocuments);
+      await this.syncNotes(documents);
     }
 
     // Show success message
@@ -339,7 +361,7 @@ export default class GranolaSync extends Plugin {
   ): Promise<number> {
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
-
+    let processedCount = 0;
     let syncedCount = 0;
 
     for (const [dateKey, notesForDay] of dailyNotesMap) {
@@ -357,6 +379,8 @@ export default class GranolaSync extends Plugin {
         sectionHeadingSetting,
         sectionContent
       );
+      processedCount++;
+      this.updateSyncStatus("Note", processedCount, documents.length);
 
       syncedCount += notesForDay.length;
     }
@@ -367,6 +391,7 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToIndividualFiles(
     documents: GranolaDoc[]
   ): Promise<number> {
+    let processedCount = 0;
     let syncedCount = 0;
 
     for (const doc of documents) {
@@ -378,6 +403,8 @@ export default class GranolaSync extends Plugin {
       ) {
         continue;
       }
+      processedCount++;
+      this.updateSyncStatus("Note", processedCount, documents.length);
 
       if (await this.saveNoteToDisk(doc)) {
         syncedCount++;
@@ -391,6 +418,7 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     accessToken: string
   ): Promise<void> {
+    let processedCount = 0;
     let syncedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
@@ -411,6 +439,8 @@ export default class GranolaSync extends Plugin {
           doc.created_at,
           doc.updated_at
         );
+        processedCount++;
+        this.updateSyncStatus("Transcript", processedCount, documents.length);
         if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
           syncedCount++;
         }
@@ -424,15 +454,5 @@ export default class GranolaSync extends Plugin {
     }
 
     log.debug(`Saved ${syncedCount} transcript(s)`);
-
-    let locationMessage: string;
-    switch (this.settings.transcriptDestination) {
-      case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-        locationMessage = "daily note folder structure";
-        break;
-      case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-        locationMessage = `'${this.settings.granolaTranscriptsFolder}'`;
-        break;
-    }
   }
 }

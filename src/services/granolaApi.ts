@@ -33,9 +33,17 @@ export interface GranolaDoc {
 // Infer TypeScript type from validation schema
 export type TranscriptEntry = v.InferOutput<typeof TranscriptEntrySchema>;
 
+/**
+ * Fetches documents from the Granola API.
+ *
+ * Pagination: The API supports offset-based pagination via the `offset` parameter.
+ * No pagination metadata is returned in responses.
+ * Use `offset` to skip documents: offset=0 for first page, offset=limit for second page, etc.
+ */
 export async function fetchGranolaDocuments(
   accessToken: string,
-  limit: number = 100
+  limit: number = 100,
+  offset: number = 0
 ): Promise<GranolaDoc[]> {
   const response = await requestUrl({
     url: "https://api.granola.ai/v2/get-documents",
@@ -47,8 +55,8 @@ export async function fetchGranolaDocuments(
       "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
     },
     body: JSON.stringify({
-      limit: limit,
-      offset: 0,
+      limit,
+      offset,
       include_last_viewed_panel: true,
     }),
   });
@@ -64,6 +72,83 @@ export async function fetchGranolaDocuments(
   }
 }
 
+export async function fetchAllGranolaDocuments(
+  accessToken: string,
+  pageSize: number = 100
+): Promise<GranolaDoc[]> {
+  const documents: GranolaDoc[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await fetchGranolaDocuments(accessToken, pageSize, offset);
+    if (page.length === 0) {
+      break;
+    }
+
+    documents.push(...page);
+
+    if (page.length < pageSize) {
+      break;
+    }
+
+    offset += pageSize;
+  }
+
+  return documents;
+}
+
+export async function fetchGranolaDocumentsByDaysBack(
+  accessToken: string,
+  daysBack: number,
+  pageSize: number = 100
+): Promise<GranolaDoc[]> {
+  if (daysBack === 0) {
+    return fetchAllGranolaDocuments(accessToken, pageSize);
+  }
+
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+
+  const documents: GranolaDoc[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await fetchGranolaDocuments(accessToken, pageSize, offset);
+    if (page.length === 0) {
+      break;
+    }
+
+    documents.push(...page);
+
+    const hasOlderThanCutoff = page.some((doc) => {
+      const docDate = doc.created_at
+        ? new Date(doc.created_at)
+        : doc.updated_at
+        ? new Date(doc.updated_at)
+        : new Date();
+      return docDate < cutoffDate;
+    });
+
+    if (hasOlderThanCutoff || page.length < pageSize) {
+      break;
+    }
+
+    offset += pageSize;
+  }
+
+  return documents.filter((doc) => {
+    const docDate = doc.created_at
+      ? new Date(doc.created_at)
+      : doc.updated_at
+      ? new Date(doc.updated_at)
+      : new Date();
+    return docDate >= cutoffDate;
+  });
+}
+
+/**
+ * Fetches the transcript for a specific Granola document.
+ */
 export async function fetchGranolaTranscript(
   accessToken: string,
   docId: string
