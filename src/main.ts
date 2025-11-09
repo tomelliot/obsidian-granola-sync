@@ -136,6 +136,20 @@ export default class GranolaSync extends Plugin {
     }
   }
 
+  private updateSyncStatus(
+    kind: "Note" | "Transcript",
+    current: number,
+    total: number
+  ): void {
+    if (total <= 0) {
+      return;
+    }
+
+    const clampedCurrent = Math.min(Math.max(current, 1), total);
+    const label = kind === "Note" ? "note" : "Transcript";
+    showStatusBar(this, `Granola sync: ${label} ${clampedCurrent}/${total}`);
+  }
+
   // Build the Granola ID cache by scanning all markdown files in the vault
 
   // Compute the folder path for a note based on daily note settings
@@ -311,6 +325,7 @@ export default class GranolaSync extends Plugin {
       return;
     }
 
+    showStatusBar(this, `Granola sync: Syncing ${documents.length} documents`);
     log.debug(
       mode === "full"
         ? `Granola API: fetched ${documents.length} documents (full sync)`
@@ -346,7 +361,7 @@ export default class GranolaSync extends Plugin {
   ): Promise<number> {
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
-
+    let processedCount = 0;
     let syncedCount = 0;
 
     for (const [dateKey, notesForDay] of dailyNotesMap) {
@@ -364,6 +379,8 @@ export default class GranolaSync extends Plugin {
         sectionHeadingSetting,
         sectionContent
       );
+      processedCount++;
+      this.updateSyncStatus("Note", processedCount, documents.length);
 
       syncedCount += notesForDay.length;
     }
@@ -374,6 +391,7 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToIndividualFiles(
     documents: GranolaDoc[]
   ): Promise<number> {
+    let processedCount = 0;
     let syncedCount = 0;
 
     for (const doc of documents) {
@@ -385,6 +403,8 @@ export default class GranolaSync extends Plugin {
       ) {
         continue;
       }
+      processedCount++;
+      this.updateSyncStatus("Note", processedCount, documents.length);
 
       if (await this.saveNoteToDisk(doc)) {
         syncedCount++;
@@ -398,6 +418,7 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     accessToken: string
   ): Promise<void> {
+    let processedCount = 0;
     let syncedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
@@ -418,6 +439,8 @@ export default class GranolaSync extends Plugin {
           doc.created_at,
           doc.updated_at
         );
+        processedCount++;
+        this.updateSyncStatus("Transcript", processedCount, documents.length);
         if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
           syncedCount++;
         }
@@ -431,15 +454,5 @@ export default class GranolaSync extends Plugin {
     }
 
     log.debug(`Saved ${syncedCount} transcript(s)`);
-
-    let locationMessage: string;
-    switch (this.settings.transcriptDestination) {
-      case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-        locationMessage = "daily note folder structure";
-        break;
-      case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-        locationMessage = `'${this.settings.granolaTranscriptsFolder}'`;
-        break;
-    }
   }
 }
