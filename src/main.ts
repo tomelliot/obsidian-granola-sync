@@ -1,6 +1,5 @@
 import { Notice, Plugin, normalizePath } from "obsidian";
 import { getNoteDate } from "./utils/dateUtils";
-import { filterDocumentsByDate } from "./utils/documentFilter";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -9,7 +8,8 @@ import {
   TranscriptDestination,
 } from "./settings";
 import {
-  fetchGranolaDocuments,
+  fetchAllGranolaDocuments,
+  fetchGranolaDocumentsByDaysBack,
   fetchGranolaTranscript,
   GranolaDoc,
   TranscriptEntry,
@@ -236,11 +236,38 @@ export default class GranolaSync extends Plugin {
     return this.saveToDisk(filename, content, noteDate, doc.id, true);
   }
 
-  private async fetchDocuments(accessToken: string): Promise<GranolaDoc[]> {
+  // Top-level sync function that handles common setup once
+  async sync(options: { mode?: "standard" | "full" } = {}) {
+    const mode = options.mode ?? "standard";
+    showStatusBar(this, "Granola sync: Syncing...");
+
+    // Load credentials at the start of each sync
+    const { accessToken, error } = await loadGranolaCredentials();
+    if (!accessToken || error) {
+      console.error("Error loading Granola credentials:", error);
+      new Notice(
+        `Granola sync error: ${error || "No access token loaded."}`,
+        10000
+      );
+      hideStatusBar(this);
+      return;
+    }
+
+    // Build the Granola ID cache before syncing
+    await this.fileSyncService.buildCache();
+
+    // Fetch documents
+    let documents: GranolaDoc[] = [];
     try {
-      return await fetchGranolaDocuments(accessToken);
+      if (mode === "full") {
+        documents = await fetchAllGranolaDocuments(accessToken);
+      } else {
+        documents = await fetchGranolaDocumentsByDaysBack(
+          accessToken,
+          this.settings.syncDaysBack
+        );
+      }
     } catch (error: unknown) {
-      console.error("Error fetching Granola documents: ", error);
       const errorStatus = (error as { status?: number })?.status;
       if (errorStatus === 401) {
         new Notice(
@@ -268,60 +295,34 @@ export default class GranolaSync extends Plugin {
           10000
         );
       }
-      console.error("API request error:", error);
-      return [];
-    }
-  }
-
-  // Top-level sync function that handles common setup once
-  async sync() {
-    showStatusBar(this, "Granola sync: Syncing...");
-
-    // Load credentials at the start of each sync
-    const { accessToken, error } = await loadGranolaCredentials();
-    if (!accessToken || error) {
-      console.error("Error loading Granola credentials:", error);
-      new Notice(
-        `Granola sync error: ${error || "No access token loaded."}`,
-        10000
-      );
+      console.error("Error fetching Granola documents: ", error);
       hideStatusBar(this);
       return;
     }
 
-    // Build the Granola ID cache before syncing
-    await this.fileSyncService.buildCache();
-
-    // Fetch documents
-    const documents = await this.fetchDocuments(accessToken);
-    if (!documents || documents.length === 0) {
-      log.debug("No documents fetched from Granola API");
-      hideStatusBar(this);
-      return;
-    }
-    log.debug(`Granola API: Fetched ${documents.length} documents from`);
-
-    // Filter documents based on syncDaysBack setting
-    const filteredDocuments = filterDocumentsByDate(
-      documents,
-      this.settings.syncDaysBack
-    );
-    log.debug(`Filtered to ${filteredDocuments.length} documents`);
-    if (filteredDocuments.length === 0) {
+    if (documents.length === 0) {
       new Notice(
-        `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
+        mode === "full"
+          ? "Granola sync: No documents returned from Granola API."
+          : `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
         5000
       );
       hideStatusBar(this);
       return;
     }
 
+    log.debug(
+      mode === "full"
+        ? `Granola API: fetched ${documents.length} documents (full sync)`
+        : `Granola API: fetched ${documents.length} documents within ${this.settings.syncDaysBack} day(s)`
+    );
+
     // Always sync transcripts first if enabled, so notes can link to them
     if (this.settings.syncTranscripts) {
-      await this.syncTranscripts(filteredDocuments, accessToken);
+      await this.syncTranscripts(documents, accessToken);
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(filteredDocuments);
+      await this.syncNotes(documents);
     }
 
     // Show success message
