@@ -95,33 +95,21 @@ export class FileSyncService {
    *
    * @param filePath - The full path where the file should be saved
    * @param content - The content to write to the file
-   * @param granolaId - Optional Granola ID for caching
+   * @param granolaId - Granola ID for caching and deduplication
    * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
    * @returns True if the file was created or modified, false if no change or error
    */
   async saveFile(
     filePath: string,
     content: string,
-    granolaId?: string,
+    granolaId: string,
     type: "note" | "transcript" = "note"
   ): Promise<boolean> {
     try {
       const normalizedPath = normalizePath(filePath);
 
-      // First, check if a file with this Granola ID already exists anywhere in the vault
-      let existingFile: TFile | null = null;
-      if (granolaId) {
-        existingFile = this.findByGranolaId(granolaId, type);
-      }
-
-      // If no file found by Granola ID, check by path
-      if (!existingFile) {
-        const fileByPath = this.app.vault.getAbstractFileByPath(normalizedPath);
-        // Check if it's a TFile (has extension property, not a folder)
-        if (fileByPath && "extension" in fileByPath) {
-          existingFile = fileByPath as TFile;
-        }
-      }
+      // Check if a file with this Granola ID already exists anywhere in the vault
+      const existingFile = this.findByGranolaId(granolaId, type);
 
       if (existingFile) {
         const existingContent = await this.app.vault.read(existingFile);
@@ -149,6 +137,7 @@ export class FileSyncService {
           return false; // No change needed
         }
       } else {
+        // File doesn't exist yet, create it
         const newFile = await this.app.vault.create(normalizedPath, content);
         this.updateCache(granolaId, newFile, type);
         return true; // New file created

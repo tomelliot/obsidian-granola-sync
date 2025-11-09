@@ -181,8 +181,8 @@ export default class GranolaSync extends Plugin {
     filename: string,
     content: string,
     noteDate: Date,
-    isTranscript: boolean = false,
-    granolaId?: string
+    granolaId: string,
+    isTranscript: boolean = false
   ): Promise<boolean> {
     // Resolve the folder path
     const folderPath = this.resolveFolderPath(noteDate, isTranscript);
@@ -207,11 +207,14 @@ export default class GranolaSync extends Plugin {
 
   // Save a note to disk based on the sync destination setting
   private async saveNoteToDisk(doc: GranolaDoc): Promise<boolean> {
+    if (!doc.id) {
+      console.error("Document missing required id field:", doc);
+      return false;
+    }
     const { filename, content } = this.documentProcessor.prepareNote(doc);
-    const docId = doc.id || "unknown_id";
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(filename, content, noteDate, false, docId);
+    return this.saveToDisk(filename, content, noteDate, doc.id, false);
   }
 
   // Save a transcript to disk based on the transcript destination setting
@@ -219,15 +222,18 @@ export default class GranolaSync extends Plugin {
     doc: GranolaDoc,
     transcriptContent: string
   ): Promise<boolean> {
+    if (!doc.id) {
+      console.error("Document missing required id field:", doc);
+      return false;
+    }
     const { filename, content } = this.documentProcessor.prepareTranscript(
       doc,
       transcriptContent
     );
-    const docId = doc.id || "unknown_id";
     const noteDate = getNoteDate(doc);
 
     // Use the original docId - transcripts now distinguished by type field in frontmatter
-    return this.saveToDisk(filename, content, noteDate, true, docId);
+    return this.saveToDisk(filename, content, noteDate, doc.id, true);
   }
 
   private async fetchDocuments(accessToken: string): Promise<GranolaDoc[]> {

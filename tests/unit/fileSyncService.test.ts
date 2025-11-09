@@ -198,7 +198,8 @@ describe("FileSyncService", () => {
 
     it("should update existing file when content changes", async () => {
       const mockFile = { path: "existing.md", extension: "md" } as TFile;
-      mockApp.vault.getAbstractFileByPath.mockReturnValue(mockFile);
+      // Pre-populate cache with existing file
+      fileSyncService.updateCache("id-1", mockFile);
       mockApp.vault.read.mockResolvedValue("old content");
       mockApp.vault.modify.mockResolvedValue(undefined);
 
@@ -217,7 +218,8 @@ describe("FileSyncService", () => {
 
     it("should return false when content is unchanged", async () => {
       const mockFile = { path: "existing.md", extension: "md" } as TFile;
-      mockApp.vault.getAbstractFileByPath.mockReturnValue(mockFile);
+      // Pre-populate cache with existing file
+      fileSyncService.updateCache("id-1", mockFile);
       mockApp.vault.read.mockResolvedValue("same content");
 
       const result = await fileSyncService.saveFile(
@@ -279,7 +281,11 @@ describe("FileSyncService", () => {
       mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
       mockApp.vault.create.mockRejectedValue(new Error("Disk full"));
 
-      const result = await fileSyncService.saveFile("new.md", "content");
+      const result = await fileSyncService.saveFile(
+        "new.md",
+        "content",
+        "id-1"
+      );
 
       expect(result).toBe(false);
     });
@@ -344,7 +350,10 @@ describe("FileSyncService", () => {
 
     it("should save and retrieve files by type", async () => {
       const mockNote = { path: "note.md", extension: "md" } as TFile;
-      const mockTranscript = { path: "transcript.md", extension: "md" } as TFile;
+      const mockTranscript = {
+        path: "transcript.md",
+        extension: "md",
+      } as TFile;
 
       mockApp.vault.getAbstractFileByPath
         .mockReturnValueOnce(null)
@@ -354,7 +363,12 @@ describe("FileSyncService", () => {
         .mockResolvedValueOnce(mockTranscript);
 
       // Save a note
-      await fileSyncService.saveFile("note.md", "note content", "doc-123", "note");
+      await fileSyncService.saveFile(
+        "note.md",
+        "note content",
+        "doc-123",
+        "note"
+      );
 
       // Save a transcript with same granola_id
       await fileSyncService.saveFile(
@@ -395,11 +409,9 @@ describe("FileSyncService", () => {
     it("should handle file update with type parameter", async () => {
       const mockFile = { path: "existing.md", extension: "md" } as TFile;
 
-      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
-      mockApp.vault.read.mockResolvedValue("old content");
-      mockApp.vault.modify.mockResolvedValue(undefined);
-
       // First save to populate cache
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+      mockApp.vault.create.mockResolvedValue(mockFile);
       await fileSyncService.saveFile(
         "existing.md",
         "old content",
@@ -407,10 +419,11 @@ describe("FileSyncService", () => {
         "note"
       );
 
-      // Manually add to mock vault for second call
-      mockApp.vault.getAbstractFileByPath.mockReturnValue(mockFile);
+      // Clear the mock for the second call
+      mockApp.vault.read.mockResolvedValue("old content");
+      mockApp.vault.modify.mockResolvedValue(undefined);
 
-      // Update with same type should find existing file
+      // Update with same type should find existing file from cache
       const result = await fileSyncService.saveFile(
         "existing.md",
         "new content",
@@ -419,7 +432,10 @@ describe("FileSyncService", () => {
       );
 
       expect(result).toBe(true);
-      expect(mockApp.vault.modify).toHaveBeenCalledWith(mockFile, "new content");
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(
+        mockFile,
+        "new content"
+      );
     });
   });
 });
