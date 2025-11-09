@@ -9,13 +9,22 @@ let server: http.Server | null = null;
 
 function getTokenFilePath(): string {
   if (Platform.isWin) {
-    return path.resolve("AppData/Roaming/Granola/supabase.json");
+    return path.join(
+      os.homedir(),
+      "AppData",
+      "Roaming",
+      "Granola",
+      "supabase.json"
+    );
   } else if (Platform.isLinux) {
-    return ".config/Granola/supabase.json";
+    return path.join(os.homedir(), ".config", "Granola", "supabase.json");
   } else {
     return path.join(
       os.homedir(),
-      "Library/Application Support/Granola/supabase.json"
+      "Library",
+      "Application Support",
+      "Granola",
+      "supabase.json"
     );
   }
 }
