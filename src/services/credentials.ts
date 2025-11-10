@@ -38,11 +38,7 @@ export async function startCredentialsServer(): Promise<void> {
     process.on("SIGTERM", stopCredentialsServer);
     process.on("exit", stopCredentialsServer);
 
-    console.log(
-      `[GranolaCredentials] Attempting to start credentials server for file at ${filePath}`
-    );
     server = http.createServer((req, res) => {
-      console.log("Credentials server: Received request", req.url);
       if (req.url === "/supabase.json" || req.url === "/") {
         fs.readFile(filePath, (err, data) => {
           if (err) {
@@ -70,14 +66,10 @@ export async function startCredentialsServer(): Promise<void> {
 
     server.on("error", (err) => {
       console.error("[GranolaCredentials] Server startup error:", err);
-      log.debug("Credentials server: Startup error", err);
       reject(err);
     });
 
     server.listen(2590, "127.0.0.1", () => {
-      console.log(
-        "[GranolaCredentials] Credentials server started at http://127.0.0.1:2590/"
-      );
       log.debug("Credentials server: Started");
       resolve();
     });
@@ -86,10 +78,8 @@ export async function startCredentialsServer(): Promise<void> {
 
 export function stopCredentialsServer() {
   if (server) {
-    console.log("[GranolaCredentials] Stopping credentials server");
     server.close(() => {
       server = null;
-      console.log("[GranolaCredentials] Credentials server stopped");
       log.debug("Credentials server: Stopped");
     });
   }
@@ -114,7 +104,6 @@ export async function loadCredentials(): Promise<{
       serverError instanceof Error ? serverError.message : String(serverError);
     tokenLoadError = `Failed to start credentials server: ${errorMessage}`;
     console.error("Server startup error:", serverError);
-    log.debug("Credentials server: Failed to start", serverError);
     return { accessToken, error: tokenLoadError };
   }
 
@@ -140,13 +129,11 @@ export async function loadCredentials(): Promise<{
     } catch (parseError) {
       console.error(`Failed to parse response: `, response);
       console.error(`Failed to parse response: `, response.json);
-      log.debug("Credentials server: Failed to parse response", parseError);
+      console.error("Token response parse error:", parseError);
       tokenLoadError =
         "Invalid JSON format in credentials response. Please ensure the server returns valid JSON.";
-      console.error("Token response parse error:", parseError);
     }
   } catch (error) {
-    log.debug("Credentials server: Failed to load credentials", error);
     tokenLoadError =
       "Failed to load credentials from http://127.0.0.1:2590/. Please check if the credentials server is running.";
     console.error("Credentials loading error:", error);
