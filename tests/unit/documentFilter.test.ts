@@ -6,8 +6,16 @@ jest.mock("../../src/utils/dateUtils");
 import { getNoteDate } from "../../src/utils/dateUtils";
 
 describe("documentFilter", () => {
+  const fixedNow = new Date("2024-03-01T12:00:00Z");
+
   beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(fixedNow);
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   describe("filterDocumentsByDate", () => {
@@ -74,9 +82,7 @@ describe("documentFilter", () => {
       const eightDaysAgo = new Date(today);
       eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
 
-      const documents: GranolaDoc[] = [
-        { id: "doc-1", title: "Too Old Note" },
-      ];
+      const documents: GranolaDoc[] = [{ id: "doc-1", title: "Too Old Note" }];
 
       (getNoteDate as jest.Mock).mockReturnValue(eightDaysAgo);
 
@@ -161,9 +167,7 @@ describe("documentFilter", () => {
     });
 
     it("should handle large daysBack values", () => {
-      const documents: GranolaDoc[] = [
-        { id: "doc-1", title: "Note" },
-      ];
+      const documents: GranolaDoc[] = [{ id: "doc-1", title: "Note" }];
 
       (getNoteDate as jest.Mock).mockReturnValue(new Date("2020-01-01"));
 
