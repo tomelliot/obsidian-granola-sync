@@ -1,5 +1,6 @@
 import { Notice, Plugin, normalizePath } from "obsidian";
 import { getNoteDate } from "./utils/dateUtils";
+import { getTitleOrDefault } from "./utils/filenameUtils";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -422,7 +423,7 @@ export default class GranolaSync extends Plugin {
     let syncedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
-      const title = doc.title || "Untitled Granola Note";
+      const title = getTitleOrDefault(doc);
       try {
         const transcriptData: TranscriptEntry[] = await fetchGranolaTranscript(
           accessToken,

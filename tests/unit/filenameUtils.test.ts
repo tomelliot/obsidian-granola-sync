@@ -1,4 +1,5 @@
-import { sanitizeFilename } from "../../src/utils/filenameUtils";
+import { sanitizeFilename, getTitleOrDefault } from "../../src/utils/filenameUtils";
+import { GranolaDoc } from "../../src/services/granolaApi";
 
 describe("sanitizeFilename", () => {
   it("should remove invalid characters", () => {
@@ -67,5 +68,27 @@ describe("sanitizeFilename", () => {
     const result = sanitizeFilename(filename);
     expect(result.length).toBe(200);
     expect(result).toBe("b".repeat(200));
+  });
+});
+
+describe("getTitleOrDefault", () => {
+  it("should return the document title when it exists", () => {
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "My Meeting Notes",
+    };
+
+    const result = getTitleOrDefault(doc);
+    expect(result).toBe("My Meeting Notes");
+  });
+
+  it("should return default title with timestamp when title is missing", () => {
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      created_at: "2024-01-15T10:30:00Z",
+    };
+
+    const result = getTitleOrDefault(doc);
+    expect(result).toMatch(/^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}$/);
   });
 });
