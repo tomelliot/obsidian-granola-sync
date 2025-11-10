@@ -1,4 +1,4 @@
-import { Notice, Plugin, normalizePath } from "obsidian";
+import { Notice, Plugin } from "obsidian";
 import { getTitleOrDefault } from "./utils/filenameUtils";
 import {
   GranolaSyncSettings,
@@ -51,7 +51,8 @@ export default class GranolaSync extends Plugin {
     });
     this.fileSyncService = new FileSyncService(
       this.app,
-      this.resolveFolderPath.bind(this)
+      this.pathResolver,
+      () => this.settings
     );
     this.documentProcessor = new DocumentProcessor(
       {
@@ -156,39 +157,6 @@ export default class GranolaSync extends Plugin {
   // Build the Granola ID cache by scanning all markdown files in the vault
 
   // Compute the folder path for a note based on daily note settings
-
-  /**
-   * Resolves the folder path for a file based on settings and file type.
-   */
-  private resolveFolderPath(
-    noteDate: Date,
-    isTranscript: boolean
-  ): string | null {
-    if (isTranscript) {
-      // Handle transcript destinations
-      switch (this.settings.transcriptDestination) {
-        case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-          return this.pathResolver.computeDailyNoteFolderPath(noteDate);
-        case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-          return normalizePath(this.settings.granolaTranscriptsFolder);
-      }
-    } else {
-      // Handle note destinations
-      switch (this.settings.syncDestination) {
-        case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-          return this.pathResolver.computeDailyNoteFolderPath(noteDate);
-        case SyncDestination.GRANOLA_FOLDER:
-          return normalizePath(this.settings.granolaFolder);
-        default:
-          // This shouldn't happen for individual files
-          new Notice(
-            `Invalid sync destination for individual files: ${this.settings.syncDestination}`,
-            7000
-          );
-          return null;
-      }
-    }
-  }
 
   // Top-level sync function that handles common setup once
   async sync(options: { mode?: "standard" | "full" } = {}) {

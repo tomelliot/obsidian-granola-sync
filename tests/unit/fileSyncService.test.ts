@@ -2,14 +2,20 @@ import { App, TFile } from "obsidian";
 import { FileSyncService } from "../../src/services/fileSyncService";
 import type { GranolaDoc } from "../../src/services/granolaApi";
 import type { DocumentProcessor } from "../../src/services/documentProcessor";
+import type { PathResolver } from "../../src/services/pathResolver";
+import {
+  DEFAULT_SETTINGS,
+  GranolaSyncSettings,
+  SyncDestination,
+  TranscriptDestination,
+} from "../../src/settings";
 import * as dateUtils from "../../src/utils/dateUtils";
 
 describe("FileSyncService", () => {
   let mockApp: jest.Mocked<App>;
   let fileSyncService: FileSyncService;
-  let resolveFolderPath: jest.Mock<
-    (noteDate: Date, isTranscript: boolean) => string | null
-  >;
+  let mockSettings: GranolaSyncSettings;
+  let mockPathResolver: jest.Mocked<PathResolver>;
 
   beforeEach(() => {
     // Suppress console output for error handling tests
@@ -33,8 +39,24 @@ describe("FileSyncService", () => {
       },
     } as any;
 
-    resolveFolderPath = jest.fn(() => "granola-folder");
-    fileSyncService = new FileSyncService(mockApp, resolveFolderPath);
+    mockPathResolver = {
+      computeDailyNoteFolderPath: jest.fn().mockReturnValue("daily-folder"),
+      computeTranscriptPath: jest.fn(),
+    } as unknown as jest.Mocked<PathResolver>;
+
+    mockSettings = {
+      ...DEFAULT_SETTINGS,
+      syncDestination: SyncDestination.GRANOLA_FOLDER,
+      granolaFolder: "granola-folder",
+      transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
+      granolaTranscriptsFolder: "granola-transcripts",
+    };
+
+    fileSyncService = new FileSyncService(
+      mockApp,
+      mockPathResolver,
+      () => mockSettings
+    );
   });
 
   afterEach(() => {
@@ -185,7 +207,7 @@ describe("FileSyncService", () => {
 
   describe("saveToDisk", () => {
     it("should return false when folder path cannot be resolved", async () => {
-      resolveFolderPath.mockReturnValueOnce(null);
+      mockSettings.syncDestination = "invalid" as SyncDestination;
       const ensureFolderSpy = jest.spyOn(fileSyncService, "ensureFolder");
       const saveFileSpy = jest.spyOn(fileSyncService, "saveFile");
 
@@ -202,6 +224,7 @@ describe("FileSyncService", () => {
     });
 
     it("should ensure folder and delegate to saveFile when no conflicts", async () => {
+      mockSettings.syncDestination = SyncDestination.GRANOLA_FOLDER;
       jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
       const saveFileSpy = jest
         .spyOn(fileSyncService, "saveFile")
@@ -215,7 +238,6 @@ describe("FileSyncService", () => {
       );
 
       expect(result).toBe(true);
-      expect(resolveFolderPath).toHaveBeenCalledWith(expect.any(Date), false);
       expect(fileSyncService.ensureFolder).toHaveBeenCalledWith(
         "granola-folder"
       );
