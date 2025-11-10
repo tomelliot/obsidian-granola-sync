@@ -1,6 +1,15 @@
 export const requestUrl = jest.fn();
 export const normalizePath = (path: string) => path.replace(/\\/g, "/");
 export const App = jest.fn();
+export class TFile {
+  path: string;
+  extension: string;
+
+  constructor(path: string = "", extension: string = "md") {
+    this.path = path;
+    this.extension = extension;
+  }
+}
 export const Editor = jest.fn();
 export const MarkdownView = jest.fn();
 export const Modal = jest.fn();

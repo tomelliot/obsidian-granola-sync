@@ -12,7 +12,10 @@ export class FileSyncService {
 
   constructor(
     private app: App,
-    private resolveFolderPath: (noteDate: Date, isTranscript: boolean) => string | null
+    private resolveFolderPath: (
+      noteDate: Date,
+      isTranscript: boolean
+    ) => string | null
   ) {}
 
   /**
