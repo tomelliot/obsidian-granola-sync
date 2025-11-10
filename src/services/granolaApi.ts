@@ -25,6 +25,13 @@ export interface GranolaDoc {
   title: string | null;
   created_at?: string;
   updated_at?: string;
+  attendees?: string[];
+  people?: {
+    attendees?: Array<{
+      name?: string;
+      email?: string;
+    }>;
+  };
   last_viewed_panel?: {
     content?: ProseMirrorDoc | string | null;
   } | null;
