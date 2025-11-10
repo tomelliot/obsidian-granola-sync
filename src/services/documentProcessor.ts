@@ -1,6 +1,6 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
-import { sanitizeFilename } from "../utils/filenameUtils";
+import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
 import { getNoteDate } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
 import { TranscriptSettings } from "../settings";
@@ -34,7 +34,7 @@ export class DocumentProcessor {
       throw new Error("Document has no valid content to parse");
     }
 
-    const title = doc.title || "Untitled Granola Note";
+    const title = getTitleOrDefault(doc);
     const docId = doc.id || "unknown_id";
     const markdownContent = convertProsemirrorToMarkdown(contentToParse);
 
@@ -84,7 +84,7 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     transcriptContent: string
   ): { filename: string; content: string } {
-    const title = doc.title || "Untitled Granola Note";
+    const title = getTitleOrDefault(doc);
     const filename = sanitizeFilename(title) + "-transcript.md";
 
     return { filename, content: transcriptContent };
@@ -112,7 +112,7 @@ export class DocumentProcessor {
       return null;
     }
 
-    const title = doc.title || "Untitled Granola Note";
+    const title = getTitleOrDefault(doc);
     const docId = doc.id || "unknown_id";
     const markdownContent = convertProsemirrorToMarkdown(contentToParse);
 

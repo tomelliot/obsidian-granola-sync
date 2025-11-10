@@ -9,7 +9,7 @@ jest.mock("../../src/utils/filenameUtils");
 jest.mock("../../src/utils/dateUtils");
 
 import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMarkdown";
-import { sanitizeFilename } from "../../src/utils/filenameUtils";
+import { sanitizeFilename, getTitleOrDefault } from "../../src/utils/filenameUtils";
 import { getNoteDate } from "../../src/utils/dateUtils";
 
 describe("DocumentProcessor", () => {
@@ -23,6 +23,9 @@ describe("DocumentProcessor", () => {
     );
     (sanitizeFilename as jest.Mock).mockImplementation((title: string) =>
       title.replace(/[^a-zA-Z0-9\s\-_]/g, "").trim()
+    );
+    (getTitleOrDefault as jest.Mock).mockImplementation((doc: GranolaDoc) =>
+      doc.title || "Untitled Granola Note at 2024-01-15 00-00"
     );
     (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15"));
 
@@ -175,7 +178,7 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      expect(result.content).toContain('title: "Untitled Granola Note"');
+      expect(result.content).toContain('title: "Untitled Granola Note at 2024-01-15 00-00"');
     });
 
     it("should throw error when document has no valid content", () => {
@@ -229,7 +232,7 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareTranscript(doc, transcriptContent);
 
-      expect(result.filename).toBe("Untitled Granola Note-transcript.md");
+      expect(result.filename).toBe("Untitled Granola Note at 2024-01-15 00-00-transcript.md");
     });
   });
 

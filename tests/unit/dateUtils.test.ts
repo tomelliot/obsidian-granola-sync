@@ -1,4 +1,4 @@
-import { getNoteDate } from "../../src/utils/dateUtils";
+import { getNoteDate, formatDateForFilename } from "../../src/utils/dateUtils";
 import { GranolaDoc } from "../../src/services/granolaApi";
 
 describe("getNoteDate", () => {
@@ -89,5 +89,27 @@ describe("getNoteDate", () => {
 
     const result = getNoteDate(doc);
     expect(isNaN(result.getTime())).toBe(true);
+  });
+});
+
+describe("formatDateForFilename", () => {
+  it("should format date with correct pattern YYYY-MM-DD HH-MM", () => {
+    const date = new Date(2024, 0, 15, 10, 30); // Use local time
+    const result = formatDateForFilename(date);
+    expect(result).toBe("2024-01-15 10-30");
+  });
+
+  it("should pad single digit months and days with zeros", () => {
+    const date = new Date(2024, 2, 5, 8, 7);
+    const result = formatDateForFilename(date);
+    expect(result).toBe("2024-03-05 08-07");
+  });
+
+  it("should produce filename-safe strings (no colons or slashes)", () => {
+    const date = new Date(2024, 6, 20, 14, 45);
+    const result = formatDateForFilename(date);
+    expect(result).not.toContain(":");
+    expect(result).not.toContain("/");
+    expect(result).toMatch(/^[\w\s-]+$/); // Only word chars, spaces, and hyphens
   });
 });
