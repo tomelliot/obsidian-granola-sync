@@ -9,13 +9,22 @@ let server: http.Server | null = null;
 
 function getTokenFilePath(): string {
   if (Platform.isWin) {
-    return path.resolve("AppData/Roaming/Granola/supabase.json");
+    return path.join(
+      os.homedir(),
+      "AppData",
+      "Roaming",
+      "Granola",
+      "supabase.json"
+    );
   } else if (Platform.isLinux) {
-    return ".config/Granola/supabase.json";
+    return path.join(os.homedir(), ".config", "Granola", "supabase.json");
   } else {
     return path.join(
       os.homedir(),
-      "Library/Application Support/Granola/supabase.json"
+      "Library",
+      "Application Support",
+      "Granola",
+      "supabase.json"
     );
   }
 }
@@ -33,10 +42,10 @@ export async function startCredentialsServer(): Promise<void> {
       if (req.url === "/supabase.json" || req.url === "/") {
         fs.readFile(filePath, (err, data) => {
           if (err) {
-            log.debug("Credentials server: File not found", err.message);
+            const errorMessage = `Failed to read credentials file at ${filePath}: ${err.message}`;
+            console.error(`[GranolaCredentials] ${errorMessage}`);
             res.writeHead(404, { "Content-Type": "text/plain" });
-            res.write(err.message);
-            res.end("File not found");
+            res.end(errorMessage);
           } else {
             log.debug(
               "Credentials server: Successfully served credentials file"
@@ -46,14 +55,17 @@ export async function startCredentialsServer(): Promise<void> {
           }
         });
       } else {
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Not found");
+        const message = `Unsupported credentials server route: ${
+          req.url ?? "unknown"
+        }`;
+        console.error(`[GranolaCredentials] ${message}`);
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end(message);
       }
     });
 
     server.on("error", (err) => {
-      console.error("Server startup error:", err);
-      log.debug("Credentials server: Startup error", err);
+      console.error("[GranolaCredentials] Server startup error:", err);
       reject(err);
     });
 
@@ -92,7 +104,6 @@ export async function loadCredentials(): Promise<{
       serverError instanceof Error ? serverError.message : String(serverError);
     tokenLoadError = `Failed to start credentials server: ${errorMessage}`;
     console.error("Server startup error:", serverError);
-    log.debug("Credentials server: Failed to start", serverError);
     return { accessToken, error: tokenLoadError };
   }
 
@@ -118,13 +129,11 @@ export async function loadCredentials(): Promise<{
     } catch (parseError) {
       console.error(`Failed to parse response: `, response);
       console.error(`Failed to parse response: `, response.json);
-      log.debug("Credentials server: Failed to parse response", parseError);
+      console.error("Token response parse error:", parseError);
       tokenLoadError =
         "Invalid JSON format in credentials response. Please ensure the server returns valid JSON.";
-      console.error("Token response parse error:", parseError);
     }
   } catch (error) {
-    log.debug("Credentials server: Failed to load credentials", error);
     tokenLoadError =
       "Failed to load credentials from http://127.0.0.1:2590/. Please check if the credentials server is running.";
     console.error("Credentials loading error:", error);
