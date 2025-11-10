@@ -1,5 +1,4 @@
-import { Notice, Plugin, TFile, normalizePath } from "obsidian";
-import { getNoteDate, formatDateForFilename } from "./utils/dateUtils";
+import { Notice, Plugin, normalizePath } from "obsidian";
 import { getTitleOrDefault } from "./utils/filenameUtils";
 import {
   GranolaSyncSettings,
@@ -50,7 +49,10 @@ export default class GranolaSync extends Plugin {
       transcriptDestination: this.settings.transcriptDestination,
       granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
     });
-    this.fileSyncService = new FileSyncService(this.app);
+    this.fileSyncService = new FileSyncService(
+      this.app,
+      this.resolveFolderPath.bind(this)
+    );
     this.documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: this.settings.syncTranscripts,
@@ -186,82 +188,6 @@ export default class GranolaSync extends Plugin {
           return null;
       }
     }
-  }
-
-  /**
-   * Generic save to disk method that resolves the folder path and delegates to FileSyncService.
-   * Returns: true if a new file was created or an existing file was updated, false if skipped or error
-   */
-  private async saveToDisk(
-    filename: string,
-    content: string,
-    noteDate: Date,
-    granolaId: string,
-    isTranscript: boolean = false
-  ): Promise<boolean> {
-    // Resolve the folder path
-    const folderPath = this.resolveFolderPath(noteDate, isTranscript);
-    if (!folderPath) {
-      return false;
-    }
-
-    // Ensure the folder exists
-    if (!(await this.fileSyncService.ensureFolder(folderPath))) {
-      new Notice(
-        `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
-        7000
-      );
-      return false;
-    }
-
-    // Build the full file path and delegate to FileSyncService
-    const type = isTranscript ? "transcript" : "note";
-    let resolvedFilename = filename;
-    let filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
-
-    // If this Granola ID is new and a file already exists at the path, append the created date
-    if (!this.fileSyncService.findByGranolaId(granolaId, type)) {
-      const existingFile = this.app.vault.getAbstractFileByPath(filePath);
-      if (existingFile instanceof TFile) {
-        const filenameWithoutExtension = resolvedFilename.replace(/\.md$/, "");
-        const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
-        resolvedFilename = `${filenameWithoutExtension}-${dateSuffix}.md`;
-        filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
-      }
-    }
-
-    return this.fileSyncService.saveFile(filePath, content, granolaId, type);
-  }
-
-  // Save a note to disk based on the sync destination setting
-  private async saveNoteToDisk(doc: GranolaDoc): Promise<boolean> {
-    if (!doc.id) {
-      console.error("Document missing required id field:", doc);
-      return false;
-    }
-    const { filename, content } = this.documentProcessor.prepareNote(doc);
-    const noteDate = getNoteDate(doc);
-
-    return this.saveToDisk(filename, content, noteDate, doc.id, false);
-  }
-
-  // Save a transcript to disk based on the transcript destination setting
-  private async saveTranscriptToDisk(
-    doc: GranolaDoc,
-    transcriptContent: string
-  ): Promise<boolean> {
-    if (!doc.id) {
-      console.error("Document missing required id field:", doc);
-      return false;
-    }
-    const { filename, content } = this.documentProcessor.prepareTranscript(
-      doc,
-      transcriptContent
-    );
-    const noteDate = getNoteDate(doc);
-
-    // Use the original docId - transcripts now distinguished by type field in frontmatter
-    return this.saveToDisk(filename, content, noteDate, doc.id, true);
   }
 
   // Top-level sync function that handles common setup once
@@ -420,7 +346,9 @@ export default class GranolaSync extends Plugin {
       processedCount++;
       this.updateSyncStatus("Note", processedCount, documents.length);
 
-      if (await this.saveNoteToDisk(doc)) {
+      if (
+        await this.fileSyncService.saveNoteToDisk(doc, this.documentProcessor)
+      ) {
         syncedCount++;
       }
     }
@@ -455,7 +383,13 @@ export default class GranolaSync extends Plugin {
         );
         processedCount++;
         this.updateSyncStatus("Transcript", processedCount, documents.length);
-        if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
+        if (
+          await this.fileSyncService.saveTranscriptToDisk(
+            doc,
+            transcriptMd,
+            this.documentProcessor
+          )
+        ) {
           syncedCount++;
         }
       } catch (e) {

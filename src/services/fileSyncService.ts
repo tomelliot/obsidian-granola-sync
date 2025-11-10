@@ -1,4 +1,7 @@
 import { App, Notice, TFile, normalizePath } from "obsidian";
+import type { GranolaDoc } from "./granolaApi";
+import type { DocumentProcessor } from "./documentProcessor";
+import { getNoteDate, formatDateForFilename } from "../utils/dateUtils";
 
 /**
  * Service for handling file synchronization operations including
@@ -7,7 +10,10 @@ import { App, Notice, TFile, normalizePath } from "obsidian";
 export class FileSyncService {
   private granolaIdCache: Map<string, TFile> = new Map();
 
-  constructor(private app: App) {}
+  constructor(
+    private app: App,
+    private resolveFolderPath: (noteDate: Date, isTranscript: boolean) => string | null
+  ) {}
 
   /**
    * Builds a cache of Granola IDs to file mappings by scanning all markdown files
@@ -147,6 +153,84 @@ export class FileSyncService {
       console.error("Error saving file to disk:", e);
       return false;
     }
+  }
+
+  /**
+   * Saves or updates a prepared document to disk by resolving its target path.
+   */
+  async saveToDisk(
+    filename: string,
+    content: string,
+    noteDate: Date,
+    granolaId: string,
+    isTranscript: boolean = false
+  ): Promise<boolean> {
+    const folderPath = this.resolveFolderPath(noteDate, isTranscript);
+    if (!folderPath) {
+      return false;
+    }
+
+    if (!(await this.ensureFolder(folderPath))) {
+      new Notice(
+        `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
+        7000
+      );
+      return false;
+    }
+
+    const type = isTranscript ? "transcript" : "note";
+    let resolvedFilename = filename;
+    let filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
+
+    if (!this.findByGranolaId(granolaId, type)) {
+      const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+      if (existingFile instanceof TFile) {
+        const filenameWithoutExtension = resolvedFilename.replace(/\.md$/, "");
+        const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
+        resolvedFilename = `${filenameWithoutExtension}-${dateSuffix}.md`;
+        filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
+      }
+    }
+
+    return this.saveFile(filePath, content, granolaId, type);
+  }
+
+  /**
+   * Prepares and saves a Granola note to disk.
+   */
+  async saveNoteToDisk(
+    doc: GranolaDoc,
+    documentProcessor: DocumentProcessor
+  ): Promise<boolean> {
+    if (!doc.id) {
+      console.error("Document missing required id field:", doc);
+      return false;
+    }
+    const { filename, content } = documentProcessor.prepareNote(doc);
+    const noteDate = getNoteDate(doc);
+
+    return this.saveToDisk(filename, content, noteDate, doc.id, false);
+  }
+
+  /**
+   * Prepares and saves a Granola transcript to disk.
+   */
+  async saveTranscriptToDisk(
+    doc: GranolaDoc,
+    transcriptContent: string,
+    documentProcessor: DocumentProcessor
+  ): Promise<boolean> {
+    if (!doc.id) {
+      console.error("Document missing required id field:", doc);
+      return false;
+    }
+    const { filename, content } = documentProcessor.prepareTranscript(
+      doc,
+      transcriptContent
+    );
+    const noteDate = getNoteDate(doc);
+
+    return this.saveToDisk(filename, content, noteDate, doc.id, true);
   }
 
   /**
