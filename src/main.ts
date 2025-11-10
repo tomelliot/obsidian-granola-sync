@@ -1,5 +1,4 @@
-import { Notice, Plugin, normalizePath } from "obsidian";
-import { getNoteDate } from "./utils/dateUtils";
+import { Notice, Plugin } from "obsidian";
 import { getTitleOrDefault } from "./utils/filenameUtils";
 import {
   GranolaSyncSettings,
@@ -50,7 +49,11 @@ export default class GranolaSync extends Plugin {
       transcriptDestination: this.settings.transcriptDestination,
       granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
     });
-    this.fileSyncService = new FileSyncService(this.app);
+    this.fileSyncService = new FileSyncService(
+      this.app,
+      this.pathResolver,
+      () => this.settings
+    );
     this.documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: this.settings.syncTranscripts,
@@ -154,102 +157,6 @@ export default class GranolaSync extends Plugin {
   // Build the Granola ID cache by scanning all markdown files in the vault
 
   // Compute the folder path for a note based on daily note settings
-
-  /**
-   * Resolves the folder path for a file based on settings and file type.
-   */
-  private resolveFolderPath(
-    noteDate: Date,
-    isTranscript: boolean
-  ): string | null {
-    if (isTranscript) {
-      // Handle transcript destinations
-      switch (this.settings.transcriptDestination) {
-        case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-          return this.pathResolver.computeDailyNoteFolderPath(noteDate);
-        case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-          return normalizePath(this.settings.granolaTranscriptsFolder);
-      }
-    } else {
-      // Handle note destinations
-      switch (this.settings.syncDestination) {
-        case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-          return this.pathResolver.computeDailyNoteFolderPath(noteDate);
-        case SyncDestination.GRANOLA_FOLDER:
-          return normalizePath(this.settings.granolaFolder);
-        default:
-          // This shouldn't happen for individual files
-          new Notice(
-            `Invalid sync destination for individual files: ${this.settings.syncDestination}`,
-            7000
-          );
-          return null;
-      }
-    }
-  }
-
-  /**
-   * Generic save to disk method that resolves the folder path and delegates to FileSyncService.
-   * Returns: true if a new file was created or an existing file was updated, false if skipped or error
-   */
-  private async saveToDisk(
-    filename: string,
-    content: string,
-    noteDate: Date,
-    granolaId: string,
-    isTranscript: boolean = false
-  ): Promise<boolean> {
-    // Resolve the folder path
-    const folderPath = this.resolveFolderPath(noteDate, isTranscript);
-    if (!folderPath) {
-      return false;
-    }
-
-    // Ensure the folder exists
-    if (!(await this.fileSyncService.ensureFolder(folderPath))) {
-      new Notice(
-        `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
-        7000
-      );
-      return false;
-    }
-
-    // Build the full file path and delegate to FileSyncService
-    const filePath = normalizePath(`${folderPath}/${filename}`);
-    const type = isTranscript ? "transcript" : "note";
-    return this.fileSyncService.saveFile(filePath, content, granolaId, type);
-  }
-
-  // Save a note to disk based on the sync destination setting
-  private async saveNoteToDisk(doc: GranolaDoc): Promise<boolean> {
-    if (!doc.id) {
-      console.error("Document missing required id field:", doc);
-      return false;
-    }
-    const { filename, content } = this.documentProcessor.prepareNote(doc);
-    const noteDate = getNoteDate(doc);
-
-    return this.saveToDisk(filename, content, noteDate, doc.id, false);
-  }
-
-  // Save a transcript to disk based on the transcript destination setting
-  private async saveTranscriptToDisk(
-    doc: GranolaDoc,
-    transcriptContent: string
-  ): Promise<boolean> {
-    if (!doc.id) {
-      console.error("Document missing required id field:", doc);
-      return false;
-    }
-    const { filename, content } = this.documentProcessor.prepareTranscript(
-      doc,
-      transcriptContent
-    );
-    const noteDate = getNoteDate(doc);
-
-    // Use the original docId - transcripts now distinguished by type field in frontmatter
-    return this.saveToDisk(filename, content, noteDate, doc.id, true);
-  }
 
   // Top-level sync function that handles common setup once
   async sync(options: { mode?: "standard" | "full" } = {}) {
@@ -407,7 +314,9 @@ export default class GranolaSync extends Plugin {
       processedCount++;
       this.updateSyncStatus("Note", processedCount, documents.length);
 
-      if (await this.saveNoteToDisk(doc)) {
+      if (
+        await this.fileSyncService.saveNoteToDisk(doc, this.documentProcessor)
+      ) {
         syncedCount++;
       }
     }
@@ -442,7 +351,13 @@ export default class GranolaSync extends Plugin {
         );
         processedCount++;
         this.updateSyncStatus("Transcript", processedCount, documents.length);
-        if (await this.saveTranscriptToDisk(doc, transcriptMd)) {
+        if (
+          await this.fileSyncService.saveTranscriptToDisk(
+            doc,
+            transcriptMd,
+            this.documentProcessor
+          )
+        ) {
           syncedCount++;
         }
       } catch (e) {
