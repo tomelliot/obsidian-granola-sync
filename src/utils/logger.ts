@@ -38,3 +38,4 @@ export const log = {
     console.error("[Granola Sync]", ...args);
   },
 };
+
