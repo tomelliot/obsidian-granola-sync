@@ -1,5 +1,5 @@
-import { Notice, Plugin, normalizePath } from "obsidian";
-import { getNoteDate } from "./utils/dateUtils";
+import { Notice, Plugin, TFile, normalizePath } from "obsidian";
+import { getNoteDate, formatDateForFilename } from "./utils/dateUtils";
 import { getTitleOrDefault } from "./utils/filenameUtils";
 import {
   GranolaSyncSettings,
@@ -215,8 +215,21 @@ export default class GranolaSync extends Plugin {
     }
 
     // Build the full file path and delegate to FileSyncService
-    const filePath = normalizePath(`${folderPath}/${filename}`);
     const type = isTranscript ? "transcript" : "note";
+    let resolvedFilename = filename;
+    let filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
+
+    // If this Granola ID is new and a file already exists at the path, append the created date
+    if (!this.fileSyncService.findByGranolaId(granolaId, type)) {
+      const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+      if (existingFile instanceof TFile) {
+        const filenameWithoutExtension = resolvedFilename.replace(/\.md$/, "");
+        const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
+        resolvedFilename = `${filenameWithoutExtension}-${dateSuffix}.md`;
+        filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
+      }
+    }
+
     return this.fileSyncService.saveFile(filePath, content, granolaId, type);
   }
 
