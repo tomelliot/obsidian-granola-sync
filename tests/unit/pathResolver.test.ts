@@ -78,7 +78,7 @@ describe("PathResolver", () => {
       const noteDate = new Date("2024-01-15");
       const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
 
-      expect(result).toBe("transcripts/Test_Meeting-transcript.md");
+      expect(result).toBe("transcripts/Test Meeting-transcript.md");
     });
 
     it("should compute path to daily note folder structure when configured", () => {
@@ -96,21 +96,21 @@ describe("PathResolver", () => {
       const noteDate = new Date("2024-03-20");
       const result = pathResolver.computeTranscriptPath("Project Alpha", noteDate);
 
-      expect(result).toBe("journal/2024/03/Project_Alpha-transcript.md");
+      expect(result).toBe("journal/2024/03/Project Alpha-transcript.md");
     });
 
     it("should sanitize title in transcript filename", () => {
       const noteDate = new Date("2024-01-15");
       const result = pathResolver.computeTranscriptPath("Meeting: Q1 Planning", noteDate);
 
-      expect(result).toBe("transcripts/Meeting_Q1_Planning-transcript.md");
+      expect(result).toBe("transcripts/Meeting_ Q1 Planning-transcript.md");
     });
 
     it("should handle titles with special characters", () => {
       const noteDate = new Date("2024-01-15");
       const result = pathResolver.computeTranscriptPath("Test/File<Name>", noteDate);
 
-      expect(result).toBe("transcripts/TestFileName-transcript.md");
+      expect(result).toBe("transcripts/Test_File_Name_-transcript.md");
     });
   });
 });

@@ -9,14 +9,13 @@ import { getNoteDate, formatDateForFilename } from "./dateUtils";
  */
 export function sanitizeFilename(title: string): string {
   const invalidChars = /[<>:"/\\|?*]/g;
-  let filename = title.replace(invalidChars, "");
-  filename = filename.replace(/\s+/g, "_"); // Replace one or more spaces with a single underscore
+  let filename = title.replace(invalidChars, "_");
   // Truncate filename if too long (e.g., 200 chars, common limit)
   const maxLength = 200;
   if (filename.length > maxLength) {
     filename = filename.substring(0, maxLength);
   }
-  return filename;
+  return filename.trim();
 }
 
 /**
