@@ -164,6 +164,8 @@ export class FileSyncService {
 
   /**
    * Saves or updates a prepared document to disk by resolving its target path.
+   * If there is a filename collision (different Granola ID but same filename),
+   * the file is renamed to include a date/timestamp suffix.
    */
   async saveToDisk(
     filename: string,
