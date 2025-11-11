@@ -267,8 +267,6 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToDailyNotes(
     documents: GranolaDoc[]
   ): Promise<number> {
-
-    
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
     let processedCount = 0;
@@ -301,8 +299,6 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToIndividualFiles(
     documents: GranolaDoc[]
   ): Promise<number> {
-
-    
     let processedCount = 0;
     let syncedCount = 0;
 
@@ -332,7 +328,6 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     accessToken: string
   ): Promise<void> {
-
     let processedCount = 0;
     let syncedCount = 0;
     for (const doc of documents) {

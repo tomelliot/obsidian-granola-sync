@@ -60,6 +60,7 @@ export async function fetchGranolaDocuments(
       "Content-Type": "application/json",
       Accept: "*/*",
       "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
     },
     body: JSON.stringify({
       limit,
@@ -68,13 +69,16 @@ export async function fetchGranolaDocuments(
     }),
   });
 
+  const jsonResponse = response.json;
+
   try {
-    const apiResponse = v.parse(GranolaApiResponseSchema, response.json);
+    const apiResponse = v.parse(GranolaApiResponseSchema, jsonResponse);
     return apiResponse.docs as GranolaDoc[];
   } catch (error) {
     const errorMessage = `Invalid response from Granola API: ${
       error instanceof Error ? error.message : "Unknown error"
     }`;
+    console.error(JSON.stringify(jsonResponse, null, 2));
     throw new Error(errorMessage);
   }
 }
@@ -168,6 +172,7 @@ export async function fetchGranolaTranscript(
       "Content-Type": "application/json",
       Accept: "*/*",
       "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
     },
     body: JSON.stringify({ document_id: docId }),
   });
