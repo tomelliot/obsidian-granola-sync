@@ -8,6 +8,7 @@ import { TranscriptEntry } from "./granolaApi";
  * @param granolaId - Granola document ID
  * @param createdAt - Optional creation timestamp
  * @param updatedAt - Optional update timestamp
+ * @param attendees - Optional array of attendee names
  * @returns Formatted markdown string with frontmatter and speaker-grouped content
  */
 export function formatTranscriptBySpeaker(
@@ -15,7 +16,8 @@ export function formatTranscriptBySpeaker(
   title: string,
   granolaId: string,
   createdAt?: string,
-  updatedAt?: string
+  updatedAt?: string,
+  attendees?: string[]
 ): string {
   // Add frontmatter with granola_id for transcript deduplication
   const escapedTitleForYaml = title.replace(/"/g, '\\"');
@@ -27,6 +29,13 @@ export function formatTranscriptBySpeaker(
   ];
   if (createdAt) frontmatterLines.push(`created_at: ${createdAt}`);
   if (updatedAt) frontmatterLines.push(`updated_at: ${updatedAt}`);
+  const attendeesArray = attendees || [];
+  if (attendeesArray.length > 0) {
+    const attendeesYaml = attendeesArray.map(name => `  - ${name}`).join("\n");
+    frontmatterLines.push(`attendees:\n${attendeesYaml}`);
+  } else {
+    frontmatterLines.push(`attendees: []`);
+  }
   frontmatterLines.push("---", "");
 
   let transcriptMd = frontmatterLines.join("\n") + "\n";
