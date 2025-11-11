@@ -29,10 +29,12 @@ export function formatTranscriptBySpeaker(
   ];
   if (createdAt) frontmatterLines.push(`created_at: ${createdAt}`);
   if (updatedAt) frontmatterLines.push(`updated_at: ${updatedAt}`);
-  if (attendees && attendees.length > 0) {
-    // Format attendees as YAML array with lowercase field name
-    const attendeesYaml = attendees.map(name => `  - ${name}`).join("\n");
+  const attendeesArray = attendees || [];
+  if (attendeesArray.length > 0) {
+    const attendeesYaml = attendeesArray.map(name => `  - ${name}`).join("\n");
     frontmatterLines.push(`attendees:\n${attendeesYaml}`);
+  } else {
+    frontmatterLines.push(`attendees: []`);
   }
   frontmatterLines.push("---", "");
 

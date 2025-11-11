@@ -21,7 +21,6 @@ export const GranolaDocSchema = v.object({
   title: v.nullish(v.string()),
   created_at: v.optional(v.string()),
   updated_at: v.optional(v.string()),
-  attendees: v.optional(v.array(v.string())),
   people: v.optional(
     v.object({
       attendees: v.optional(

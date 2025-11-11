@@ -48,10 +48,14 @@ export class DocumentProcessor {
     ];
     if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
     if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
-    if (doc.attendees && doc.attendees.length > 0) {
-      // Format attendees as YAML array with lowercase field name
-      const attendeesYaml = doc.attendees.map(name => `  - ${name}`).join("\n");
+    const attendees = doc.people?.attendees
+      ?.map((attendee) => attendee.name || attendee.email || "Unknown")
+      .filter((name) => name !== "Unknown") || [];
+    if (attendees.length > 0) {
+      const attendeesYaml = attendees.map(name => `  - ${name}`).join("\n");
       frontmatterLines.push(`attendees:\n${attendeesYaml}`);
+    } else {
+      frontmatterLines.push(`attendees: []`);
     }
     frontmatterLines.push("---", "");
 
