@@ -43,7 +43,7 @@ export async function startCredentialsServer(): Promise<void> {
         fs.readFile(filePath, (err, data) => {
           if (err) {
             const errorMessage = `Failed to read credentials file at ${filePath}: ${err.message}`;
-            console.error(`[GranolaCredentials] ${errorMessage}`);
+            log.error("startCredentialsServer", errorMessage);
             res.writeHead(404, { "Content-Type": "text/plain" });
             res.end(errorMessage);
           } else {
@@ -58,14 +58,14 @@ export async function startCredentialsServer(): Promise<void> {
         const message = `Unsupported credentials server route: ${
           req.url ?? "unknown"
         }`;
-        console.error(`[GranolaCredentials] ${message}`);
+        log.error("startCredentialsServer", message);
         res.writeHead(400, { "Content-Type": "text/plain" });
         res.end(message);
       }
     });
 
     server.on("error", (err) => {
-      console.error("[GranolaCredentials] Server startup error:", err);
+      log.error("Server startup error:", err);
       reject(err);
     });
 
@@ -103,7 +103,7 @@ export async function loadCredentials(): Promise<{
     const errorMessage =
       serverError instanceof Error ? serverError.message : String(serverError);
     tokenLoadError = `Failed to start credentials server: ${errorMessage}`;
-    console.error("Server startup error:", serverError);
+    log.error("Server startup error:", serverError);
     return { accessToken, error: tokenLoadError };
   }
 
@@ -127,16 +127,16 @@ export async function loadCredentials(): Promise<{
           "No access token found in credentials file. The token may have expired.";
       }
     } catch (parseError) {
-      console.error(`Failed to parse response: `, response);
-      console.error(`Failed to parse response: `, response.json);
-      console.error("Token response parse error:", parseError);
+      log.error("Failed to parse response:", response);
+      log.error("Response JSON:", response.json);
+      log.error("Token response parse error:", parseError);
       tokenLoadError =
         "Invalid JSON format in credentials response. Please ensure the server returns valid JSON.";
     }
   } catch (error) {
     tokenLoadError =
       "Failed to load credentials from http://127.0.0.1:2590/. Please check if the credentials server is running.";
-    console.error("Credentials loading error:", error);
+    log.error("Credentials loading error:", error);
   } finally {
     stopCredentialsServer();
   }

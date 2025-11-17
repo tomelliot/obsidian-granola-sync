@@ -77,7 +77,7 @@ export default class GranolaSync extends Plugin {
     // Run silent migration for legacy frontmatter formats
     const migrationService = new FrontmatterMigrationService(this.app);
     migrationService.migrateLegacyFrontmatter().catch((error) => {
-      console.error("Error during frontmatter migration:", error);
+      log.error("Error during frontmatter migration:", error);
     });
 
     // This adds a simple command that can be triggered anywhere
@@ -166,7 +166,7 @@ export default class GranolaSync extends Plugin {
     // Load credentials at the start of each sync
     const { accessToken, error } = await loadGranolaCredentials();
     if (!accessToken || error) {
-      console.error("Error loading Granola credentials:", error);
+      log.error("Error loading Granola credentials:", error);
       new Notice(
         `Granola sync error: ${error || "No access token loaded."}`,
         10000
@@ -193,7 +193,7 @@ export default class GranolaSync extends Plugin {
       const errorStatus = (error as { status?: number })?.status;
       if (errorStatus === 401) {
         new Notice(
-          "Granola sync error: Authentication failed. Your access token may have expired. Please update your credentials file.",
+          "Granola sync error: Authentication failed. Your access token may have expired. Please reload Granola to update your credentials file.",
           10000
         );
       } else if (errorStatus === 403) {
@@ -217,7 +217,7 @@ export default class GranolaSync extends Plugin {
           10000
         );
       }
-      console.error("Error fetching Granola documents: ", error);
+      log.error("Error fetching Granola documents:", error);
       hideStatusBar(this);
       return;
     }
@@ -332,6 +332,9 @@ export default class GranolaSync extends Plugin {
       }
     }
 
+    log.debug(
+      `syncNotesToIndividualFiles - Completed: ${syncedCount} saved out of ${processedCount} processed`
+    );
     return syncedCount;
   }
 
@@ -392,12 +395,11 @@ export default class GranolaSync extends Plugin {
           `Error fetching transcript for document: ${title}. Check console.`,
           7000
         );
-        console.error(`Transcript fetch error for doc ${docId}:`, e);
+        log.error(`Transcript fetch error for doc ${docId}:`, e);
       }
     }
-
     log.debug(
-      `Saved ${syncedCount} transcript(s), skipped ${skippedCount} existing`
+      `syncTranscripts - Completed: ${syncedCount} saved out of ${processedCount} processed`
     );
   }
 }

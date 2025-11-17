@@ -1,4 +1,5 @@
 import { App, TFile } from "obsidian";
+import { log } from "../utils/logger";
 
 /**
  * Service for migrating legacy frontmatter formats to the new standard.
@@ -32,7 +33,7 @@ export class FrontmatterMigrationService {
         await this.migrateFile(file);
       } catch (error) {
         // Silently fail for individual files to avoid disrupting the plugin load
-        console.error(`Error migrating frontmatter for ${file.path}:`, error);
+        log.error(`Error migrating frontmatter for ${file.path}:`, error);
       }
     }
   }
@@ -52,7 +53,7 @@ export class FrontmatterMigrationService {
     const granolaId = frontmatter.granola_id as string;
 
     // Determine if this file needs migration
-    const hasTranscriptSuffix = granolaId.endsWith('-transcript');
+    const hasTranscriptSuffix = granolaId.endsWith("-transcript");
     const missingTypeField = !frontmatter.type;
 
     if (!hasTranscriptSuffix && !missingTypeField) {
@@ -99,7 +100,7 @@ export class FrontmatterMigrationService {
 
     // Update granola_id if it has -transcript suffix
     if (hasTranscriptSuffix) {
-      const cleanId = granolaId.replace(/-transcript$/, '');
+      const cleanId = granolaId.replace(/-transcript$/, "");
       updatedFrontmatter = updatedFrontmatter.replace(
         /granola_id: .*-transcript/,
         `granola_id: ${cleanId}`
@@ -108,25 +109,28 @@ export class FrontmatterMigrationService {
 
     // Add type field if missing
     if (missingTypeField) {
-      const type = hasTranscriptSuffix || content.includes('# Transcript for:') ? 'transcript' : 'note';
+      const type =
+        hasTranscriptSuffix || content.includes("# Transcript for:")
+          ? "transcript"
+          : "note";
 
       // Insert type field after title (or after granola_id if no title)
-      const lines = updatedFrontmatter.split('\n');
+      const lines = updatedFrontmatter.split("\n");
       let insertIndex = -1;
 
       // Find where to insert the type field
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].startsWith('title:')) {
+        if (lines[i].startsWith("title:")) {
           insertIndex = i + 1;
           break;
-        } else if (lines[i].startsWith('granola_id:') && insertIndex === -1) {
+        } else if (lines[i].startsWith("granola_id:") && insertIndex === -1) {
           insertIndex = i + 1;
         }
       }
 
       if (insertIndex !== -1) {
         lines.splice(insertIndex, 0, `type: ${type}`);
-        updatedFrontmatter = lines.join('\n');
+        updatedFrontmatter = lines.join("\n");
       } else {
         // Fallback: append at the end
         updatedFrontmatter += `\ntype: ${type}`;

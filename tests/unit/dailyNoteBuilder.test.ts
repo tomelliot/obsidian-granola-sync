@@ -394,6 +394,7 @@ describe("DailyNoteBuilder", () => {
       );
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[Granola Sync]",
         "Error updating daily note section:",
         error
       );

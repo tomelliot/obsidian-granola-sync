@@ -5,6 +5,7 @@ import {
   TranscriptEntrySchema,
   TranscriptResponseSchema,
 } from "./validationSchemas";
+import { log } from "../utils/logger";
 
 // ProseMirror types (defined explicitly due to recursive nature)
 export interface ProseMirrorNode {
@@ -73,8 +74,8 @@ export async function fetchGranolaDocuments(
 
   const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
   if (!result.success) {
-    console.error("Validation failed for GranolaApiResponseSchema:");
-    console.error(JSON.stringify(result.issues, null, 2));
+    log.error("Validation failed for GranolaApiResponseSchema:");
+    log.error(JSON.stringify(result.issues, null, 2));
 
     throw new Error(
       `Invalid response from Granola API (GranolaApiResponseSchema)`
@@ -179,8 +180,8 @@ export async function fetchGranolaTranscript(
 
   const result = v.safeParse(TranscriptResponseSchema, transcriptResp.json);
   if (!result.success) {
-    console.error("Validation failed for TranscriptResponseSchema:");
-    console.error(JSON.stringify(result.issues, null, 2));
+    log.error("Validation failed for TranscriptResponseSchema:");
+    log.error(JSON.stringify(result.issues, null, 2));
 
     throw new Error(
       `Invalid transcript response from Granola API (TranscriptResponseSchema)`

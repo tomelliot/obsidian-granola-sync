@@ -8,6 +8,7 @@ import {
   TranscriptDestination,
 } from "../settings";
 import { getNoteDate, formatDateForFilename } from "../utils/dateUtils";
+import { log } from "../utils/logger";
 
 /**
  * Service for handling file synchronization operations including
@@ -42,7 +43,7 @@ export class FileSyncService {
           this.granolaIdCache.set(cacheKey, file);
         }
       } catch (e) {
-        console.error(`Error reading frontmatter for ${file.path}:`, e);
+        log.error(`Error reading frontmatter for ${file.path}:`, e);
       }
     }
   }
@@ -98,7 +99,7 @@ export class FileSyncService {
         `Granola sync error: Could not create folder '${folderPath}'. Check console.`,
         10000
       );
-      console.error("Folder creation error:", error);
+      log.error("Folder creation error:", error);
       return false;
     }
   }
@@ -139,7 +140,7 @@ export class FileSyncService {
               this.updateCache(granolaId, existingFile, type);
             } catch (renameError) {
               // If rename fails (e.g., file already exists at new path), just update content
-              console.warn(
+              log.warn(
                 `Could not rename file from ${existingFile.path} to ${normalizedPath}:`,
                 renameError
               );
@@ -159,7 +160,7 @@ export class FileSyncService {
       }
     } catch (e) {
       new Notice(`Error saving file: ${filePath}. Check console.`, 7000);
-      console.error("Error saving file to disk:", e);
+      log.error("Error saving file to disk:", e);
       return false;
     }
   }
@@ -250,13 +251,20 @@ export class FileSyncService {
     forceOverwrite: boolean = false
   ): Promise<boolean> {
     if (!doc.id) {
-      console.error("Document missing required id field:", doc);
+      log.error("Document missing required id field:", doc);
       return false;
     }
     const { filename, content } = documentProcessor.prepareNote(doc);
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(filename, content, noteDate, doc.id, false, forceOverwrite);
+    return this.saveToDisk(
+      filename,
+      content,
+      noteDate,
+      doc.id,
+      false,
+      forceOverwrite
+    );
   }
 
   /**
@@ -269,7 +277,7 @@ export class FileSyncService {
     forceOverwrite: boolean = false
   ): Promise<boolean> {
     if (!doc.id) {
-      console.error("Document missing required id field:", doc);
+      log.error("Document missing required id field:", doc);
       return false;
     }
     const { filename, content } = documentProcessor.prepareTranscript(
@@ -278,7 +286,14 @@ export class FileSyncService {
     );
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(filename, content, noteDate, doc.id, true, forceOverwrite);
+    return this.saveToDisk(
+      filename,
+      content,
+      noteDate,
+      doc.id,
+      true,
+      forceOverwrite
+    );
   }
 
   /**

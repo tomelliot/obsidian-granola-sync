@@ -216,6 +216,7 @@ Content`);
       await migrationService.migrateLegacyFrontmatter();
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[Granola Sync]",
         "Error migrating frontmatter for file1.md:",
         expect.any(Error)
       );
