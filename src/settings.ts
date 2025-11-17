@@ -253,7 +253,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     // Only show transcript-related settings when sync transcripts is enabled
     if (this.plugin.settings.syncTranscripts) {
-      new Setting(containerEl)
+      const transcriptDestSetting = new Setting(containerEl)
         .setName("Transcripts sync destination")
         .setDesc("Choose where to save your Granola transcripts")
         .addDropdown((dropdown) =>
@@ -277,20 +277,24 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         );
 
       // Add explanation for transcript destination
-      const transcriptExplanationEl = containerEl.createEl("div", {
-        cls: "setting-item-description",
-      });
-      switch (this.plugin.settings.transcriptDestination) {
-        case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-          transcriptExplanationEl.setText(
-            "All transcripts will be saved as individual files in a dedicated folder."
-          );
-          break;
-        case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-          transcriptExplanationEl.setText(
-            "Transcripts will be saved in the same date-based folder structure as your daily notes."
-          );
-          break;
+      const transcriptExplanationEl = transcriptDestSetting.settingEl
+        .querySelector(".setting-item-info")
+        ?.createEl("div", {
+          cls: "setting-item-description",
+        });
+      if (transcriptExplanationEl) {
+        switch (this.plugin.settings.transcriptDestination) {
+          case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
+            transcriptExplanationEl.setText(
+              "All transcripts will be saved as individual files in a dedicated folder."
+            );
+            break;
+          case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
+            transcriptExplanationEl.setText(
+              "Transcripts will be saved in the same date-based folder structure as your daily notes."
+            );
+            break;
+        }
       }
 
       // Show folder setting for transcripts folder option
@@ -334,7 +338,9 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Full sync")
-      .setDesc("Re-syncs all files from Granola, ⚠️ overwriting any local modifications ⚠️. Use this to force refresh your notes and transcripts.")
+      .setDesc(
+        "Re-syncs all files from Granola 🚨 overwriting any local modifications 🚨. Use this to force refresh your notes and transcripts."
+      )
       .addButton((button) =>
         button
           .setButtonText("Full sync")
