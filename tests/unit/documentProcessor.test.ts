@@ -28,8 +28,9 @@ describe("DocumentProcessor", () => {
     (sanitizeFilename as jest.Mock).mockImplementation((title: string) =>
       title.replace(/[^a-zA-Z0-9\s\-_]/g, "").trim()
     );
-    (getTitleOrDefault as jest.Mock).mockImplementation((doc: GranolaDoc) =>
-      doc.title || "Untitled Granola Note at 2024-01-15 00-00"
+    (getTitleOrDefault as jest.Mock).mockImplementation(
+      (doc: GranolaDoc) =>
+        doc.title || "Untitled Granola Note at 2024-01-15 00-00"
     );
     (formatWikilinkPath as jest.Mock).mockImplementation((path: string) => {
       // Real implementation for testing - always wrap in angle brackets
@@ -154,7 +155,7 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain(
-        "[[<Transcripts/Test Note-transcript.md>|Transcript]]"
+        "[Transcript](<Transcripts/Test Note-transcript.md>)"
       );
       expect(mockPathResolver.computeTranscriptPath).toHaveBeenCalledWith(
         "Test Note",
@@ -209,7 +210,7 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain(
-        "[[<Transcripts/My Meeting Transcript.md>|Transcript]]"
+        "[Transcript](<Transcripts/My Meeting Transcript.md>)"
       );
     });
 
@@ -241,7 +242,7 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain(
-        "[[<Transcripts/TestNote-transcript.md>|Transcript]]"
+        "[Transcript](<Transcripts/TestNote-transcript.md>)"
       );
     });
 
@@ -258,7 +259,9 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      expect(result.content).toContain('title: "Untitled Granola Note at 2024-01-15 00-00"');
+      expect(result.content).toContain(
+        'title: "Untitled Granola Note at 2024-01-15 00-00"'
+      );
     });
 
     it("should throw error when document has no valid content", () => {
@@ -298,7 +301,10 @@ describe("DocumentProcessor", () => {
       };
       const transcriptContent = "Speaker 1: Hello\nSpeaker 2: World";
 
-      const result = documentProcessor.prepareTranscript(doc, transcriptContent);
+      const result = documentProcessor.prepareTranscript(
+        doc,
+        transcriptContent
+      );
 
       expect(result.filename).toBe("Test Note-transcript.md");
       expect(result.content).toBe(transcriptContent);
@@ -310,9 +316,14 @@ describe("DocumentProcessor", () => {
       };
       const transcriptContent = "Speaker 1: Hello";
 
-      const result = documentProcessor.prepareTranscript(doc, transcriptContent);
+      const result = documentProcessor.prepareTranscript(
+        doc,
+        transcriptContent
+      );
 
-      expect(result.filename).toBe("Untitled Granola Note at 2024-01-15 00-00-transcript.md");
+      expect(result.filename).toBe(
+        "Untitled Granola Note at 2024-01-15 00-00-transcript.md"
+      );
     });
   });
 

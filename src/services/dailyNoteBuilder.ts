@@ -122,8 +122,8 @@ export class DailyNoteBuilder {
           note.title,
           noteDate
         );
-        const formattedPath = formatWikilinkPath(transcriptPath);
-        content += `**Transcript:** [[${formattedPath}]]\n`;
+
+        content += `**Transcript:** [[<${transcriptPath}>]]\n`;
       }
 
       content += `\n${note.markdown}\n`;

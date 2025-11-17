@@ -32,18 +32,3 @@ export function getTitleOrDefault(doc: GranolaDoc): string {
   const formattedDate = formatDateForFilename(noteDate);
   return `Untitled Granola Note at ${formattedDate}`;
 }
-
-/**
- * Formats a file path for use in Obsidian wikilinks.
- * Always wraps the path in angle brackets for proper linking in Obsidian.
- *
- * @param path - The file path to format
- * @returns The path formatted for wikilink usage (with angle brackets)
- */
-export function formatWikilinkPath(path: string): string {
-  // Always wrap paths in angle brackets for Obsidian wikilinks
-  if (path === "") {
-    return "";
-  }
-  return `<${path}>`;
-}

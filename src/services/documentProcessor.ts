@@ -75,8 +75,8 @@ export class DocumentProcessor {
         title,
         noteDate
       );
-      const formattedPath = formatWikilinkPath(transcriptPath);
-      finalMarkdown += `[[${formattedPath}|Transcript]]\n\n`;
+
+      finalMarkdown += `[Transcript](<${transcriptPath}>)\n\n`;
     }
 
     // Add the actual note content
