@@ -245,7 +245,8 @@ describe("FileSyncService", () => {
         "granola-folder/note.md",
         "content",
         "doc-1",
-        "note"
+        "note",
+        false
       );
     });
 
@@ -272,7 +273,8 @@ describe("FileSyncService", () => {
         "granola-folder/note-2024-01-01_10-30.md",
         "content",
         "doc-1",
-        "note"
+        "note",
+        false
       );
     });
   });
@@ -323,6 +325,7 @@ describe("FileSyncService", () => {
         "content",
         noteDate,
         "doc-1",
+        false,
         false
       );
     });
@@ -379,7 +382,8 @@ describe("FileSyncService", () => {
         "transcript content",
         noteDate,
         "doc-1",
-        true
+        true,
+        false
       );
     });
   });
@@ -512,6 +516,135 @@ describe("FileSyncService", () => {
 
       fileSyncService.clearCache();
       expect(fileSyncService.getCacheSize()).toBe(0);
+    });
+  });
+
+  describe("forceOverwrite behavior", () => {
+    it("should overwrite file even when content is unchanged if forceOverwrite is true", async () => {
+      const mockFile = { path: "existing.md", extension: "md" } as TFile;
+      // Pre-populate cache with existing file
+      fileSyncService.updateCache("id-1", mockFile);
+      mockApp.vault.read.mockResolvedValue("same content");
+      mockApp.vault.modify.mockResolvedValue(undefined);
+
+      const result = await fileSyncService.saveFile(
+        "existing.md",
+        "same content",
+        "id-1",
+        "note",
+        true // forceOverwrite
+      );
+
+      expect(result).toBe(true);
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(
+        mockFile,
+        "same content"
+      );
+    });
+
+    it("should not overwrite file when content is unchanged and forceOverwrite is false", async () => {
+      const mockFile = { path: "existing.md", extension: "md" } as TFile;
+      fileSyncService.updateCache("id-1", mockFile);
+      mockApp.vault.read.mockResolvedValue("same content");
+
+      const result = await fileSyncService.saveFile(
+        "existing.md",
+        "same content",
+        "id-1",
+        "note",
+        false // forceOverwrite
+      );
+
+      expect(result).toBe(false);
+      expect(mockApp.vault.modify).not.toHaveBeenCalled();
+    });
+
+    it("should pass forceOverwrite through saveToDisk to saveFile", async () => {
+      mockSettings.syncDestination = SyncDestination.GRANOLA_FOLDER;
+      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile")
+        .mockResolvedValue(true);
+
+      await fileSyncService.saveToDisk(
+        "note.md",
+        "content",
+        new Date(),
+        "doc-1",
+        false,
+        true // forceOverwrite
+      );
+
+      expect(saveFileSpy).toHaveBeenCalledWith(
+        "granola-folder/note.md",
+        "content",
+        "doc-1",
+        "note",
+        true // forceOverwrite should be passed through
+      );
+    });
+
+    it("should pass forceOverwrite through saveNoteToDisk to saveToDisk", async () => {
+      const mockDocumentProcessor = {
+        prepareNote: jest.fn(),
+        prepareTranscript: jest.fn(),
+      } as unknown as jest.Mocked<DocumentProcessor>;
+      
+      const doc = { id: "doc-1" } as GranolaDoc;
+      const noteDate = new Date("2024-01-02T12:00:00Z");
+      mockDocumentProcessor.prepareNote.mockReturnValue({
+        filename: "note.md",
+        content: "content",
+      });
+      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
+      const saveToDiskSpy = jest
+        .spyOn(fileSyncService, "saveToDisk")
+        .mockResolvedValue(true);
+
+      await fileSyncService.saveNoteToDisk(doc, mockDocumentProcessor, true);
+
+      expect(saveToDiskSpy).toHaveBeenCalledWith(
+        "note.md",
+        "content",
+        noteDate,
+        "doc-1",
+        false,
+        true // forceOverwrite should be passed through
+      );
+    });
+
+    it("should pass forceOverwrite through saveTranscriptToDisk to saveToDisk", async () => {
+      const mockDocumentProcessor = {
+        prepareNote: jest.fn(),
+        prepareTranscript: jest.fn(),
+      } as unknown as jest.Mocked<DocumentProcessor>;
+      
+      const doc = { id: "doc-1" } as GranolaDoc;
+      const noteDate = new Date("2024-01-03T09:15:00Z");
+      mockDocumentProcessor.prepareTranscript.mockReturnValue({
+        filename: "note-transcript.md",
+        content: "transcript content",
+      });
+      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
+      const saveToDiskSpy = jest
+        .spyOn(fileSyncService, "saveToDisk")
+        .mockResolvedValue(true);
+
+      await fileSyncService.saveTranscriptToDisk(
+        doc,
+        "transcript content",
+        mockDocumentProcessor,
+        true // forceOverwrite
+      );
+
+      expect(saveToDiskSpy).toHaveBeenCalledWith(
+        "note-transcript.md",
+        "transcript content",
+        noteDate,
+        "doc-1",
+        true,
+        true // forceOverwrite should be passed through
+      );
     });
   });
 

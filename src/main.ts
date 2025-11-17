@@ -241,22 +241,23 @@ export default class GranolaSync extends Plugin {
     );
 
     // Always sync transcripts first if enabled, so notes can link to them
+    const forceOverwrite = mode === "full";
     if (this.settings.syncTranscripts) {
-      await this.syncTranscripts(documents, accessToken);
+      await this.syncTranscripts(documents, accessToken, forceOverwrite);
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(documents);
+      await this.syncNotes(documents, forceOverwrite);
     }
 
     // Show success message
     showStatusBarTemporary(this, "Granola sync: Complete");
   }
 
-  private async syncNotes(documents: GranolaDoc[]): Promise<void> {
+  private async syncNotes(documents: GranolaDoc[], forceOverwrite: boolean = false): Promise<void> {
     const syncedCount =
       this.settings.syncDestination === SyncDestination.DAILY_NOTES
-        ? await this.syncNotesToDailyNotes(documents)
-        : await this.syncNotesToIndividualFiles(documents);
+        ? await this.syncNotesToDailyNotes(documents, forceOverwrite)
+        : await this.syncNotesToIndividualFiles(documents, forceOverwrite);
 
     this.settings.latestSyncTime = Date.now();
     await this.saveSettings();
@@ -265,7 +266,8 @@ export default class GranolaSync extends Plugin {
   }
 
   private async syncNotesToDailyNotes(
-    documents: GranolaDoc[]
+    documents: GranolaDoc[],
+    forceOverwrite: boolean = false
   ): Promise<number> {
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
@@ -285,7 +287,8 @@ export default class GranolaSync extends Plugin {
       await this.dailyNoteBuilder.updateDailyNoteSection(
         dailyNoteFile,
         sectionHeadingSetting,
-        sectionContent
+        sectionContent,
+        forceOverwrite
       );
       processedCount++;
       this.updateSyncStatus("Note", processedCount, documents.length);
@@ -297,7 +300,8 @@ export default class GranolaSync extends Plugin {
   }
 
   private async syncNotesToIndividualFiles(
-    documents: GranolaDoc[]
+    documents: GranolaDoc[],
+    forceOverwrite: boolean = false
   ): Promise<number> {
     let processedCount = 0;
     let syncedCount = 0;
@@ -315,7 +319,7 @@ export default class GranolaSync extends Plugin {
       this.updateSyncStatus("Note", processedCount, documents.length);
 
       if (
-        await this.fileSyncService.saveNoteToDisk(doc, this.documentProcessor)
+        await this.fileSyncService.saveNoteToDisk(doc, this.documentProcessor, forceOverwrite)
       ) {
         syncedCount++;
       }
@@ -326,7 +330,8 @@ export default class GranolaSync extends Plugin {
 
   private async syncTranscripts(
     documents: GranolaDoc[],
-    accessToken: string
+    accessToken: string,
+    forceOverwrite: boolean = false
   ): Promise<void> {
     let processedCount = 0;
     let syncedCount = 0;
@@ -369,7 +374,8 @@ export default class GranolaSync extends Plugin {
           await this.fileSyncService.saveTranscriptToDisk(
             doc,
             transcriptMd,
-            this.documentProcessor
+            this.documentProcessor,
+            forceOverwrite
           )
         ) {
           syncedCount++;

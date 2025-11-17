@@ -110,13 +110,15 @@ export class FileSyncService {
    * @param content - The content to write to the file
    * @param granolaId - Granola ID for caching and deduplication
    * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
+   * @param forceOverwrite - If true, always writes the file even if content is unchanged
    * @returns True if the file was created or modified, false if no change or error
    */
   async saveFile(
     filePath: string,
     content: string,
     granolaId: string,
-    type: "note" | "transcript" = "note"
+    type: "note" | "transcript" = "note",
+    forceOverwrite: boolean = false
   ): Promise<boolean> {
     try {
       const normalizedPath = normalizePath(filePath);
@@ -127,7 +129,7 @@ export class FileSyncService {
       if (existingFile) {
         const existingContent = await this.app.vault.read(existingFile);
 
-        if (existingContent !== content) {
+        if (forceOverwrite || existingContent !== content) {
           await this.app.vault.modify(existingFile, content);
 
           // If the file path has changed (title changed), rename the file
@@ -172,7 +174,8 @@ export class FileSyncService {
     content: string,
     noteDate: Date,
     granolaId: string,
-    isTranscript: boolean = false
+    isTranscript: boolean = false,
+    forceOverwrite: boolean = false
   ): Promise<boolean> {
     const folderPath = this.resolveFolderPath(noteDate, isTranscript);
     if (!folderPath) {
@@ -201,7 +204,7 @@ export class FileSyncService {
       }
     }
 
-    return this.saveFile(filePath, content, granolaId, type);
+    return this.saveFile(filePath, content, granolaId, type, forceOverwrite);
   }
 
   /**
@@ -243,7 +246,8 @@ export class FileSyncService {
    */
   async saveNoteToDisk(
     doc: GranolaDoc,
-    documentProcessor: DocumentProcessor
+    documentProcessor: DocumentProcessor,
+    forceOverwrite: boolean = false
   ): Promise<boolean> {
     if (!doc.id) {
       console.error("Document missing required id field:", doc);
@@ -252,7 +256,7 @@ export class FileSyncService {
     const { filename, content } = documentProcessor.prepareNote(doc);
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(filename, content, noteDate, doc.id, false);
+    return this.saveToDisk(filename, content, noteDate, doc.id, false, forceOverwrite);
   }
 
   /**
@@ -261,7 +265,8 @@ export class FileSyncService {
   async saveTranscriptToDisk(
     doc: GranolaDoc,
     transcriptContent: string,
-    documentProcessor: DocumentProcessor
+    documentProcessor: DocumentProcessor,
+    forceOverwrite: boolean = false
   ): Promise<boolean> {
     if (!doc.id) {
       console.error("Document missing required id field:", doc);
@@ -273,7 +278,7 @@ export class FileSyncService {
     );
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(filename, content, noteDate, doc.id, true);
+    return this.saveToDisk(filename, content, noteDate, doc.id, true, forceOverwrite);
   }
 
   /**

@@ -313,7 +313,8 @@ describe("DailyNoteBuilder", () => {
         mockApp,
         mockFile,
         "## Granola Notes",
-        "Content"
+        "Content",
+        false
       );
     });
 
