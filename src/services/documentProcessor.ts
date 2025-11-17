@@ -1,10 +1,6 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
-import {
-  sanitizeFilename,
-  getTitleOrDefault,
-  formatWikilinkPath,
-} from "../utils/filenameUtils";
+import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
 import { getNoteDate } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
 import { TranscriptSettings } from "../settings";
@@ -52,11 +48,12 @@ export class DocumentProcessor {
     ];
     if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
     if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
-    const attendees = doc.people?.attendees
-      ?.map((attendee) => attendee.name || attendee.email || "Unknown")
-      .filter((name) => name !== "Unknown") || [];
+    const attendees =
+      doc.people?.attendees
+        ?.map((attendee) => attendee.name || attendee.email || "Unknown")
+        .filter((name) => name !== "Unknown") || [];
     if (attendees.length > 0) {
-      const attendeesYaml = attendees.map(name => `  - ${name}`).join("\n");
+      const attendeesYaml = attendees.map((name) => `  - ${name}`).join("\n");
       frontmatterLines.push(`attendees:\n${attendeesYaml}`);
     } else {
       frontmatterLines.push(`attendees: []`);
