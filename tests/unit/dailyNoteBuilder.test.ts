@@ -248,7 +248,7 @@ describe("DailyNoteBuilder", () => {
       );
 
       expect(result).toContain(
-        "**Transcript:** [[Transcripts/Test Note-transcript.md]]"
+        "**Transcript:** [[<Transcripts/Test Note-transcript.md>]]"
       );
       expect(mockPathResolver.computeTranscriptPath).toHaveBeenCalledWith(
         "Test Note",
@@ -265,6 +265,60 @@ describe("DailyNoteBuilder", () => {
 
       expect(result).not.toContain("**Transcript:**");
       expect(mockPathResolver.computeTranscriptPath).not.toHaveBeenCalled();
+    });
+
+    it("should wrap transcript paths with spaces in angle brackets", () => {
+      dailyNoteBuilder = new DailyNoteBuilder(
+        mockApp,
+        mockDocumentProcessor,
+        mockPathResolver,
+        {
+          syncTranscripts: true,
+          createLinkFromNoteToTranscript: true,
+          dailyNoteSectionHeading: "## Granola Notes",
+        }
+      );
+
+      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
+        "Transcripts/My Meeting Transcript.md"
+      );
+
+      const result = dailyNoteBuilder.buildDailyNoteSectionContent(
+        [noteData],
+        "## Granola Notes",
+        "2024-01-15"
+      );
+
+      expect(result).toContain(
+        "**Transcript:** [[<Transcripts/My Meeting Transcript.md>]]"
+      );
+    });
+
+    it("should not wrap transcript paths without spaces in angle brackets", () => {
+      dailyNoteBuilder = new DailyNoteBuilder(
+        mockApp,
+        mockDocumentProcessor,
+        mockPathResolver,
+        {
+          syncTranscripts: true,
+          createLinkFromNoteToTranscript: true,
+          dailyNoteSectionHeading: "## Granola Notes",
+        }
+      );
+
+      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
+        "Transcripts/TestNote-transcript.md"
+      );
+
+      const result = dailyNoteBuilder.buildDailyNoteSectionContent(
+        [noteData],
+        "## Granola Notes",
+        "2024-01-15"
+      );
+
+      expect(result).toContain(
+        "**Transcript:** [[Transcripts/TestNote-transcript.md]]"
+      );
     });
 
     it("should handle multiple notes", () => {

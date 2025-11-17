@@ -1,4 +1,8 @@
-import { sanitizeFilename, getTitleOrDefault } from "../../src/utils/filenameUtils";
+import {
+  sanitizeFilename,
+  getTitleOrDefault,
+  formatWikilinkPath,
+} from "../../src/utils/filenameUtils";
 import { GranolaDoc } from "../../src/services/granolaApi";
 
 describe("sanitizeFilename", () => {
@@ -84,5 +88,61 @@ describe("getTitleOrDefault", () => {
 
     const result = getTitleOrDefault(doc);
     expect(result).toMatch(/^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}$/);
+  });
+});
+
+describe("formatWikilinkPath", () => {
+  it("should wrap paths with spaces in angle brackets", () => {
+    const path = "Transcripts/My Meeting Transcript.md";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("<Transcripts/My Meeting Transcript.md>");
+  });
+
+  it("should not wrap paths without spaces in angle brackets", () => {
+    const path = "Transcripts/TestNote-transcript.md";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("Transcripts/TestNote-transcript.md");
+  });
+
+  it("should wrap paths with special characters in angle brackets", () => {
+    const path = "Transcripts/Meeting: Q1 Planning.md";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("<Transcripts/Meeting: Q1 Planning.md>");
+  });
+
+  it("should wrap paths with pipe characters in angle brackets", () => {
+    const path = "Transcripts/Meeting|Notes.md";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("<Transcripts/Meeting|Notes.md>");
+  });
+
+  it("should wrap paths with question marks in angle brackets", () => {
+    const path = "Transcripts/What? Meeting.md";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("<Transcripts/What? Meeting.md>");
+  });
+
+  it("should wrap paths with asterisks in angle brackets", () => {
+    const path = "Transcripts/Important*Meeting.md";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("<Transcripts/Important*Meeting.md>");
+  });
+
+  it("should handle paths with multiple spaces", () => {
+    const path = "Folder/My Very Long Meeting Name.md";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("<Folder/My Very Long Meeting Name.md>");
+  });
+
+  it("should handle paths with no special characters", () => {
+    const path = "folder/file-name.md";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("folder/file-name.md");
+  });
+
+  it("should handle empty paths", () => {
+    const path = "";
+    const result = formatWikilinkPath(path);
+    expect(result).toBe("");
   });
 });

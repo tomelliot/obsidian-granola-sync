@@ -9,7 +9,11 @@ jest.mock("../../src/utils/filenameUtils");
 jest.mock("../../src/utils/dateUtils");
 
 import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMarkdown";
-import { sanitizeFilename, getTitleOrDefault } from "../../src/utils/filenameUtils";
+import {
+  sanitizeFilename,
+  getTitleOrDefault,
+  formatWikilinkPath,
+} from "../../src/utils/filenameUtils";
 import { getNoteDate } from "../../src/utils/dateUtils";
 
 describe("DocumentProcessor", () => {
@@ -27,6 +31,13 @@ describe("DocumentProcessor", () => {
     (getTitleOrDefault as jest.Mock).mockImplementation((doc: GranolaDoc) =>
       doc.title || "Untitled Granola Note at 2024-01-15 00-00"
     );
+    (formatWikilinkPath as jest.Mock).mockImplementation((path: string) => {
+      // Real implementation for testing
+      if (/\s|[<>:"|?*]/.test(path)) {
+        return `<${path}>`;
+      }
+      return path;
+    });
     (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15"));
 
     mockPathResolver = new PathResolver({
@@ -116,6 +127,10 @@ describe("DocumentProcessor", () => {
     });
 
     it("should add transcript link when enabled", () => {
+      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
+        "Transcripts/Test Note-transcript.md"
+      );
+
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
@@ -139,7 +154,7 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain(
-        "[Transcript](Transcripts/Test Note-transcript.md)"
+        "[[<Transcripts/Test Note-transcript.md>|Transcript]]"
       );
       expect(mockPathResolver.computeTranscriptPath).toHaveBeenCalledWith(
         "Test Note",
@@ -163,6 +178,71 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).not.toContain("[Transcript]");
+      expect(result.content).not.toContain("[[");
+    });
+
+    it("should wrap transcript paths with spaces in angle brackets", () => {
+      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
+        "Transcripts/My Meeting Transcript.md"
+      );
+
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: true,
+          createLinkFromNoteToTranscript: true,
+        },
+        mockPathResolver
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).toContain(
+        "[[<Transcripts/My Meeting Transcript.md>|Transcript]]"
+      );
+    });
+
+    it("should not wrap transcript paths without spaces in angle brackets", () => {
+      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
+        "Transcripts/TestNote-transcript.md"
+      );
+
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: true,
+          createLinkFromNoteToTranscript: true,
+        },
+        mockPathResolver
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).toContain(
+        "[[Transcripts/TestNote-transcript.md|Transcript]]"
+      );
     });
 
     it("should use default title when title is missing", () => {

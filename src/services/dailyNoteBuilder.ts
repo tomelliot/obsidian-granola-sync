@@ -10,6 +10,7 @@ import { getNoteDate } from "../utils/dateUtils";
 import { DocumentProcessor } from "./documentProcessor";
 import { PathResolver } from "./pathResolver";
 import { updateSection } from "../utils/textUtils";
+import { formatWikilinkPath } from "../utils/filenameUtils";
 import { TranscriptSettings, NoteSettings } from "../settings";
 
 export interface NoteData {
@@ -119,7 +120,8 @@ export class DailyNoteBuilder {
           note.title,
           noteDate
         );
-        content += `**Transcript:** [[${transcriptPath}]]\n`;
+        const formattedPath = formatWikilinkPath(transcriptPath);
+        content += `**Transcript:** [[${formattedPath}]]\n`;
       }
 
       content += `\n${note.markdown}\n`;
