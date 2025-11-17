@@ -350,14 +350,16 @@ export default class GranolaSync extends Plugin {
       const docId = doc.id;
       const title = getTitleOrDefault(doc);
       try {
-        // Skip fetching if transcript already exists locally
-        const existingTranscript = this.fileSyncService.findByGranolaId(
-          docId,
-          "transcript"
-        );
-        if (existingTranscript) {
-          skippedCount++;
-          continue;
+        // Skip fetching if transcript already exists locally (unless forceOverwrite is true)
+        if (!forceOverwrite) {
+          const existingTranscript = this.fileSyncService.findByGranolaId(
+            docId,
+            "transcript"
+          );
+          if (existingTranscript) {
+            skippedCount++;
+            continue;
+          }
         }
 
         const transcriptData: TranscriptEntry[] = await fetchGranolaTranscript(
