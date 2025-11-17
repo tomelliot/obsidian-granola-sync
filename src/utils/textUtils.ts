@@ -34,7 +34,8 @@ export async function updateSection(
   app: App,
   file: TFile,
   heading: string,
-  sectionContents: string
+  sectionContents: string,
+  forceOverwrite: boolean = false
 ): Promise<void> {
   const headingLevel = getHeadingLevel(heading);
 
@@ -54,6 +55,18 @@ export async function updateSection(
         nextSectionLineNum = i;
         break;
       }
+    }
+  }
+
+  // Check if content is unchanged (unless force overwrite is enabled)
+  if (!forceOverwrite && logbookSectionLineNum !== -1) {
+    const existingSectionLines = nextSectionLineNum !== -1
+      ? fileLines.slice(logbookSectionLineNum, nextSectionLineNum)
+      : fileLines.slice(logbookSectionLineNum);
+    const existingSection = existingSectionLines.join("\n").trim();
+    const newSection = sectionContents.trim();
+    if (existingSection === newSection) {
+      return; // No changes needed
     }
   }
 

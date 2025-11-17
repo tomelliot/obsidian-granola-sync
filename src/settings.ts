@@ -334,7 +334,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Full sync")
-      .setDesc("Fetch all available documents from Granola right now.")
+      .setDesc("Re-syncs all files from Granola, ⚠️ overwriting any local modifications ⚠️. Use this to force refresh your notes and transcripts.")
       .addButton((button) =>
         button
           .setButtonText("Full sync")

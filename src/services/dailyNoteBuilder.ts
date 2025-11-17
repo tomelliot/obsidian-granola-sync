@@ -134,18 +134,21 @@ export class DailyNoteBuilder {
    * @param dailyNoteFile - The daily note file to update
    * @param sectionHeading - The section heading to update
    * @param sectionContent - The new content for the section
+   * @param forceOverwrite - If true, always updates the section even if content is unchanged
    */
   async updateDailyNoteSection(
     dailyNoteFile: TFile,
     sectionHeading: string,
-    sectionContent: string
+    sectionContent: string,
+    forceOverwrite: boolean = false
   ): Promise<void> {
     try {
       await updateSection(
         this.app,
         dailyNoteFile,
         sectionHeading,
-        sectionContent
+        sectionContent,
+        forceOverwrite
       );
     } catch (error) {
       new Notice(
