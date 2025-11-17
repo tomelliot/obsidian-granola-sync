@@ -32,11 +32,11 @@ describe("DocumentProcessor", () => {
       doc.title || "Untitled Granola Note at 2024-01-15 00-00"
     );
     (formatWikilinkPath as jest.Mock).mockImplementation((path: string) => {
-      // Real implementation for testing
-      if (/\s|[<>:"|?*]/.test(path)) {
-        return `<${path}>`;
+      // Real implementation for testing - always wrap in angle brackets
+      if (path === "") {
+        return "";
       }
-      return path;
+      return `<${path}>`;
     });
     (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15"));
 
@@ -213,7 +213,7 @@ describe("DocumentProcessor", () => {
       );
     });
 
-    it("should not wrap transcript paths without spaces in angle brackets", () => {
+    it("should wrap transcript paths without spaces in angle brackets", () => {
       (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
         "Transcripts/TestNote-transcript.md"
       );
@@ -241,7 +241,7 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain(
-        "[[Transcripts/TestNote-transcript.md|Transcript]]"
+        "[[<Transcripts/TestNote-transcript.md>|Transcript]]"
       );
     });
 

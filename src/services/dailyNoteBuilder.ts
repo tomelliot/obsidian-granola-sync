@@ -32,7 +32,9 @@ export class DailyNoteBuilder {
     private pathResolver: PathResolver,
     private settings: Pick<
       TranscriptSettings & NoteSettings,
-      "syncTranscripts" | "createLinkFromNoteToTranscript" | "dailyNoteSectionHeading"
+      | "syncTranscripts"
+      | "createLinkFromNoteToTranscript"
+      | "dailyNoteSectionHeading"
     >
   ) {}
 

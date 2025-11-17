@@ -92,16 +92,16 @@ describe("getTitleOrDefault", () => {
 });
 
 describe("formatWikilinkPath", () => {
-  it("should wrap paths with spaces in angle brackets", () => {
+  it("should always wrap paths in angle brackets", () => {
     const path = "Transcripts/My Meeting Transcript.md";
     const result = formatWikilinkPath(path);
     expect(result).toBe("<Transcripts/My Meeting Transcript.md>");
   });
 
-  it("should not wrap paths without spaces in angle brackets", () => {
+  it("should wrap paths without spaces in angle brackets", () => {
     const path = "Transcripts/TestNote-transcript.md";
     const result = formatWikilinkPath(path);
-    expect(result).toBe("Transcripts/TestNote-transcript.md");
+    expect(result).toBe("<Transcripts/TestNote-transcript.md>");
   });
 
   it("should wrap paths with special characters in angle brackets", () => {
@@ -134,10 +134,10 @@ describe("formatWikilinkPath", () => {
     expect(result).toBe("<Folder/My Very Long Meeting Name.md>");
   });
 
-  it("should handle paths with no special characters", () => {
+  it("should wrap paths with no special characters in angle brackets", () => {
     const path = "folder/file-name.md";
     const result = formatWikilinkPath(path);
-    expect(result).toBe("folder/file-name.md");
+    expect(result).toBe("<folder/file-name.md>");
   });
 
   it("should handle empty paths", () => {

@@ -35,17 +35,15 @@ export function getTitleOrDefault(doc: GranolaDoc): string {
 
 /**
  * Formats a file path for use in Obsidian wikilinks.
- * Wraps the path in angle brackets if it contains spaces or special characters
- * that require them for proper linking in Obsidian.
+ * Always wraps the path in angle brackets for proper linking in Obsidian.
  *
  * @param path - The file path to format
- * @returns The path formatted for wikilink usage (with angle brackets if needed)
+ * @returns The path formatted for wikilink usage (with angle brackets)
  */
 export function formatWikilinkPath(path: string): string {
-  // Obsidian requires angle brackets for paths with spaces or special characters
-  // Check if path contains spaces or characters that need angle brackets
-  if (/\s|[<>:"|?*]/.test(path)) {
-    return `<${path}>`;
+  // Always wrap paths in angle brackets for Obsidian wikilinks
+  if (path === "") {
+    return "";
   }
-  return path;
+  return `<${path}>`;
 }

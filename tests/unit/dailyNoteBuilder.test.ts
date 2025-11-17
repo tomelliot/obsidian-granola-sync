@@ -1,4 +1,7 @@
-import { DailyNoteBuilder, NoteData } from "../../src/services/dailyNoteBuilder";
+import {
+  DailyNoteBuilder,
+  NoteData,
+} from "../../src/services/dailyNoteBuilder";
 import { GranolaDoc } from "../../src/services/granolaApi";
 import { DocumentProcessor } from "../../src/services/documentProcessor";
 import { PathResolver } from "../../src/services/pathResolver";
@@ -33,7 +36,9 @@ describe("DailyNoteBuilder", () => {
       computeTranscriptPath: jest.fn(),
     } as unknown as PathResolver;
 
-    (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15T10:00:00Z"));
+    (getNoteDate as jest.Mock).mockReturnValue(
+      new Date("2024-01-15T10:00:00Z")
+    );
 
     dailyNoteBuilder = new DailyNoteBuilder(
       mockApp,
@@ -135,9 +140,9 @@ describe("DailyNoteBuilder", () => {
     });
 
     it("should return empty map when no valid documents", () => {
-      (mockDocumentProcessor.extractNoteForDailyNote as jest.Mock).mockReturnValue(
-        null
-      );
+      (
+        mockDocumentProcessor.extractNoteForDailyNote as jest.Mock
+      ).mockReturnValue(null);
 
       const result = dailyNoteBuilder.buildDailyNotesMap([
         { id: "doc-1" } as GranolaDoc,
@@ -294,7 +299,7 @@ describe("DailyNoteBuilder", () => {
       );
     });
 
-    it("should not wrap transcript paths without spaces in angle brackets", () => {
+    it("should wrap transcript paths without spaces in angle brackets", () => {
       dailyNoteBuilder = new DailyNoteBuilder(
         mockApp,
         mockDocumentProcessor,
@@ -317,7 +322,7 @@ describe("DailyNoteBuilder", () => {
       );
 
       expect(result).toContain(
-        "**Transcript:** [[Transcripts/TestNote-transcript.md]]"
+        "**Transcript:** [[<Transcripts/TestNote-transcript.md>]]"
       );
     });
 
