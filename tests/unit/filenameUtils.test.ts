@@ -1,4 +1,7 @@
-import { sanitizeFilename, getTitleOrDefault } from "../../src/utils/filenameUtils";
+import {
+  sanitizeFilename,
+  getTitleOrDefault,
+} from "../../src/utils/filenameUtils";
 import { GranolaDoc } from "../../src/services/granolaApi";
 
 describe("sanitizeFilename", () => {
@@ -83,6 +86,8 @@ describe("getTitleOrDefault", () => {
     };
 
     const result = getTitleOrDefault(doc);
-    expect(result).toMatch(/^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}$/);
+    expect(result).toMatch(
+      /^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}$/
+    );
   });
 });

@@ -253,7 +253,10 @@ export default class GranolaSync extends Plugin {
     showStatusBarTemporary(this, "Granola sync: Complete");
   }
 
-  private async syncNotes(documents: GranolaDoc[], forceOverwrite: boolean = false): Promise<void> {
+  private async syncNotes(
+    documents: GranolaDoc[],
+    forceOverwrite: boolean = false
+  ): Promise<void> {
     const syncedCount =
       this.settings.syncDestination === SyncDestination.DAILY_NOTES
         ? await this.syncNotesToDailyNotes(documents, forceOverwrite)
@@ -319,7 +322,11 @@ export default class GranolaSync extends Plugin {
       this.updateSyncStatus("Note", processedCount, documents.length);
 
       if (
-        await this.fileSyncService.saveNoteToDisk(doc, this.documentProcessor, forceOverwrite)
+        await this.fileSyncService.saveNoteToDisk(
+          doc,
+          this.documentProcessor,
+          forceOverwrite
+        )
       ) {
         syncedCount++;
       }

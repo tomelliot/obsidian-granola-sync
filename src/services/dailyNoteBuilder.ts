@@ -31,7 +31,9 @@ export class DailyNoteBuilder {
     private pathResolver: PathResolver,
     private settings: Pick<
       TranscriptSettings & NoteSettings,
-      "syncTranscripts" | "createLinkFromNoteToTranscript" | "dailyNoteSectionHeading"
+      | "syncTranscripts"
+      | "createLinkFromNoteToTranscript"
+      | "dailyNoteSectionHeading"
     >
   ) {}
 
@@ -119,7 +121,8 @@ export class DailyNoteBuilder {
           note.title,
           noteDate
         );
-        content += `**Transcript:** [[${transcriptPath}]]\n`;
+
+        content += `**Transcript:** [[<${transcriptPath}>]]\n`;
       }
 
       content += `\n${note.markdown}\n`;

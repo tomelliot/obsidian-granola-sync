@@ -9,7 +9,10 @@ jest.mock("../../src/utils/filenameUtils");
 jest.mock("../../src/utils/dateUtils");
 
 import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMarkdown";
-import { sanitizeFilename, getTitleOrDefault } from "../../src/utils/filenameUtils";
+import {
+  sanitizeFilename,
+  getTitleOrDefault,
+} from "../../src/utils/filenameUtils";
 import { getNoteDate } from "../../src/utils/dateUtils";
 
 describe("DocumentProcessor", () => {
@@ -24,8 +27,9 @@ describe("DocumentProcessor", () => {
     (sanitizeFilename as jest.Mock).mockImplementation((title: string) =>
       title.replace(/[^a-zA-Z0-9\s\-_]/g, "").trim()
     );
-    (getTitleOrDefault as jest.Mock).mockImplementation((doc: GranolaDoc) =>
-      doc.title || "Untitled Granola Note at 2024-01-15 00-00"
+    (getTitleOrDefault as jest.Mock).mockImplementation(
+      (doc: GranolaDoc) =>
+        doc.title || "Untitled Granola Note at 2024-01-15 00-00"
     );
     (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15"));
 
@@ -116,6 +120,10 @@ describe("DocumentProcessor", () => {
     });
 
     it("should add transcript link when enabled", () => {
+      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
+        "Transcripts/Test Note-transcript.md"
+      );
+
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
@@ -139,7 +147,7 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain(
-        "[Transcript](Transcripts/Test Note-transcript.md)"
+        "[Transcript](<Transcripts/Test Note-transcript.md>)"
       );
       expect(mockPathResolver.computeTranscriptPath).toHaveBeenCalledWith(
         "Test Note",
@@ -163,6 +171,71 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).not.toContain("[Transcript]");
+      expect(result.content).not.toContain("[[");
+    });
+
+    it("should wrap transcript paths with spaces in angle brackets", () => {
+      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
+        "Transcripts/My Meeting Transcript.md"
+      );
+
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: true,
+          createLinkFromNoteToTranscript: true,
+        },
+        mockPathResolver
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).toContain(
+        "[Transcript](<Transcripts/My Meeting Transcript.md>)"
+      );
+    });
+
+    it("should wrap transcript paths without spaces in angle brackets", () => {
+      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
+        "Transcripts/TestNote-transcript.md"
+      );
+
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: true,
+          createLinkFromNoteToTranscript: true,
+        },
+        mockPathResolver
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).toContain(
+        "[Transcript](<Transcripts/TestNote-transcript.md>)"
+      );
     });
 
     it("should use default title when title is missing", () => {
@@ -178,7 +251,9 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      expect(result.content).toContain('title: "Untitled Granola Note at 2024-01-15 00-00"');
+      expect(result.content).toContain(
+        'title: "Untitled Granola Note at 2024-01-15 00-00"'
+      );
     });
 
     it("should throw error when document has no valid content", () => {
@@ -218,7 +293,10 @@ describe("DocumentProcessor", () => {
       };
       const transcriptContent = "Speaker 1: Hello\nSpeaker 2: World";
 
-      const result = documentProcessor.prepareTranscript(doc, transcriptContent);
+      const result = documentProcessor.prepareTranscript(
+        doc,
+        transcriptContent
+      );
 
       expect(result.filename).toBe("Test Note-transcript.md");
       expect(result.content).toBe(transcriptContent);
@@ -230,9 +308,14 @@ describe("DocumentProcessor", () => {
       };
       const transcriptContent = "Speaker 1: Hello";
 
-      const result = documentProcessor.prepareTranscript(doc, transcriptContent);
+      const result = documentProcessor.prepareTranscript(
+        doc,
+        transcriptContent
+      );
 
-      expect(result.filename).toBe("Untitled Granola Note at 2024-01-15 00-00-transcript.md");
+      expect(result.filename).toBe(
+        "Untitled Granola Note at 2024-01-15 00-00-transcript.md"
+      );
     });
   });
 
