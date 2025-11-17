@@ -34,6 +34,7 @@ import {
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
+  initialSyncTimeoutId: number | null = null;
   private pathResolver!: PathResolver;
   private fileSyncService!: FileSyncService;
   private documentProcessor!: DocumentProcessor;
@@ -126,14 +127,27 @@ export default class GranolaSync extends Plugin {
   setupPeriodicSync() {
     this.clearPeriodicSync(); // Clear any existing interval first
     if (this.settings.isSyncEnabled && this.settings.syncInterval > 0) {
-      this.syncIntervalId = window.setInterval(async () => {
+      // Schedule first sync after 60 seconds
+      this.initialSyncTimeoutId = window.setTimeout(async () => {
         await this.sync();
-      }, this.settings.syncInterval * 1000);
-      this.registerInterval(this.syncIntervalId); // Register with Obsidian to auto-clear on disable
+        this.initialSyncTimeoutId = null;
+        
+        // After first sync, set up regular interval
+        this.syncIntervalId = window.setInterval(async () => {
+          await this.sync();
+        }, this.settings.syncInterval * 1000);
+        this.registerInterval(this.syncIntervalId);
+      }, 60000); // 60 seconds delay for first sync
+      
+      this.registerInterval(this.initialSyncTimeoutId);
     }
   }
 
   clearPeriodicSync() {
+    if (this.initialSyncTimeoutId !== null) {
+      window.clearTimeout(this.initialSyncTimeoutId);
+      this.initialSyncTimeoutId = null;
+    }
     if (this.syncIntervalId !== null) {
       window.clearInterval(this.syncIntervalId);
       this.syncIntervalId = null;
