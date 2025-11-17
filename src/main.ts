@@ -330,10 +330,21 @@ export default class GranolaSync extends Plugin {
   ): Promise<void> {
     let processedCount = 0;
     let syncedCount = 0;
+    let skippedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
       const title = getTitleOrDefault(doc);
       try {
+        // Skip fetching if transcript already exists locally
+        const existingTranscript = this.fileSyncService.findByGranolaId(
+          docId,
+          "transcript"
+        );
+        if (existingTranscript) {
+          skippedCount++;
+          continue;
+        }
+
         const transcriptData: TranscriptEntry[] = await fetchGranolaTranscript(
           accessToken,
           docId
@@ -372,6 +383,8 @@ export default class GranolaSync extends Plugin {
       }
     }
 
-    log.debug(`Saved ${syncedCount} transcript(s)`);
+    log.debug(
+      `Saved ${syncedCount} transcript(s), skipped ${skippedCount} existing`
+    );
   }
 }
