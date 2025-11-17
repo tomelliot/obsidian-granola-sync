@@ -12,7 +12,6 @@ import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMark
 import {
   sanitizeFilename,
   getTitleOrDefault,
-  formatWikilinkPath,
 } from "../../src/utils/filenameUtils";
 import { getNoteDate } from "../../src/utils/dateUtils";
 
@@ -32,13 +31,6 @@ describe("DocumentProcessor", () => {
       (doc: GranolaDoc) =>
         doc.title || "Untitled Granola Note at 2024-01-15 00-00"
     );
-    (formatWikilinkPath as jest.Mock).mockImplementation((path: string) => {
-      // Real implementation for testing - always wrap in angle brackets
-      if (path === "") {
-        return "";
-      }
-      return `<${path}>`;
-    });
     (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15"));
 
     mockPathResolver = new PathResolver({
