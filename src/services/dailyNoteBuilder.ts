@@ -11,6 +11,7 @@ import { DocumentProcessor } from "./documentProcessor";
 import { PathResolver } from "./pathResolver";
 import { updateSection } from "../utils/textUtils";
 import { TranscriptSettings, NoteSettings } from "../settings";
+import { log } from "../utils/logger";
 
 export interface NoteData {
   title: string;
@@ -158,7 +159,7 @@ export class DailyNoteBuilder {
         `Error updating section in ${dailyNoteFile.path}. Check console.`,
         7000
       );
-      console.error("Error updating daily note section:", error);
+      log.error("Error updating daily note section:", error);
     }
   }
 
