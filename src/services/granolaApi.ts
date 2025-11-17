@@ -71,16 +71,16 @@ export async function fetchGranolaDocuments(
 
   const jsonResponse = response.json;
 
-  try {
-    const apiResponse = v.parse(GranolaApiResponseSchema, jsonResponse);
-    return apiResponse.docs as GranolaDoc[];
-  } catch (error) {
-    const errorMessage = `Invalid response from Granola API: ${
-      error instanceof Error ? error.message : "Unknown error"
-    }`;
-    console.error(JSON.stringify(jsonResponse, null, 2));
-    throw new Error(errorMessage);
+  const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
+  if (!result.success) {
+    console.error("Validation failed for GranolaApiResponseSchema:");
+    console.error(JSON.stringify(result.issues, null, 2));
+
+    throw new Error(
+      `Invalid response from Granola API (GranolaApiResponseSchema)`
+    );
   }
+  return result.output.docs as GranolaDoc[];
 }
 
 export async function fetchAllGranolaDocuments(
@@ -177,15 +177,14 @@ export async function fetchGranolaTranscript(
     body: JSON.stringify({ document_id: docId }),
   });
 
-  try {
-    return v.parse(
-      TranscriptResponseSchema,
-      transcriptResp.json
-    ) as TranscriptEntry[];
-  } catch (error) {
-    const errorMessage = `Invalid transcript response from Granola API: ${
-      error instanceof Error ? error.message : "Unknown error"
-    }`;
-    throw new Error(errorMessage);
+  const result = v.safeParse(TranscriptResponseSchema, transcriptResp.json);
+  if (!result.success) {
+    console.error("Validation failed for TranscriptResponseSchema:");
+    console.error(JSON.stringify(result.issues, null, 2));
+
+    throw new Error(
+      `Invalid transcript response from Granola API (TranscriptResponseSchema)`
+    );
   }
+  return result.output as TranscriptEntry[];
 }
