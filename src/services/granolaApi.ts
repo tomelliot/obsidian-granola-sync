@@ -105,7 +105,14 @@ export async function fetchGranolaDocuments(
     );
   }
   // Handle both 'docs' and 'data' field names for API compatibility
-  return (result.output.docs || result.output.data || []) as GranolaDoc[];
+  const docs = result.output.docs || result.output.data;
+  if (!docs) {
+    log.warn(
+      "Granola API response contained neither 'docs' nor 'data' field - returning empty array. This may indicate an API change."
+    );
+    return [];
+  }
+  return docs as GranolaDoc[];
 }
 
 export async function fetchAllGranolaDocuments(
