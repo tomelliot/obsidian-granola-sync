@@ -3,7 +3,7 @@ import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
 import { getNoteDate } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
-import { TranscriptSettings } from "../settings";
+import { TranscriptSettings, NoteSettings } from "../settings";
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
@@ -12,8 +12,8 @@ import { TranscriptSettings } from "../settings";
 export class DocumentProcessor {
   constructor(
     private settings: Pick<
-      TranscriptSettings,
-      "syncTranscripts" | "createLinkFromNoteToTranscript"
+      TranscriptSettings & NoteSettings,
+      "syncTranscripts" | "createLinkFromNoteToTranscript" | "createNoteHeading"
     >,
     private pathResolver: PathResolver
   ) {}
@@ -61,6 +61,10 @@ export class DocumentProcessor {
     frontmatterLines.push("---", "");
 
     let finalMarkdown = frontmatterLines.join("\n");
+
+    if (this.settings.createNoteHeading) {
+      finalMarkdown += `# ${title}\n\n`;
+    }
 
     // Add transcript link if enabled
     if (

@@ -59,6 +59,7 @@ export default class GranolaSync extends Plugin {
         syncTranscripts: this.settings.syncTranscripts,
         createLinkFromNoteToTranscript:
           this.settings.createLinkFromNoteToTranscript,
+        createNoteHeading: this.settings.createNoteHeading,
       },
       this.pathResolver
     );

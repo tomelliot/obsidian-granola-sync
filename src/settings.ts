@@ -17,6 +17,7 @@ export interface NoteSettings {
   syncDestination: SyncDestination;
   dailyNoteSectionHeading: string;
   granolaFolder: string;
+  createNoteHeading: boolean;
 }
 
 export interface TranscriptSettings {
@@ -48,6 +49,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   syncDestination: SyncDestination.DAILY_NOTES,
   dailyNoteSectionHeading: "## Granola Notes",
   granolaFolder: "Granola",
+  createNoteHeading: false,
   // TranscriptSettings
   syncTranscripts: false,
   transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
@@ -230,6 +232,19 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           );
       }
       // For DAILY_NOTE_FOLDER_STRUCTURE, no additional settings are needed
+      new Setting(containerEl)
+        .setName("Create title")
+        .setDesc(
+          "Enable this if you want to automatically create a first level heading in notes files."
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.createNoteHeading)
+            .onChange(async (value) => {
+              this.plugin.settings.createNoteHeading = value;
+              await this.plugin.saveSettings();
+            })
+        );
     }
 
     // Transcripts Section
