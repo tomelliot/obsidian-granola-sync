@@ -3,7 +3,11 @@ import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
 import { getNoteDate } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
-import { TranscriptSettings, NoteSettings } from "../settings";
+import {
+  TranscriptSettings,
+  NoteSettings,
+  TranscriptLinkLocation,
+} from "../settings";
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
@@ -13,7 +17,7 @@ export class DocumentProcessor {
   constructor(
     private settings: Pick<
       TranscriptSettings & NoteSettings,
-      "syncTranscripts" | "createLinkFromNoteToTranscript" | "createNoteHeading"
+      "syncTranscripts" | "transcriptLinkLocation" | "createNoteHeading"
     >,
     private pathResolver: PathResolver
   ) {}
@@ -58,6 +62,17 @@ export class DocumentProcessor {
     } else {
       frontmatterLines.push(`attendees: []`);
     }
+
+    // Add transcript link in YAML if enabled and set to properties
+    if (
+      this.settings.syncTranscripts &&
+      this.settings.transcriptLinkLocation ===
+        TranscriptLinkLocation.LINK_AT_PROPERTIES
+    ) {
+      const transcriptFilename = sanitizeFilename(title) + "-transcript";
+      frontmatterLines.push(`transcript: "[[${transcriptFilename}]]"`);
+    }
+
     frontmatterLines.push("---", "");
 
     let finalMarkdown = frontmatterLines.join("\n");
@@ -66,10 +81,10 @@ export class DocumentProcessor {
       finalMarkdown += `# ${title}\n\n`;
     }
 
-    // Add transcript link if enabled
+    // Add transcript link at top if enabled and set to top
     if (
       this.settings.syncTranscripts &&
-      this.settings.createLinkFromNoteToTranscript
+      this.settings.transcriptLinkLocation === TranscriptLinkLocation.LINK_AT_TOP
     ) {
       const noteDate = getNoteDate(doc);
       const transcriptPath = this.pathResolver.computeTranscriptPath(

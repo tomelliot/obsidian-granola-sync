@@ -9,7 +9,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 - Sync Granola notes to your Obsidian vault
 - Sync Granola transcripts to your vault, with flexible destination options
 - Support for syncing to daily notes, a dedicated folder, or a daily note folder structure
-- Option to create links between notes and their transcripts
+- Option to create links between notes and their transcripts, either at the top of the note or in frontmatter properties
 - Periodic automatic syncing with customizable interval
 - Granular settings for notes and transcripts
 - Customizable sync settings and destinations
@@ -33,7 +33,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 2. Configure transcript syncing:
    - Choose whether to sync transcripts
    - Select the destination: a dedicated transcripts folder or daily note folder structure
-   - Optionally enable linking from notes to their transcripts
+   - Choose how to link from notes to their transcripts: add a link at the top of the note or store it as a frontmatter property
 3. Set up periodic sync and adjust the interval as desired
 
 ## Frontmatter Structure

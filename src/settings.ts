@@ -12,6 +12,11 @@ export enum TranscriptDestination {
   DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
 }
 
+export enum TranscriptLinkLocation {
+  LINK_AT_TOP = "link_at_top",
+  LINK_AT_PROPERTIES = "link_at_properties",
+}
+
 export interface NoteSettings {
   syncNotes: boolean;
   syncDestination: SyncDestination;
@@ -24,7 +29,7 @@ export interface TranscriptSettings {
   syncTranscripts: boolean;
   transcriptDestination: TranscriptDestination;
   granolaTranscriptsFolder: string;
-  createLinkFromNoteToTranscript: boolean;
+  transcriptLinkLocation: TranscriptLinkLocation;
 }
 
 export interface AutomaticSyncSettings {
@@ -54,7 +59,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   syncTranscripts: false,
   transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
   granolaTranscriptsFolder: "Granola/Transcripts",
-  createLinkFromNoteToTranscript: false,
+  transcriptLinkLocation: TranscriptLinkLocation.LINK_AT_TOP,
 };
 
 export class GranolaSyncSettingTab extends PluginSettingTab {
@@ -338,13 +343,22 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         new Setting(containerEl)
           .setName("Create link from Granola note to transcript")
           .setDesc(
-            "Automatically add a link to the transcript file at the top of each Granola note. This requires both notes and transcripts to be synced."
+            "Choose how to link to the transcript file in each Granola note. This requires both notes and transcripts to be synced."
           )
-          .addToggle((toggle) =>
-            toggle
-              .setValue(this.plugin.settings.createLinkFromNoteToTranscript)
+          .addDropdown((dropdown) =>
+            dropdown
+              .addOption(
+                TranscriptLinkLocation.LINK_AT_TOP,
+                "Link at Top"
+              )
+              .addOption(
+                TranscriptLinkLocation.LINK_AT_PROPERTIES,
+                "Link at Properties"
+              )
+              .setValue(this.plugin.settings.transcriptLinkLocation)
               .onChange(async (value) => {
-                this.plugin.settings.createLinkFromNoteToTranscript = value;
+                this.plugin.settings.transcriptLinkLocation =
+                  value as TranscriptLinkLocation;
                 await this.plugin.saveSettings();
               })
           );

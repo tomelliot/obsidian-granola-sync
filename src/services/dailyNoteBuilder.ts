@@ -10,7 +10,11 @@ import { getNoteDate } from "../utils/dateUtils";
 import { DocumentProcessor } from "./documentProcessor";
 import { PathResolver } from "./pathResolver";
 import { updateSection } from "../utils/textUtils";
-import { TranscriptSettings, NoteSettings } from "../settings";
+import {
+  TranscriptSettings,
+  NoteSettings,
+  TranscriptLinkLocation,
+} from "../settings";
 import { log } from "../utils/logger";
 
 export interface NoteData {
@@ -33,7 +37,7 @@ export class DailyNoteBuilder {
     private settings: Pick<
       TranscriptSettings & NoteSettings,
       | "syncTranscripts"
-      | "createLinkFromNoteToTranscript"
+      | "transcriptLinkLocation"
       | "dailyNoteSectionHeading"
     >
   ) {}
@@ -115,7 +119,7 @@ export class DailyNoteBuilder {
 
       if (
         this.settings.syncTranscripts &&
-        this.settings.createLinkFromNoteToTranscript
+        this.settings.transcriptLinkLocation === TranscriptLinkLocation.LINK_AT_TOP
       ) {
         const noteDate = this.getNoteDateFromNote(note, dateKey);
         const transcriptPath = this.pathResolver.computeTranscriptPath(

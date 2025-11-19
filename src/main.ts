@@ -6,6 +6,7 @@ import {
   GranolaSyncSettingTab,
   SyncDestination,
   TranscriptDestination,
+  TranscriptLinkLocation,
 } from "./settings";
 import {
   fetchAllGranolaDocuments,
@@ -57,8 +58,7 @@ export default class GranolaSync extends Plugin {
     this.documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: this.settings.syncTranscripts,
-        createLinkFromNoteToTranscript:
-          this.settings.createLinkFromNoteToTranscript,
+        transcriptLinkLocation: this.settings.transcriptLinkLocation,
         createNoteHeading: this.settings.createNoteHeading,
       },
       this.pathResolver
@@ -69,8 +69,7 @@ export default class GranolaSync extends Plugin {
       this.pathResolver,
       {
         syncTranscripts: this.settings.syncTranscripts,
-        createLinkFromNoteToTranscript:
-          this.settings.createLinkFromNoteToTranscript,
+        transcriptLinkLocation: this.settings.transcriptLinkLocation,
         dailyNoteSectionHeading: this.settings.dailyNoteSectionHeading,
       }
     );
@@ -116,7 +115,23 @@ export default class GranolaSync extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loadedData = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+
+    // Migrate legacy createLinkFromNoteToTranscript boolean to transcriptLinkLocation enum
+    if (
+      (loadedData as any).createLinkFromNoteToTranscript !== undefined &&
+      !this.settings.transcriptLinkLocation
+    ) {
+      // If it was true, migrate to LINK_AT_TOP (preserve behavior)
+      // If it was false, keep default (LINK_AT_TOP) - user can change if needed
+      if ((loadedData as any).createLinkFromNoteToTranscript) {
+        this.settings.transcriptLinkLocation = TranscriptLinkLocation.LINK_AT_TOP;
+      }
+      // Remove legacy property
+      delete (this.settings as any).createLinkFromNoteToTranscript;
+      await this.saveSettings();
+    }
   }
 
   async saveSettings() {
