@@ -16,8 +16,8 @@ import { log } from "../utils/logger";
 export interface NoteData {
   title: string;
   docId: string;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   markdown: string;
 }
 
@@ -172,8 +172,8 @@ export class DailyNoteBuilder {
    */
   private getNoteDateFromNote(
     note: {
-      createdAt?: string;
-      updatedAt?: string;
+      createdAt?: string | null;
+      updatedAt?: string | null;
     },
     fallbackDateKey: string
   ): Date {

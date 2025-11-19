@@ -110,8 +110,8 @@ export class DocumentProcessor {
   extractNoteForDailyNote(doc: GranolaDoc): {
     title: string;
     docId: string;
-    createdAt?: string;
-    updatedAt?: string;
+    createdAt?: string | null;
+    updatedAt?: string | null;
     markdown: string;
   } | null {
     const contentToParse = doc.last_viewed_panel?.content;

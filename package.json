@@ -20,8 +20,8 @@
   "author": "Tom Elliot",
   "license": "MIT",
   "devDependencies": {
-    "@types/jest": "^29.5.12",
-    "@types/node": "^20.11.24",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.19.25",
     "builtin-modules": "^3.3.0",
     "esbuild": "0.20.1",
     "jest": "^29.7.0",

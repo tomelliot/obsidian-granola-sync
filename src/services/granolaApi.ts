@@ -23,19 +23,24 @@ export interface ProseMirrorDoc {
 // GranolaDoc type (defined explicitly due to recursive nature of ProseMirrorDoc)
 export interface GranolaDoc {
   id: string;
-  title: string | null;
-  created_at?: string;
-  updated_at?: string;
+  title: string | null | undefined;
+  created_at?: string | null;
+  updated_at?: string | null;
   attendees?: string[];
   people?: {
     attendees?: Array<{
       name?: string;
       email?: string;
     }>;
-  };
+  } | null;
   last_viewed_panel?: {
     content?: ProseMirrorDoc | string | null;
   } | null;
+  tasks?: Array<{
+    task_definitions?: Array<{
+      name?: string | null;
+    }>;
+  }> | null;
 }
 
 // Infer TypeScript type from validation schema
@@ -75,13 +80,32 @@ export async function fetchGranolaDocuments(
   const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
   if (!result.success) {
     log.error("Validation failed for GranolaApiResponseSchema:");
-    log.error(JSON.stringify(result.issues, null, 2));
+    log.error("Validation issues:", JSON.stringify(result.issues, null, 2));
+    
+    // Log sample of response structure for debugging
+    const sampleDoc = jsonResponse?.docs?.[0] || jsonResponse?.data?.[0];
+    if (sampleDoc) {
+      log.error("Sample document structure:", JSON.stringify({
+        keys: Object.keys(sampleDoc),
+        tasks_sample: sampleDoc.tasks?.[0] ? {
+          keys: Object.keys(sampleDoc.tasks[0]),
+          task_definitions_sample: sampleDoc.tasks[0].task_definitions?.[0] ? 
+            Object.keys(sampleDoc.tasks[0].task_definitions[0]) : "no task_definitions"
+        } : "no tasks"
+      }, null, 2));
+    }
+    
+    // Log each issue path separately for clarity
+    result.issues.forEach((issue, idx) => {
+      log.error(`Issue ${idx + 1}: ${issue.message} at path: ${issue.path?.map(p => p.key).join('.') || 'root'}`);
+    });
 
     throw new Error(
       `Invalid response from Granola API (GranolaApiResponseSchema)`
     );
   }
-  return result.output.docs as GranolaDoc[];
+  // Handle both 'docs' and 'data' field names for API compatibility
+  return (result.output.docs || result.output.data || []) as GranolaDoc[];
 }
 
 export async function fetchAllGranolaDocuments(

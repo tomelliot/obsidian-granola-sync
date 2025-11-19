@@ -15,8 +15,8 @@ export function formatTranscriptBySpeaker(
   transcriptData: TranscriptEntry[],
   title: string,
   granolaId: string,
-  createdAt?: string,
-  updatedAt?: string,
+  createdAt?: string | null,
+  updatedAt?: string | null,
   attendees?: string[]
 ): string {
   // Add frontmatter with granola_id for transcript deduplication
