@@ -42,6 +42,50 @@ export interface GranolaDoc {
 export type TranscriptEntry = v.InferOutput<typeof TranscriptEntrySchema>;
 
 /**
+ * Helper function to print validation issue paths from a Valibot safeParse result.
+ * Prints the path of each issue to the console if validation failed.
+ */
+export function printValidationIssuePaths(
+  result:
+    | v.SafeParseResult<typeof GranolaApiResponseSchema>
+    | v.SafeParseResult<typeof TranscriptResponseSchema>
+): void {
+  if (result.success) {
+    return;
+  }
+
+  if (result.issues && result.issues.length > 0) {
+    log.error("Validation issues:");
+    result.issues.forEach((issue, index) => {
+      const issueObj = issue as {
+        path?: Array<{ key?: string | number | unknown }>;
+      };
+      if (issueObj.path && issueObj.path.length > 0) {
+        const pathStr = issueObj.path
+          .map((p: { key?: string | number | unknown }) => {
+            if (typeof p.key === "number") return `[${p.key}]`;
+            if (typeof p.key === "string") return `.${p.key}`;
+            if (p.key) return `.${String(p.key)}`;
+            return "";
+          })
+          .join("");
+        log.error(`  Issue ${index + 1}: `);
+        log.error(`  - expected: ${issue.expected}`);
+        log.error(`  - received: ${issue.received}`);
+        log.error(`  - message: ${issue.message}`);
+        log.error(`  - path: ${pathStr}`);
+      } else {
+        log.error(`  Issue ${index + 1}: `);
+        log.error(`  - expected: ${issue.expected}`);
+        log.error(`  - received: ${issue.received}`);
+        log.error(`  - message: ${issue.message}`);
+        log.error(`  - path: (root)`);
+      }
+    });
+  }
+}
+
+/**
  * Fetches documents from the Granola API.
  *
  * Pagination: The API supports offset-based pagination via the `offset` parameter.
@@ -75,6 +119,7 @@ export async function fetchGranolaDocuments(
   const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
   if (!result.success) {
     log.error("Validation failed for GranolaApiResponseSchema:");
+    printValidationIssuePaths(result);
     log.error(JSON.stringify(result.issues, null, 2));
 
     throw new Error(
@@ -181,6 +226,7 @@ export async function fetchGranolaTranscript(
   const result = v.safeParse(TranscriptResponseSchema, transcriptResp.json);
   if (!result.success) {
     log.error("Validation failed for TranscriptResponseSchema:");
+    printValidationIssuePaths(result);
     log.error(JSON.stringify(result.issues, null, 2));
 
     throw new Error(
