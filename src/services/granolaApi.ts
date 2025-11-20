@@ -69,9 +69,17 @@ export function printValidationIssuePaths(
             return "";
           })
           .join("");
-        log.error(`  Issue ${index + 1}: ${issue.message}\nPath: ${pathStr}`);
+        log.error(`  Issue ${index + 1}: `);
+        log.error(`  - expected: ${issue.expected}`);
+        log.error(`  - received: ${issue.received}`);
+        log.error(`  - message: ${issue.message}`);
+        log.error(`  - path: ${pathStr}`);
       } else {
-        log.error(`  Issue ${index + 1}: ${issue.message}\nPath: (root)`);
+        log.error(`  Issue ${index + 1}: `);
+        log.error(`  - expected: ${issue.expected}`);
+        log.error(`  - received: ${issue.received}`);
+        log.error(`  - message: ${issue.message}`);
+        log.error(`  - path: (root)`);
       }
     });
   }
