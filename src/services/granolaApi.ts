@@ -45,16 +45,18 @@ export type TranscriptEntry = v.InferOutput<typeof TranscriptEntrySchema>;
  * Helper function to print validation issue paths from a Valibot safeParse result.
  * Prints the path of each issue to the console if validation failed.
  */
-function printValidationIssuePaths(
-  result: { success: false; issues: unknown[] } | { success: true }
+export function printValidationIssuePaths(
+  result:
+    | v.SafeParseResult<typeof GranolaApiResponseSchema>
+    | v.SafeParseResult<typeof TranscriptResponseSchema>
 ): void {
   if (result.success) {
     return;
   }
 
   if (result.issues && result.issues.length > 0) {
-    console.log("Validation issues:");
-    result.issues.forEach((issue: unknown, index) => {
+    log.error("Validation issues:");
+    result.issues.forEach((issue, index) => {
       const issueObj = issue as {
         path?: Array<{ key?: string | number | unknown }>;
       };
@@ -67,9 +69,9 @@ function printValidationIssuePaths(
             return "";
           })
           .join("");
-        console.log(`  Issue ${index + 1}: ${pathStr}`);
+        log.error(`  Issue ${index + 1}: ${issue.message}\nPath: ${pathStr}`);
       } else {
-        console.log(`  Issue ${index + 1}: (root)`);
+        log.error(`  Issue ${index + 1}: ${issue.message}\nPath: (root)`);
       }
     });
   }
