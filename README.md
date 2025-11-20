@@ -29,6 +29,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
    - Choose whether to sync notes
    - Select the destination: a specific folder, daily notes, or daily note folder structure
    - Optionally set a section heading for daily notes
+   - Enable automatic first-level headings to insert `# <Title>` after frontmatter
 2. Configure transcript syncing:
    - Choose whether to sync transcripts
    - Select the destination: a dedicated transcripts folder or daily note folder structure
