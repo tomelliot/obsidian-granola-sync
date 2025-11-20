@@ -21,7 +21,7 @@ export const GranolaDocSchema = v.object({
   title: v.nullish(v.string()),
   created_at: v.optional(v.string()),
   updated_at: v.optional(v.string()),
-  people: v.optional(
+  people: v.nullish(
     v.object({
       attendees: v.optional(
         v.array(
@@ -56,4 +56,3 @@ export const TranscriptEntrySchema = v.object({
 });
 
 export const TranscriptResponseSchema = v.array(TranscriptEntrySchema);
-
