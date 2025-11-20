@@ -69,7 +69,7 @@ describe("printValidationIssuePaths", () => {
     // Should log issue with root path
     const logCalls = consoleErrorSpy.mock.calls;
     const rootPathLog = logCalls.find((call) =>
-      call[1]?.toString().includes("Path: (root)")
+      call[1]?.toString().includes("path: (root)")
     );
     expect(rootPathLog).toBeDefined();
   });
@@ -104,7 +104,7 @@ describe("printValidationIssuePaths", () => {
     // Should have path information in the logs
     const logCalls = consoleErrorSpy.mock.calls;
     const pathLogs = logCalls.filter((call) =>
-      call[1]?.toString().includes("Path:")
+      call[1]?.toString().includes("path:")
     );
     expect(pathLogs.length).toBeGreaterThan(0);
   });
