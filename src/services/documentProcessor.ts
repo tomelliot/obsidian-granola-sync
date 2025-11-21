@@ -22,9 +22,10 @@ export class DocumentProcessor {
    * Prepares a note document for saving, including frontmatter and optional transcript links.
    *
    * @param doc - The Granola document to process
+   * @param transcriptPath - Optional resolved transcript path (with collision detection) to include in frontmatter
    * @returns Object containing the filename and full markdown content
    */
-  prepareNote(doc: GranolaDoc): { filename: string; content: string } {
+  prepareNote(doc: GranolaDoc, transcriptPath?: string): { filename: string; content: string } {
     const contentToParse = doc.last_viewed_panel?.content;
     if (
       !contentToParse ||
@@ -58,23 +59,22 @@ export class DocumentProcessor {
     } else {
       frontmatterLines.push(`attendees: []`);
     }
+    
+    // Add transcript link to frontmatter if enabled and path provided
+    // Only add for individual note files (not for DAILY_NOTES destination)
+    if (
+      this.settings.syncTranscripts &&
+      this.settings.createLinkFromNoteToTranscript &&
+      transcriptPath
+    ) {
+      // Convert absolute path to relative Obsidian path format
+      // Paths should use < > brackets for spaces (Obsidian-style)
+      frontmatterLines.push(`transcript: <${transcriptPath}>`);
+    }
+    
     frontmatterLines.push("---", "");
 
     let finalMarkdown = frontmatterLines.join("\n");
-
-    // Add transcript link if enabled
-    if (
-      this.settings.syncTranscripts &&
-      this.settings.createLinkFromNoteToTranscript
-    ) {
-      const noteDate = getNoteDate(doc);
-      const transcriptPath = this.pathResolver.computeTranscriptPath(
-        title,
-        noteDate
-      );
-
-      finalMarkdown += `[Transcript](<${transcriptPath}>)\n\n`;
-    }
 
     // Add the actual note content
     finalMarkdown += markdownContent;

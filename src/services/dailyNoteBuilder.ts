@@ -113,19 +113,6 @@ export class DailyNoteBuilder {
         content += `**Updated:** ${note.updatedAt}\n`;
       }
 
-      if (
-        this.settings.syncTranscripts &&
-        this.settings.createLinkFromNoteToTranscript
-      ) {
-        const noteDate = this.getNoteDateFromNote(note, dateKey);
-        const transcriptPath = this.pathResolver.computeTranscriptPath(
-          note.title,
-          noteDate
-        );
-
-        content += `**Transcript:** [[<${transcriptPath}>]]\n`;
-      }
-
       content += `\n${note.markdown}\n`;
     }
 

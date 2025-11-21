@@ -1,5 +1,6 @@
 import { Notice, Plugin } from "obsidian";
-import { getTitleOrDefault } from "./utils/filenameUtils";
+import { getTitleOrDefault, sanitizeFilename } from "./utils/filenameUtils";
+import { getNoteDate } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -48,6 +49,8 @@ export default class GranolaSync extends Plugin {
     this.pathResolver = new PathResolver({
       transcriptDestination: this.settings.transcriptDestination,
       granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
+      syncDestination: this.settings.syncDestination,
+      granolaFolder: this.settings.granolaFolder,
     });
     this.fileSyncService = new FileSyncService(
       this.app,
@@ -321,11 +324,32 @@ export default class GranolaSync extends Plugin {
       processedCount++;
       this.updateSyncStatus("Note", processedCount, documents.length);
 
+      // Compute transcript path before preparing note (for frontmatter linking)
+      let transcriptPath: string | undefined;
+      if (
+        this.settings.syncTranscripts &&
+        this.settings.createLinkFromNoteToTranscript
+      ) {
+        const title = getTitleOrDefault(doc);
+        const noteDate = getNoteDate(doc);
+        const transcriptFilename = sanitizeFilename(title) + "-transcript.md";
+        const resolvedTranscriptPath = this.fileSyncService.resolveFilePath(
+          transcriptFilename,
+          noteDate,
+          doc.id,
+          true
+        );
+        if (resolvedTranscriptPath) {
+          transcriptPath = resolvedTranscriptPath;
+        }
+      }
+
       if (
         await this.fileSyncService.saveNoteToDisk(
           doc,
           this.documentProcessor,
-          forceOverwrite
+          forceOverwrite,
+          transcriptPath
         )
       ) {
         syncedCount++;
@@ -369,6 +393,27 @@ export default class GranolaSync extends Plugin {
         if (transcriptData.length === 0) {
           continue;
         }
+        
+        // Compute note path before formatting transcript (for frontmatter linking)
+        let notePath: string | undefined;
+        if (
+          this.settings.syncNotes &&
+          this.settings.createLinkFromNoteToTranscript &&
+          this.settings.syncDestination !== SyncDestination.DAILY_NOTES
+        ) {
+          const noteDate = getNoteDate(doc);
+          const noteFilename = sanitizeFilename(title) + ".md";
+          const resolvedNotePath = this.fileSyncService.resolveFilePath(
+            noteFilename,
+            noteDate,
+            docId,
+            false
+          );
+          if (resolvedNotePath) {
+            notePath = resolvedNotePath;
+          }
+        }
+        
         // Use the extracted formatting function
         const transcriptMd = formatTranscriptBySpeaker(
           transcriptData,
@@ -378,7 +423,9 @@ export default class GranolaSync extends Plugin {
           doc.updated_at,
           doc.people?.attendees
             ?.map((attendee) => attendee.name || attendee.email || "Unknown")
-            .filter((name) => name !== "Unknown")
+            .filter((name) => name !== "Unknown"),
+          notePath,
+          this.settings.createLinkFromNoteToTranscript
         );
         processedCount++;
         this.updateSyncStatus("Transcript", processedCount, documents.length);
