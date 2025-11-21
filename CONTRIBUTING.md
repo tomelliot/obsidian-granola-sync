@@ -8,6 +8,23 @@
 4. Add tests for new functionality
 5. Submit a pull request
 
+## Project Philosophy
+
+When contributing to this plugin, please keep these core principles in mind:
+
+1. **Keep the codebase minimal:**
+   - We don't add features for uncommon or edge use-cases
+   - Feel free to fork the project for specialized use cases!
+
+2. **Preserve content integrity:**
+   - Content of notes and transcripts should match what is stored in Granola
+   - Don't add extra information to the body of notes or transcripts
+   - Use frontmatter to store additional metadata (e.g. links between notes and transcripts)
+
+3. **Maintain code quality:**
+   - PRs should never reduce test coverage
+   - New functionality should come with new tests
+
 ## Testing Strategy
 
 The plugin uses a combination of unit and integration tests:
