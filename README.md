@@ -47,6 +47,10 @@ title: "Meeting Title"
 type: note
 created_at: 2024-01-15T10:00:00Z
 updated_at: 2024-01-15T12:00:00Z
+attendees:
+  - John Doe
+  - Jane Smith
+transcript: <Transcripts/Meeting Title-transcript.md>
 ---
 ```
 
@@ -58,10 +62,27 @@ title: "Meeting Title - Transcript"
 type: transcript
 created_at: 2024-01-15T10:00:00Z
 updated_at: 2024-01-15T12:00:00Z
+attendees:
+  - John Doe
+  - Jane Smith
+note: <Granola/Meeting Title.md>
 ---
 ```
 
 The `granola_id` is consistent across both note and transcript files for the same source document, while the `type` field distinguishes between them. This allows both file types to coexist with proper duplicate detection.
+
+### Frontmatter Fields
+
+- `granola_id`: Unique identifier from Granola, consistent across note and transcript files
+- `title`: Document title (with "- Transcript" suffix for transcripts)
+- `type`: Either `note` or `transcript`
+- `created_at`: ISO timestamp when the document was created (optional)
+- `updated_at`: ISO timestamp when the document was last updated (optional)
+- `attendees`: Array of attendee names from the meeting (optional)
+- `transcript`: Path to the transcript file (only in notes, when linking is enabled, for individual note files only)
+- `note`: Path to the note file (only in transcripts, when linking is enabled)
+
+The `transcript` and `note` fields use Obsidian-style paths with angle brackets (`< >`) to handle spaces in filenames. These fields are only added when the "Create link from Granola note to transcript" setting is enabled.
 
 ### Legacy Format Migration
 

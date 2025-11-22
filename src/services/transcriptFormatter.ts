@@ -9,6 +9,8 @@ import { TranscriptEntry } from "./granolaApi";
  * @param createdAt - Optional creation timestamp
  * @param updatedAt - Optional update timestamp
  * @param attendees - Optional array of attendee names
+ * @param notePath - Optional resolved note path (with collision detection) to include in frontmatter
+ * @param createLinkFromNoteToTranscript - Whether to add note link to frontmatter
  * @returns Formatted markdown string with frontmatter and speaker-grouped content
  */
 export function formatTranscriptBySpeaker(
@@ -17,7 +19,9 @@ export function formatTranscriptBySpeaker(
   granolaId: string,
   createdAt?: string,
   updatedAt?: string,
-  attendees?: string[]
+  attendees?: string[],
+  notePath?: string,
+  createLinkFromNoteToTranscript: boolean = false
 ): string {
   // Add frontmatter with granola_id for transcript deduplication
   const escapedTitleForYaml = title.replace(/"/g, '\\"');
@@ -36,6 +40,13 @@ export function formatTranscriptBySpeaker(
   } else {
     frontmatterLines.push(`attendees: []`);
   }
+  
+  // Add note link to frontmatter if enabled and path provided
+  if (createLinkFromNoteToTranscript && notePath) {
+    // Paths should use < > brackets for spaces (Obsidian-style)
+    frontmatterLines.push(`note: <${notePath}>`);
+  }
+  
   frontmatterLines.push("---", "");
 
   let transcriptMd = frontmatterLines.join("\n") + "\n";

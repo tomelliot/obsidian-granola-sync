@@ -2,14 +2,17 @@ import { normalizePath } from "obsidian";
 import { getDailyNoteSettings } from "obsidian-daily-notes-interface";
 import moment from "moment";
 import { sanitizeFilename } from "../utils/filenameUtils";
-import { TranscriptSettings, TranscriptDestination } from "../settings";
+import { TranscriptSettings, TranscriptDestination, NoteSettings, SyncDestination } from "../settings";
 
 /**
  * Resolves file paths for notes and transcripts based on plugin settings
  * and daily note configuration.
  */
 export class PathResolver {
-  constructor(private settings: Pick<TranscriptSettings, 'transcriptDestination' | 'granolaTranscriptsFolder'>) {}
+  constructor(
+    private settings: Pick<TranscriptSettings, 'transcriptDestination' | 'granolaTranscriptsFolder'> &
+                     Pick<NoteSettings, 'syncDestination' | 'granolaFolder'>
+  ) {}
 
   /**
    * Computes the folder path for a daily note based on its date.
@@ -37,6 +40,32 @@ export class PathResolver {
       return normalizePath(`${baseFolder}/${folderParts.join("/")}`);
     } else {
       return normalizePath(baseFolder);
+    }
+  }
+
+  /**
+   * Computes the full path for a note file based on settings.
+   * Note: DAILY_NOTES destination doesn't create individual files, so this method
+   * should only be called for GRANOLA_FOLDER or DAILY_NOTE_FOLDER_STRUCTURE destinations.
+   *
+   * @param title - The title of the note
+   * @param noteDate - The date of the note
+   * @returns The full file path for the note
+   */
+  computeNotePath(title: string, noteDate: Date): string {
+    const noteFilename = sanitizeFilename(title) + ".md";
+
+    if (
+      this.settings.syncDestination ===
+      SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE
+    ) {
+      const folderPath = this.computeDailyNoteFolderPath(noteDate);
+      return normalizePath(`${folderPath}/${noteFilename}`);
+    } else {
+      // GRANOLA_FOLDER
+      return normalizePath(
+        `${this.settings.granolaFolder}/${noteFilename}`
+      );
     }
   }
 

@@ -297,4 +297,112 @@ describe("formatTranscriptBySpeaker", () => {
     expect(result).not.toContain("updated_at:");
     expect(result).toContain("---");
   });
+
+  it("should add note field to frontmatter when enabled and path provided", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      undefined,
+      "Granola/Test Meeting.md",
+      true
+    );
+
+    expect(result).toContain("note: <Granola/Test Meeting.md>");
+  });
+
+  it("should not add note field when path not provided", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true
+    );
+
+    expect(result).not.toContain("note:");
+  });
+
+  it("should not add note field when linking disabled", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      undefined,
+      "Granola/Test Meeting.md",
+      false
+    );
+
+    expect(result).not.toContain("note:");
+  });
+
+  it("should wrap note paths with spaces in angle brackets", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      undefined,
+      "Granola/My Meeting Note.md",
+      true
+    );
+
+    expect(result).toContain("note: <Granola/My Meeting Note.md>");
+  });
 });

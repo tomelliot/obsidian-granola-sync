@@ -119,11 +119,34 @@ describe("DocumentProcessor", () => {
       expect(result.content).toContain('title: "Note with \\"quotes\\""');
     });
 
-    it("should add transcript link when enabled", () => {
-      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
-        "Transcripts/Test Note-transcript.md"
+    it("should add transcript field to frontmatter when enabled and path provided", () => {
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: true,
+          createLinkFromNoteToTranscript: true,
+        },
+        mockPathResolver
       );
 
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc, "Transcripts/Test Note-transcript.md");
+
+      expect(result.content).toContain("transcript: <Transcripts/Test Note-transcript.md>");
+      expect(result.content).not.toContain("[Transcript]");
+    });
+
+    it("should not add transcript field when path not provided", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
@@ -146,13 +169,8 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      expect(result.content).toContain(
-        "[Transcript](<Transcripts/Test Note-transcript.md>)"
-      );
-      expect(mockPathResolver.computeTranscriptPath).toHaveBeenCalledWith(
-        "Test Note",
-        new Date("2024-01-15")
-      );
+      expect(result.content).not.toContain("transcript:");
+      expect(result.content).not.toContain("[Transcript]");
     });
 
     it("should not add transcript link when disabled", () => {
@@ -174,11 +192,7 @@ describe("DocumentProcessor", () => {
       expect(result.content).not.toContain("[[");
     });
 
-    it("should wrap transcript paths with spaces in angle brackets", () => {
-      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
-        "Transcripts/My Meeting Transcript.md"
-      );
-
+    it("should wrap transcript paths with spaces in angle brackets in frontmatter", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
@@ -199,18 +213,12 @@ describe("DocumentProcessor", () => {
         },
       };
 
-      const result = documentProcessor.prepareNote(doc);
+      const result = documentProcessor.prepareNote(doc, "Transcripts/My Meeting Transcript.md");
 
-      expect(result.content).toContain(
-        "[Transcript](<Transcripts/My Meeting Transcript.md>)"
-      );
+      expect(result.content).toContain("transcript: <Transcripts/My Meeting Transcript.md>");
     });
 
-    it("should wrap transcript paths without spaces in angle brackets", () => {
-      (mockPathResolver.computeTranscriptPath as jest.Mock).mockReturnValue(
-        "Transcripts/TestNote-transcript.md"
-      );
-
+    it("should wrap transcript paths without spaces in angle brackets in frontmatter", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
@@ -231,11 +239,9 @@ describe("DocumentProcessor", () => {
         },
       };
 
-      const result = documentProcessor.prepareNote(doc);
+      const result = documentProcessor.prepareNote(doc, "Transcripts/TestNote-transcript.md");
 
-      expect(result.content).toContain(
-        "[Transcript](<Transcripts/TestNote-transcript.md>)"
-      );
+      expect(result.content).toContain("transcript: <Transcripts/TestNote-transcript.md>");
     });
 
     it("should use default title when title is missing", () => {

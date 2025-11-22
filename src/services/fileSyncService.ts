@@ -166,6 +166,45 @@ export class FileSyncService {
   }
 
   /**
+   * Resolves the final file path for a note or transcript, accounting for filename collisions.
+   * If there is a filename collision (different Granola ID but same filename),
+   * the file is renamed to include a date/timestamp suffix.
+   *
+   * @param filename - The base filename (e.g., "Note.md")
+   * @param noteDate - The date of the note
+   * @param granolaId - The Granola document ID
+   * @param isTranscript - Whether this is a transcript file
+   * @returns The resolved file path, or null if folder path cannot be resolved
+   */
+  resolveFilePath(
+    filename: string,
+    noteDate: Date,
+    granolaId: string,
+    isTranscript: boolean = false
+  ): string | null {
+    const folderPath = this.resolveFolderPath(noteDate, isTranscript);
+    if (!folderPath) {
+      return null;
+    }
+
+    const type = isTranscript ? "transcript" : "note";
+    let resolvedFilename = filename;
+    let filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
+
+    if (!this.findByGranolaId(granolaId, type)) {
+      const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+      if (existingFile instanceof TFile) {
+        const filenameWithoutExtension = resolvedFilename.replace(/\.md$/, "");
+        const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
+        resolvedFilename = `${filenameWithoutExtension}-${dateSuffix}.md`;
+        filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
+      }
+    }
+
+    return filePath;
+  }
+
+  /**
    * Saves or updates a prepared document to disk by resolving its target path.
    * If there is a filename collision (different Granola ID but same filename),
    * the file is renamed to include a date/timestamp suffix.
@@ -191,20 +230,12 @@ export class FileSyncService {
       return false;
     }
 
-    const type = isTranscript ? "transcript" : "note";
-    let resolvedFilename = filename;
-    let filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
-
-    if (!this.findByGranolaId(granolaId, type)) {
-      const existingFile = this.app.vault.getAbstractFileByPath(filePath);
-      if (existingFile instanceof TFile) {
-        const filenameWithoutExtension = resolvedFilename.replace(/\.md$/, "");
-        const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
-        resolvedFilename = `${filenameWithoutExtension}-${dateSuffix}.md`;
-        filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
-      }
+    const filePath = this.resolveFilePath(filename, noteDate, granolaId, isTranscript);
+    if (!filePath) {
+      return false;
     }
 
+    const type = isTranscript ? "transcript" : "note";
     return this.saveFile(filePath, content, granolaId, type, forceOverwrite);
   }
 
@@ -248,13 +279,14 @@ export class FileSyncService {
   async saveNoteToDisk(
     doc: GranolaDoc,
     documentProcessor: DocumentProcessor,
-    forceOverwrite: boolean = false
+    forceOverwrite: boolean = false,
+    transcriptPath?: string
   ): Promise<boolean> {
     if (!doc.id) {
       log.error("Document missing required id field:", doc);
       return false;
     }
-    const { filename, content } = documentProcessor.prepareNote(doc);
+    const { filename, content } = documentProcessor.prepareNote(doc, transcriptPath);
     const noteDate = getNoteDate(doc);
 
     return this.saveToDisk(
