@@ -11,10 +11,7 @@ import { TranscriptSettings } from "../settings";
  */
 export class DocumentProcessor {
   constructor(
-    private settings: Pick<
-      TranscriptSettings,
-      "syncTranscripts" | "createLinkFromNoteToTranscript"
-    >,
+    private settings: Pick<TranscriptSettings, "syncTranscripts">,
     private pathResolver: PathResolver
   ) {}
 
@@ -60,16 +57,11 @@ export class DocumentProcessor {
       frontmatterLines.push(`attendees: []`);
     }
     
-    // Add transcript link to frontmatter if enabled and path provided
-    // Only add for individual note files (not for DAILY_NOTES destination)
-    if (
-      this.settings.syncTranscripts &&
-      this.settings.createLinkFromNoteToTranscript &&
-      transcriptPath
-    ) {
-      // Convert absolute path to relative Obsidian path format
-      // Paths should use < > brackets for spaces (Obsidian-style)
-      frontmatterLines.push(`transcript: <${transcriptPath}>`);
+    // Add transcript link to frontmatter if path provided
+    // Path is only provided for individual note files (not for DAILY_NOTES destination)
+    if (this.settings.syncTranscripts && transcriptPath) {
+      // Use wiki-style links in frontmatter
+      frontmatterLines.push(`transcript: "[[${transcriptPath}]]"`);
     }
     
     frontmatterLines.push("---", "");

@@ -10,7 +10,6 @@ import { TranscriptEntry } from "./granolaApi";
  * @param updatedAt - Optional update timestamp
  * @param attendees - Optional array of attendee names
  * @param notePath - Optional resolved note path (with collision detection) to include in frontmatter
- * @param createLinkFromNoteToTranscript - Whether to add note link to frontmatter
  * @returns Formatted markdown string with frontmatter and speaker-grouped content
  */
 export function formatTranscriptBySpeaker(
@@ -20,8 +19,7 @@ export function formatTranscriptBySpeaker(
   createdAt?: string,
   updatedAt?: string,
   attendees?: string[],
-  notePath?: string,
-  createLinkFromNoteToTranscript: boolean = false
+  notePath?: string
 ): string {
   // Add frontmatter with granola_id for transcript deduplication
   const escapedTitleForYaml = title.replace(/"/g, '\\"');
@@ -35,18 +33,21 @@ export function formatTranscriptBySpeaker(
   if (updatedAt) frontmatterLines.push(`updated_at: ${updatedAt}`);
   const attendeesArray = attendees || [];
   if (attendeesArray.length > 0) {
-    const attendeesYaml = attendeesArray.map(name => `  - ${name}`).join("\n");
+    const attendeesYaml = attendeesArray
+      .map((name) => `  - ${name}`)
+      .join("\n");
     frontmatterLines.push(`attendees:\n${attendeesYaml}`);
   } else {
     frontmatterLines.push(`attendees: []`);
   }
-  
-  // Add note link to frontmatter if enabled and path provided
-  if (createLinkFromNoteToTranscript && notePath) {
-    // Paths should use < > brackets for spaces (Obsidian-style)
-    frontmatterLines.push(`note: <${notePath}>`);
+
+  // Add note link to frontmatter if path provided
+  // Path is only provided when notes are synced to individual files (not DAILY_NOTES)
+  if (notePath) {
+    // Use wiki-style links in frontmatter
+    frontmatterLines.push(`note: "[[${notePath}]]"`);
   }
-  
+
   frontmatterLines.push("---", "");
 
   let transcriptMd = frontmatterLines.join("\n") + "\n";

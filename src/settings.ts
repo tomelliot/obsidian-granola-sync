@@ -23,7 +23,6 @@ export interface TranscriptSettings {
   syncTranscripts: boolean;
   transcriptDestination: TranscriptDestination;
   granolaTranscriptsFolder: string;
-  createLinkFromNoteToTranscript: boolean;
 }
 
 export interface AutomaticSyncSettings {
@@ -52,7 +51,6 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   syncTranscripts: false,
   transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
   granolaTranscriptsFolder: "Granola/Transcripts",
-  createLinkFromNoteToTranscript: false,
 };
 
 export class GranolaSyncSettingTab extends PluginSettingTab {
@@ -313,23 +311,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               .setValue(this.plugin.settings.granolaTranscriptsFolder)
               .onChange(async (value) => {
                 this.plugin.settings.granolaTranscriptsFolder = value;
-                await this.plugin.saveSettings();
-              })
-          );
-      }
-
-      // Add link creation setting - only show when both notes and transcripts are enabled
-      if (this.plugin.settings.syncNotes) {
-        new Setting(containerEl)
-          .setName("Create link from Granola note to transcript")
-          .setDesc(
-            "Automatically add a link to the transcript file at the top of each Granola note. This requires both notes and transcripts to be synced."
-          )
-          .addToggle((toggle) =>
-            toggle
-              .setValue(this.plugin.settings.createLinkFromNoteToTranscript)
-              .onChange(async (value) => {
-                this.plugin.settings.createLinkFromNoteToTranscript = value;
                 await this.plugin.saveSettings();
               })
           );

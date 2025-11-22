@@ -44,7 +44,6 @@ describe("DocumentProcessor", () => {
     documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: false,
-        createLinkFromNoteToTranscript: false,
       },
       mockPathResolver
     );
@@ -119,11 +118,10 @@ describe("DocumentProcessor", () => {
       expect(result.content).toContain('title: "Note with \\"quotes\\""');
     });
 
-    it("should add transcript field to frontmatter when enabled and path provided", () => {
+    it("should add transcript field to frontmatter when transcripts enabled and path provided", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          createLinkFromNoteToTranscript: true,
         },
         mockPathResolver
       );
@@ -142,7 +140,7 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc, "Transcripts/Test Note-transcript.md");
 
-      expect(result.content).toContain("transcript: <Transcripts/Test Note-transcript.md>");
+      expect(result.content).toContain('transcript: "[[Transcripts/Test Note-transcript.md]]"');
       expect(result.content).not.toContain("[Transcript]");
     });
 
@@ -150,7 +148,6 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          createLinkFromNoteToTranscript: true,
         },
         mockPathResolver
       );
@@ -192,11 +189,10 @@ describe("DocumentProcessor", () => {
       expect(result.content).not.toContain("[[");
     });
 
-    it("should wrap transcript paths with spaces in angle brackets in frontmatter", () => {
+    it("should use wiki-style links for transcript paths in frontmatter", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          createLinkFromNoteToTranscript: true,
         },
         mockPathResolver
       );
@@ -215,14 +211,13 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc, "Transcripts/My Meeting Transcript.md");
 
-      expect(result.content).toContain("transcript: <Transcripts/My Meeting Transcript.md>");
+      expect(result.content).toContain('transcript: "[[Transcripts/My Meeting Transcript.md]]"');
     });
 
-    it("should wrap transcript paths without spaces in angle brackets in frontmatter", () => {
+    it("should use wiki-style links for transcript paths without spaces in frontmatter", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          createLinkFromNoteToTranscript: true,
         },
         mockPathResolver
       );
@@ -241,7 +236,7 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc, "Transcripts/TestNote-transcript.md");
 
-      expect(result.content).toContain("transcript: <Transcripts/TestNote-transcript.md>");
+      expect(result.content).toContain('transcript: "[[Transcripts/TestNote-transcript.md]]"');
     });
 
     it("should use default title when title is missing", () => {

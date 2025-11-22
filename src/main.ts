@@ -1,4 +1,6 @@
 import { Notice, Plugin } from "obsidian";
+import moment from "moment";
+import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
 import { getTitleOrDefault, sanitizeFilename } from "./utils/filenameUtils";
 import { getNoteDate } from "./utils/dateUtils";
 import {
@@ -60,8 +62,6 @@ export default class GranolaSync extends Plugin {
     this.documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: this.settings.syncTranscripts,
-        createLinkFromNoteToTranscript:
-          this.settings.createLinkFromNoteToTranscript,
       },
       this.pathResolver
     );
@@ -70,9 +70,6 @@ export default class GranolaSync extends Plugin {
       this.documentProcessor,
       this.pathResolver,
       {
-        syncTranscripts: this.settings.syncTranscripts,
-        createLinkFromNoteToTranscript:
-          this.settings.createLinkFromNoteToTranscript,
         dailyNoteSectionHeading: this.settings.dailyNoteSectionHeading,
       }
     );
@@ -325,23 +322,18 @@ export default class GranolaSync extends Plugin {
       this.updateSyncStatus("Note", processedCount, documents.length);
 
       // Compute transcript path before preparing note (for frontmatter linking)
-      let transcriptPath: string | undefined;
-      if (
-        this.settings.syncTranscripts &&
-        this.settings.createLinkFromNoteToTranscript
-      ) {
+      // Only add transcript link when syncing to individual files (not DAILY_NOTES)
+      let transcriptPath: string | null = null;
+      if (this.settings.syncTranscripts) {
         const title = getTitleOrDefault(doc);
         const noteDate = getNoteDate(doc);
         const transcriptFilename = sanitizeFilename(title) + "-transcript.md";
-        const resolvedTranscriptPath = this.fileSyncService.resolveFilePath(
+        transcriptPath = this.fileSyncService.resolveFilePath(
           transcriptFilename,
           noteDate,
           doc.id,
           true
         );
-        if (resolvedTranscriptPath) {
-          transcriptPath = resolvedTranscriptPath;
-        }
       }
 
       if (
@@ -349,7 +341,7 @@ export default class GranolaSync extends Plugin {
           doc,
           this.documentProcessor,
           forceOverwrite,
-          transcriptPath
+          transcriptPath ?? undefined
         )
       ) {
         syncedCount++;
@@ -393,27 +385,33 @@ export default class GranolaSync extends Plugin {
         if (transcriptData.length === 0) {
           continue;
         }
-        
+
         // Compute note path before formatting transcript (for frontmatter linking)
-        let notePath: string | undefined;
-        if (
-          this.settings.syncNotes &&
-          this.settings.createLinkFromNoteToTranscript &&
-          this.settings.syncDestination !== SyncDestination.DAILY_NOTES
-        ) {
+        // Always add note link when notes are being synced
+        let notePath: string | null = null;
+        if (this.settings.syncNotes) {
           const noteDate = getNoteDate(doc);
-          const noteFilename = sanitizeFilename(title) + ".md";
-          const resolvedNotePath = this.fileSyncService.resolveFilePath(
-            noteFilename,
-            noteDate,
-            docId,
-            false
-          );
-          if (resolvedNotePath) {
-            notePath = resolvedNotePath;
+
+          if (this.settings.syncDestination === SyncDestination.DAILY_NOTES) {
+            // For daily notes, link to the daily note file with a heading anchor
+            const noteMoment = moment(noteDate);
+            const dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
+            if (dailyNoteFile) {
+              // Link to the daily note with the note title as the heading
+              notePath = `${dailyNoteFile.basename}#${title}`;
+            }
+          } else {
+            // For individual files, use the resolved file path
+            const noteFilename = sanitizeFilename(title) + ".md";
+            notePath = this.fileSyncService.resolveFilePath(
+              noteFilename,
+              noteDate,
+              docId,
+              false
+            );
           }
         }
-        
+
         // Use the extracted formatting function
         const transcriptMd = formatTranscriptBySpeaker(
           transcriptData,
@@ -424,8 +422,7 @@ export default class GranolaSync extends Plugin {
           doc.people?.attendees
             ?.map((attendee) => attendee.name || attendee.email || "Unknown")
             .filter((name) => name !== "Unknown"),
-          notePath,
-          this.settings.createLinkFromNoteToTranscript
+          notePath ?? undefined
         );
         processedCount++;
         this.updateSyncStatus("Transcript", processedCount, documents.length);

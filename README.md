@@ -9,7 +9,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 - Sync Granola notes to your Obsidian vault
 - Sync Granola transcripts to your vault, with flexible destination options
 - Support for syncing to daily notes, a dedicated folder, or a daily note folder structure
-- Option to create links between notes and their transcripts
+- Automatic bidirectional linking between notes and transcripts when using individual files
 - Periodic automatic syncing with customizable interval
 - Granular settings for notes and transcripts
 - Customizable sync settings and destinations
@@ -32,7 +32,6 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 2. Configure transcript syncing:
    - Choose whether to sync transcripts
    - Select the destination: a dedicated transcripts folder or daily note folder structure
-   - Optionally enable linking from notes to their transcripts
 3. Set up periodic sync and adjust the interval as desired
 
 ## Frontmatter Structure
@@ -50,7 +49,7 @@ updated_at: 2024-01-15T12:00:00Z
 attendees:
   - John Doe
   - Jane Smith
-transcript: <Transcripts/Meeting Title-transcript.md>
+transcript: "[[Transcripts/Meeting Title-transcript.md]]"
 ---
 ```
 
@@ -65,7 +64,7 @@ updated_at: 2024-01-15T12:00:00Z
 attendees:
   - John Doe
   - Jane Smith
-note: <Granola/Meeting Title.md>
+note: "[[Granola/Meeting Title.md]]"
 ---
 ```
 
@@ -79,10 +78,10 @@ The `granola_id` is consistent across both note and transcript files for the sam
 - `created_at`: ISO timestamp when the document was created (optional)
 - `updated_at`: ISO timestamp when the document was last updated (optional)
 - `attendees`: Array of attendee names from the meeting (optional)
-- `transcript`: Path to the transcript file (only in notes, when linking is enabled, for individual note files only)
-- `note`: Path to the note file (only in transcripts, when linking is enabled)
+- `transcript`: Wiki-style link to the transcript file (only in notes saved as individual files, not in daily notes)
+- `note`: Wiki-style link to the note (in transcripts, links to individual files or daily notes with heading anchors)
 
-The `transcript` and `note` fields use Obsidian-style paths with angle brackets (`< >`) to handle spaces in filenames. These fields are only added when the "Create link from Granola note to transcript" setting is enabled.
+The `transcript` field is added when notes are saved as individual files and transcripts are synced. The `note` field is always added to transcripts when notes are being synced - for individual note files, it links to the file path; for daily notes, it links to the daily note file with a heading anchor (e.g., `[[2024-01-15#Meeting Title]]`).
 
 ### Legacy Format Migration
 

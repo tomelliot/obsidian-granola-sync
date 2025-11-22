@@ -45,8 +45,6 @@ describe("DailyNoteBuilder", () => {
       mockDocumentProcessor,
       mockPathResolver,
       {
-        syncTranscripts: false,
-        createLinkFromNoteToTranscript: false,
         dailyNoteSectionHeading: "## Granola Notes",
       }
     );
@@ -231,17 +229,6 @@ describe("DailyNoteBuilder", () => {
     });
 
     it("should not add transcript link to daily note sections", () => {
-      dailyNoteBuilder = new DailyNoteBuilder(
-        mockApp,
-        mockDocumentProcessor,
-        mockPathResolver,
-        {
-          syncTranscripts: true,
-          createLinkFromNoteToTranscript: true,
-          dailyNoteSectionHeading: "## Granola Notes",
-        }
-      );
-
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData],
         "## Granola Notes",
