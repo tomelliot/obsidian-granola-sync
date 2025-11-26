@@ -142,8 +142,8 @@ All synced files include frontmatter with metadata for tracking and identificati
 granola_id: doc-123
 title: "Meeting Title"
 type: note
-created_at: 2024-01-15T10:00:00Z
-updated_at: 2024-01-15T12:00:00Z
+created: 2024-01-15T10:00:00Z
+updated: 2024-01-15T12:00:00Z
 ---
 ```
 
@@ -154,8 +154,8 @@ updated_at: 2024-01-15T12:00:00Z
 granola_id: doc-123
 title: "Meeting Title - Transcript"
 type: transcript
-created_at: 2024-01-15T10:00:00Z
-updated_at: 2024-01-15T12:00:00Z
+created: 2024-01-15T10:00:00Z
+updated: 2024-01-15T12:00:00Z
 ---
 ```
 
@@ -163,7 +163,7 @@ updated_at: 2024-01-15T12:00:00Z
 
 - `granola_id`: Consistent across both note and transcript for the same source document
 - `type`: Distinguishes between 'note' and 'transcript' files
-- `created_at` and `updated_at`: Timestamps from Granola API (when available)
+- `created` and `updated`: Timestamps from Granola API (when available)
 - Both file types can share the same `granola_id` while being uniquely identified by `type`
 
 ### Legacy Frontmatter Migration
@@ -205,7 +205,7 @@ When syncing to daily notes, documents are grouped by date and inserted into sec
 ```mermaid
 flowchart TD
     A[Documents List] --> B[For Each Document]
-    B --> C[Extract Date from created_at/updated_at]
+    B --> C[Extract Date from document timestamps]
     C --> D[Group by Date YYYY-MM-DD]
     D --> E[Convert ProseMirror to Markdown]
     E --> F[Add to Daily Notes Map]

@@ -44,8 +44,8 @@ All synced files include structured frontmatter for tracking and identification:
 granola_id: doc-123
 title: "Meeting Title"
 type: note
-created_at: 2024-01-15T10:00:00Z
-updated_at: 2024-01-15T12:00:00Z
+created: 2024-01-15T10:00:00Z
+updated: 2024-01-15T12:00:00Z
 attendees:
   - John Doe
   - Jane Smith
@@ -59,8 +59,8 @@ transcript: "[[Transcripts/Meeting Title-transcript.md]]"
 granola_id: doc-123
 title: "Meeting Title - Transcript"
 type: transcript
-created_at: 2024-01-15T10:00:00Z
-updated_at: 2024-01-15T12:00:00Z
+created: 2024-01-15T10:00:00Z
+updated: 2024-01-15T12:00:00Z
 attendees:
   - John Doe
   - Jane Smith
@@ -75,8 +75,8 @@ The `granola_id` is consistent across both note and transcript files for the sam
 - `granola_id`: Unique identifier from Granola, consistent across note and transcript files
 - `title`: Document title (with "- Transcript" suffix for transcripts)
 - `type`: Either `note` or `transcript`
-- `created_at`: ISO timestamp when the document was created
-- `updated_at`: ISO timestamp when the document was last updated
+- `created`: ISO timestamp when the document was created
+- `updated`: ISO timestamp when the document was last updated
 - `attendees`: Array of attendee names from the meeting
 - `transcript`: Wiki-style link to the transcript file (only in notes saved as individual files, not in daily notes)
 - `note`: Wiki-style link to the note (in transcripts, links to individual files or daily notes with heading anchors)
