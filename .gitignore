@@ -1,5 +1,7 @@
 # vscode
 .vscode 
+.windsurf
+.cursor
 
 # Intellij
 *.iml
