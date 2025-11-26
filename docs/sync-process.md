@@ -178,7 +178,7 @@ The plugin automatically migrates legacy frontmatter formats on load:
 
 ## Note Syncing
 
-Notes can be synced to three different destinations, each with different behavior:
+Notes can be synced to four different destinations, each with different behavior:
 
 ### Note Sync Destinations
 
@@ -188,6 +188,7 @@ flowchart TD
     B -->|Daily Notes| C[Group by Date]
     B -->|Daily Note Folder Structure| D[Individual Files]
     B -->|Granola Folder| D
+    B -->|Vault Root| D
 
     C --> E[Create/Update Daily Note]
     E --> F[Update Section with Heading]
@@ -277,9 +278,9 @@ Path computation depends on the destination type:
 - Extracts folder structure from date format
 - Combines with base daily notes folder
 
-**Granola Folder / Granola Transcripts Folder**:
+**Granola Folder / Vault Root / Granola Transcripts Folder**:
 
-- Uses configured folder path directly
+- Uses configured folder path directly (or the vault root when selected)
 - Normalizes path separators
 
 **Filename Sanitization**:

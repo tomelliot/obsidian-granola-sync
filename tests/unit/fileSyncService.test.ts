@@ -233,6 +233,20 @@ describe("FileSyncService", () => {
       expect(result).toBe("granola-folder/note.md");
     });
 
+    it("should resolve path to vault root when configured", () => {
+      mockSettings.syncDestination = SyncDestination.VAULT_ROOT;
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+
+      const result = fileSyncService.resolveFilePath(
+        "note.md",
+        new Date(),
+        "doc-1",
+        false
+      );
+
+      expect(result).toBe("note.md");
+    });
+
     it("should append date suffix when filename collision exists", () => {
       mockSettings.syncDestination = SyncDestination.GRANOLA_FOLDER;
       const existingFile = new TFile("granola-folder/note.md");
@@ -354,6 +368,37 @@ describe("FileSyncService", () => {
       );
       expect(saveFileSpy).toHaveBeenCalledWith(
         "granola-folder/note.md",
+        "content",
+        "doc-1",
+        "note",
+        false
+      );
+    });
+
+    it("should skip ensureFolder when saving to vault root", async () => {
+      mockSettings.syncDestination = SyncDestination.VAULT_ROOT;
+      const ensureFolderSpy = jest
+        .spyOn(fileSyncService, "ensureFolder")
+        .mockResolvedValue(true);
+      const resolveFilePathSpy = jest
+        .spyOn(fileSyncService, "resolveFilePath")
+        .mockReturnValue("note.md");
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile")
+        .mockResolvedValue(true);
+
+      const result = await fileSyncService.saveToDisk(
+        "note.md",
+        "content",
+        new Date(),
+        "doc-1"
+      );
+
+      expect(result).toBe(true);
+      expect(ensureFolderSpy).toHaveBeenCalledWith(".");
+      expect(resolveFilePathSpy).toHaveBeenCalled();
+      expect(saveFileSpy).toHaveBeenCalledWith(
+        "note.md",
         "content",
         "doc-1",
         "note",

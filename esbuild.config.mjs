@@ -24,8 +24,8 @@ const prod = process.argv[2] === "production";
 const DEV_PLUGIN_PATH =
   process.env.DEV_PLUGIN_PATH ||
   path.join(
-    process.env.HOME,
-    "Documents/Obsidian Vault/.obsidian/plugins/obsidian-granola-sync/main.js"
+    process.env.HOME ?? "",
+    "obs-notes/.obsidian/plugins/obsidian-granola-sync/main.js"
   );
 
 function copyToDevPlugin() {

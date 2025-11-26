@@ -55,17 +55,16 @@ export class PathResolver {
   computeNotePath(title: string, noteDate: Date): string {
     const noteFilename = sanitizeFilename(title) + ".md";
 
-    if (
-      this.settings.syncDestination ===
-      SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE
-    ) {
-      const folderPath = this.computeDailyNoteFolderPath(noteDate);
-      return normalizePath(`${folderPath}/${noteFilename}`);
-    } else {
-      // GRANOLA_FOLDER
-      return normalizePath(
-        `${this.settings.granolaFolder}/${noteFilename}`
-      );
+    switch (this.settings.syncDestination) {
+      case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE: {
+        const folderPath = this.computeDailyNoteFolderPath(noteDate);
+        return normalizePath(`${folderPath}/${noteFilename}`);
+      }
+      case SyncDestination.VAULT_ROOT:
+        return normalizePath(noteFilename);
+      case SyncDestination.GRANOLA_FOLDER:
+      default:
+        return normalizePath(`${this.settings.granolaFolder}/${noteFilename}`);
     }
   }
 

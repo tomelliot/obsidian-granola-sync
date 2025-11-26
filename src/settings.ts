@@ -5,6 +5,7 @@ export enum SyncDestination {
   GRANOLA_FOLDER = "granola_folder",
   DAILY_NOTES = "daily_notes",
   DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
+  VAULT_ROOT = "vault_root",
 }
 
 export enum TranscriptDestination {
@@ -160,6 +161,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE,
               "Use daily note folder structure"
             )
+            .addOption(SyncDestination.VAULT_ROOT, "Save to vault root")
             .setValue(this.plugin.settings.syncDestination)
             .onChange(async (value) => {
               this.plugin.settings.syncDestination = value as SyncDestination;
@@ -187,6 +189,11 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
           explanationEl.setText(
             "Notes will be saved as individual files but organized in the same date-based folder structure as your daily notes. Best of both worlds - individual files with chronological organization."
+          );
+          break;
+        case SyncDestination.VAULT_ROOT:
+          explanationEl.setText(
+            "Notes will be saved as individual files directly in the root of your vault. Useful when you prefer to manually organize files or rely on metadata-driven views."
           );
           break;
       }

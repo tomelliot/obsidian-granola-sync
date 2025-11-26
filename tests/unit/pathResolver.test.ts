@@ -160,5 +160,19 @@ describe("PathResolver", () => {
 
       expect(result).toBe("granola/Test_File_Name_.md");
     });
+
+    it("should place notes in vault root when configured", () => {
+      pathResolver = new PathResolver({
+        transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
+        granolaTranscriptsFolder: "transcripts",
+        syncDestination: SyncDestination.VAULT_ROOT,
+        granolaFolder: "granola",
+      });
+
+      const noteDate = new Date("2024-05-10");
+      const result = pathResolver.computeNotePath("Root Level Note", noteDate);
+
+      expect(result).toBe("Root Level Note.md");
+    });
   });
 });

@@ -88,6 +88,10 @@ export class FileSyncService {
    * @returns True if the folder exists or was created successfully, false on error
    */
   async ensureFolder(folderPath: string): Promise<boolean> {
+    if (folderPath === "." || folderPath === "") {
+      // Vault root requires no folder creation
+      return true;
+    }
     try {
       const folderExists = this.app.vault.getAbstractFileByPath(folderPath);
       if (!folderExists) {
@@ -189,7 +193,10 @@ export class FileSyncService {
 
     const type = isTranscript ? "transcript" : "note";
     let resolvedFilename = filename;
-    let filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
+    let filePath =
+      folderPath === "."
+        ? normalizePath(resolvedFilename)
+        : normalizePath(`${folderPath}/${resolvedFilename}`);
 
     if (!this.findByGranolaId(granolaId, type)) {
       const existingFile = this.app.vault.getAbstractFileByPath(filePath);
@@ -261,6 +268,8 @@ export class FileSyncService {
           return this.pathResolver.computeDailyNoteFolderPath(noteDate);
         case SyncDestination.GRANOLA_FOLDER:
           return normalizePath(settings.granolaFolder);
+        case SyncDestination.VAULT_ROOT:
+          return ".";
         default:
           new Notice(
             `Invalid sync destination for individual files: ${settings.syncDestination}`,
