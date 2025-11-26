@@ -124,9 +124,19 @@ function commitAndTag(version) {
   log(`Creating tag ${tagName}...`, colors.blue);
   exec(`git tag ${tagName}`);
 
+  log(`Fast-forwarding develop branch...`, colors.blue);
+  // Switch to develop branch
+  exec(`git checkout develop`);
+  // Fast-forward develop to match main
+  exec(`git merge --ff-only main`);
+  // Switch back to main
+  exec(`git checkout main`);
+  log(`✓ develop branch fast-forwarded to main`, colors.green);
+
   log(`Pushing changes and tag...`, colors.blue);
   exec(`git push origin main`);
   exec(`git push origin ${tagName}`);
+  exec(`git push origin develop`);
 
   log(`✓ Successfully released ${tagName}`, colors.green);
 }
