@@ -75,8 +75,8 @@ describe("DocumentProcessor", () => {
       expect(result.content).toContain("granola_id: doc-123");
       expect(result.content).toContain('title: "Test Note"');
       expect(result.content).toContain("type: note");
-      expect(result.content).toContain("created_at: 2024-01-15T10:00:00Z");
-      expect(result.content).toContain("updated_at: 2024-01-15T12:00:00Z");
+      expect(result.content).toContain("created: 2024-01-15T10:00:00Z");
+      expect(result.content).toContain("updated: 2024-01-15T12:00:00Z");
       expect(result.content).toContain("# Mock Content");
     });
 
@@ -97,8 +97,8 @@ describe("DocumentProcessor", () => {
       expect(result.filename).toBe("Minimal Note.md");
       expect(result.content).toContain("granola_id: doc-456");
       expect(result.content).toContain("type: note");
-      expect(result.content).not.toContain("created_at:");
-      expect(result.content).not.toContain("updated_at:");
+      expect(result.content).not.toContain("created:");
+      expect(result.content).not.toContain("updated:");
     });
 
     it("should escape quotes in titles for YAML frontmatter", () => {
@@ -138,9 +138,14 @@ describe("DocumentProcessor", () => {
         },
       };
 
-      const result = documentProcessor.prepareNote(doc, "Transcripts/Test Note-transcript.md");
+      const result = documentProcessor.prepareNote(
+        doc,
+        "Transcripts/Test Note-transcript.md"
+      );
 
-      expect(result.content).toContain('transcript: "[[Transcripts/Test Note-transcript.md]]"');
+      expect(result.content).toContain(
+        'transcript: "[[Transcripts/Test Note-transcript.md]]"'
+      );
       expect(result.content).not.toContain("[Transcript]");
     });
 
@@ -209,9 +214,14 @@ describe("DocumentProcessor", () => {
         },
       };
 
-      const result = documentProcessor.prepareNote(doc, "Transcripts/My Meeting Transcript.md");
+      const result = documentProcessor.prepareNote(
+        doc,
+        "Transcripts/My Meeting Transcript.md"
+      );
 
-      expect(result.content).toContain('transcript: "[[Transcripts/My Meeting Transcript.md]]"');
+      expect(result.content).toContain(
+        'transcript: "[[Transcripts/My Meeting Transcript.md]]"'
+      );
     });
 
     it("should use wiki-style links for transcript paths without spaces in frontmatter", () => {
@@ -234,9 +244,14 @@ describe("DocumentProcessor", () => {
         },
       };
 
-      const result = documentProcessor.prepareNote(doc, "Transcripts/TestNote-transcript.md");
+      const result = documentProcessor.prepareNote(
+        doc,
+        "Transcripts/TestNote-transcript.md"
+      );
 
-      expect(result.content).toContain('transcript: "[[Transcripts/TestNote-transcript.md]]"');
+      expect(result.content).toContain(
+        'transcript: "[[Transcripts/TestNote-transcript.md]]"'
+      );
     });
 
     it("should use default title when title is missing", () => {

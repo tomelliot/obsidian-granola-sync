@@ -29,8 +29,8 @@ export function formatTranscriptBySpeaker(
     `title: "${escapedTitleForYaml} - Transcript"`,
     `type: transcript`,
   ];
-  if (createdAt) frontmatterLines.push(`created_at: ${createdAt}`);
-  if (updatedAt) frontmatterLines.push(`updated_at: ${updatedAt}`);
+  if (createdAt) frontmatterLines.push(`created: ${createdAt}`);
+  if (updatedAt) frontmatterLines.push(`updated: ${updatedAt}`);
   const attendeesArray = attendees || [];
   if (attendeesArray.length > 0) {
     const attendeesYaml = attendeesArray

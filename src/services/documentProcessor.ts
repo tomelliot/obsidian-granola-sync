@@ -22,7 +22,10 @@ export class DocumentProcessor {
    * @param transcriptPath - Optional resolved transcript path (with collision detection) to include in frontmatter
    * @returns Object containing the filename and full markdown content
    */
-  prepareNote(doc: GranolaDoc, transcriptPath?: string): { filename: string; content: string } {
+  prepareNote(
+    doc: GranolaDoc,
+    transcriptPath?: string
+  ): { filename: string; content: string } {
     const contentToParse = doc.last_viewed_panel?.content;
     if (
       !contentToParse ||
@@ -44,8 +47,8 @@ export class DocumentProcessor {
       `title: "${escapedTitleForYaml}"`,
       `type: note`,
     ];
-    if (doc.created_at) frontmatterLines.push(`created_at: ${doc.created_at}`);
-    if (doc.updated_at) frontmatterLines.push(`updated_at: ${doc.updated_at}`);
+    if (doc.created_at) frontmatterLines.push(`created: ${doc.created_at}`);
+    if (doc.updated_at) frontmatterLines.push(`updated: ${doc.updated_at}`);
     const attendees =
       doc.people?.attendees
         ?.map((attendee) => attendee.name || attendee.email || "Unknown")
@@ -56,14 +59,14 @@ export class DocumentProcessor {
     } else {
       frontmatterLines.push(`attendees: []`);
     }
-    
+
     // Add transcript link to frontmatter if path provided
     // Path is only provided for individual note files (not for DAILY_NOTES destination)
     if (this.settings.syncTranscripts && transcriptPath) {
       // Use wiki-style links in frontmatter
       frontmatterLines.push(`transcript: "[[${transcriptPath}]]"`);
     }
-    
+
     frontmatterLines.push("---", "");
 
     let finalMarkdown = frontmatterLines.join("\n");

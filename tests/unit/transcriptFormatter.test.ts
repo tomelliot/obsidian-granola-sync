@@ -82,13 +82,19 @@ describe("formatTranscriptBySpeaker", () => {
     const youSections = result.match(/## You \(/g);
     expect(youSections).toHaveLength(1);
     expect(result).toContain("## You (00:00:01)");
-    expect(result).toContain("First sentence. Second sentence. Third sentence.");
+    expect(result).toContain(
+      "First sentence. Second sentence. Third sentence."
+    );
   });
 
   it("should handle empty transcript data", () => {
     const transcriptData: TranscriptEntry[] = [];
 
-    const result = formatTranscriptBySpeaker(transcriptData, "Empty", "empty-id");
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Empty",
+      "empty-id"
+    );
 
     expect(result).toContain("---");
     expect(result).toContain("granola_id: empty-id");
@@ -118,7 +124,9 @@ describe("formatTranscriptBySpeaker", () => {
       "test-id"
     );
 
-    expect(result).toContain('title: "Meeting \\"Project Alpha\\" - Transcript"');
+    expect(result).toContain(
+      'title: "Meeting \\"Project Alpha\\" - Transcript"'
+    );
   });
 
   it("should distinguish between microphone and speaker sources", () => {
@@ -266,8 +274,8 @@ describe("formatTranscriptBySpeaker", () => {
     expect(result).toContain("---");
     expect(result).toContain("granola_id: meeting-123");
     expect(result).toContain("type: transcript");
-    expect(result).toContain(`created_at: ${createdAt}`);
-    expect(result).toContain(`updated_at: ${updatedAt}`);
+    expect(result).toContain(`created: ${createdAt}`);
+    expect(result).toContain(`updated: ${updatedAt}`);
     expect(result).toContain("---");
   });
 
@@ -293,8 +301,8 @@ describe("formatTranscriptBySpeaker", () => {
     expect(result).toContain("---");
     expect(result).toContain("granola_id: meeting-456");
     expect(result).toContain("type: transcript");
-    expect(result).not.toContain("created_at:");
-    expect(result).not.toContain("updated_at:");
+    expect(result).not.toContain("created:");
+    expect(result).not.toContain("updated:");
     expect(result).toContain("---");
   });
 
@@ -349,7 +357,6 @@ describe("formatTranscriptBySpeaker", () => {
 
     expect(result).not.toContain("note:");
   });
-
 
   it("should use wiki-style links for note paths in frontmatter", () => {
     const transcriptData: TranscriptEntry[] = [

@@ -1,6 +1,7 @@
 # Obsidian Granola Sync
 
-[![Tests](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml)
+[![Release](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml)
+[![codecov](https://codecov.io/gh/tomelliot/obsidian-granola-sync/graph/badge.svg?token=UALN2224PQ)](https://codecov.io/gh/tomelliot/obsidian-granola-sync)
 
 This plugin allows you to synchronize your notes and transcripts from Granola (https://granola.ai) directly into your Obsidian vault. It fetches documents from Granola, converts them from ProseMirror JSON format to Markdown, and saves them as `.md` files.
 
@@ -13,13 +14,12 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 - Periodic automatic syncing with customizable interval
 - Granular settings for notes and transcripts
 - Customizable sync settings and destinations
-- **Platform support:** This plugin only works on **macOS**. It is **not supported on iOS**.
+- **Platform support:** This plugin only works on desktop. It is not supported on mobile.
 
 ## Installation
 
-1. Download the latest release from the releases page
-2. Extract the zip file into your Obsidian plugins folder
-3. Enable the plugin in Obsidian settings
+1. Go to [https://obsidian.md/plugins?search=granola](https://obsidian.md/plugins?search=granola)
+2. Click Install
 
 ## Configuration
 
@@ -44,8 +44,8 @@ All synced files include structured frontmatter for tracking and identification:
 granola_id: doc-123
 title: "Meeting Title"
 type: note
-created_at: 2024-01-15T10:00:00Z
-updated_at: 2024-01-15T12:00:00Z
+created: 2024-01-15T10:00:00Z
+updated: 2024-01-15T12:00:00Z
 attendees:
   - John Doe
   - Jane Smith
@@ -59,8 +59,8 @@ transcript: "[[Transcripts/Meeting Title-transcript.md]]"
 granola_id: doc-123
 title: "Meeting Title - Transcript"
 type: transcript
-created_at: 2024-01-15T10:00:00Z
-updated_at: 2024-01-15T12:00:00Z
+created: 2024-01-15T10:00:00Z
+updated: 2024-01-15T12:00:00Z
 attendees:
   - John Doe
   - Jane Smith
@@ -75,9 +75,9 @@ The `granola_id` is consistent across both note and transcript files for the sam
 - `granola_id`: Unique identifier from Granola, consistent across note and transcript files
 - `title`: Document title (with "- Transcript" suffix for transcripts)
 - `type`: Either `note` or `transcript`
-- `created_at`: ISO timestamp when the document was created (optional)
-- `updated_at`: ISO timestamp when the document was last updated (optional)
-- `attendees`: Array of attendee names from the meeting (optional)
+- `created`: ISO timestamp when the document was created
+- `updated`: ISO timestamp when the document was last updated
+- `attendees`: Array of attendee names from the meeting
 - `transcript`: Wiki-style link to the transcript file (only in notes saved as individual files, not in daily notes)
 - `note`: Wiki-style link to the note (in transcripts, links to individual files or daily notes with heading anchors)
 
