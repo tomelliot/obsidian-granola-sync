@@ -202,7 +202,7 @@ describe("DailyNoteBuilder", () => {
       );
 
       expect(result).toContain("## Granola Notes");
-      expect(result).toContain("### Test Note");
+      expect(result).toContain("## Test Note");
       expect(result).toContain("**Granola ID:** doc-123");
       expect(result).toContain("**Created:** 2024-01-15T10:00:00Z");
       expect(result).toContain("**Updated:** 2024-01-15T12:00:00Z");
@@ -224,7 +224,7 @@ describe("DailyNoteBuilder", () => {
 
       expect(result).not.toContain("**Created:**");
       expect(result).not.toContain("**Updated:**");
-      expect(result).toContain("### Test Note");
+      expect(result).toContain("## Test Note");
       expect(result).toContain("**Granola ID:** doc-123");
     });
 
@@ -253,8 +253,8 @@ describe("DailyNoteBuilder", () => {
         "2024-01-15"
       );
 
-      expect(result).toContain("### Test Note");
-      expect(result).toContain("### Second Note");
+      expect(result).toContain("## Test Note");
+      expect(result).toContain("## Second Note");
       expect(result).toContain("**Granola ID:** doc-123");
       expect(result).toContain("**Granola ID:** doc-456");
     });

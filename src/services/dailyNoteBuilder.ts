@@ -98,7 +98,7 @@ export class DailyNoteBuilder {
     let content = sectionHeading;
 
     for (const note of notesForDay) {
-      content += `\n### ${note.title}\n`;
+      content += `\n## ${note.title}\n`;
       content += `**Granola ID:** ${note.docId}\n`;
 
       if (note.createdAt) {
