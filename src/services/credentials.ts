@@ -115,10 +115,10 @@ function isTokenExpired(workosTokens: WorkosTokens): boolean {
   const tokenObtainedAt = workosTokens.obtained_at;
   const expiresIn = workosTokens.expires_in * 1000; // Convert seconds to milliseconds
   const expirationTime = tokenObtainedAt + expiresIn;
-  
+
   // Add 5-minute buffer to refresh before actual expiration
   const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
-  
+
   return currentTime >= expirationTime - bufferTime;
 }
 
@@ -156,7 +156,8 @@ async function refreshAccessToken(
       token_type: refreshResponse.token_type,
       obtained_at: Date.now(),
       // Keep the same refresh_token if not provided in response
-      refresh_token: refreshResponse.refresh_token ?? workosTokens.refresh_token,
+      refresh_token:
+        refreshResponse.refresh_token ?? workosTokens.refresh_token,
     };
 
     log.debug("Successfully refreshed access token");
@@ -170,7 +171,6 @@ async function refreshAccessToken(
     );
   }
 }
-
 
 export async function loadCredentials(): Promise<{
   accessToken: string | null;
@@ -206,13 +206,15 @@ export async function loadCredentials(): Promise<{
           ? JSON.parse(response.json)
           : response.json;
       let workosTokens: WorkosTokens = JSON.parse(tokenData.workos_tokens);
-      
+
       // Check if token has expired
       if (isTokenExpired(workosTokens)) {
-        log.debug("Access token has expired or will expire soon, refreshing...");
+        log.debug(
+          "Access token has expired or will expire soon, refreshing..."
+        );
         try {
           workosTokens = await refreshAccessToken(workosTokens);
-          log.debug("Token refresh completed successfully (kept in memory only)");
+          log.debug("Token refresh completed successfully");
         } catch (refreshError) {
           log.error("Failed to refresh token:", refreshError);
           tokenLoadError =
@@ -220,7 +222,7 @@ export async function loadCredentials(): Promise<{
           return { accessToken, error: tokenLoadError };
         }
       }
-      
+
       accessToken = workosTokens.access_token;
       if (!accessToken) {
         log.debug("Credentials server: No access token found in response");
