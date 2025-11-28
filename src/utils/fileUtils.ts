@@ -1,5 +1,4 @@
-import { Editor } from "codemirror";
-import { App, MarkdownView, TFile } from "obsidian";
+import { App, MarkdownView, TFile, Editor } from "obsidian";
 
 // Define the type for the Obsidian editor that wraps CodeMirror
 interface ObsidianEditor {

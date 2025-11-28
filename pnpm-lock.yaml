@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@eslint/js':
-        specifier: ^9.39.1
-        version: 9.39.1
       '@types/moment':
         specifier: ^2.11.29
         version: 2.13.0
@@ -23,13 +20,13 @@ importers:
       obsidian-daily-notes-interface:
         specifier: ^0.9.4
         version: 0.9.4(@codemirror/state@6.5.0)(@codemirror/view@6.38.6)
-      typescript-eslint:
-        specifier: ^8.47.0
-        version: 8.47.0(eslint@9.39.1)(typescript@5.2.2)
       valibot:
         specifier: ^1.1.0
         version: 1.1.0(typescript@5.2.2)
     devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.1
+        version: 9.39.1
       '@types/jest':
         specifier: ^29.5.12
         version: 29.5.14
@@ -72,6 +69,9 @@ importers:
       typescript:
         specifier: 5.2.2
         version: 5.2.2
+      typescript-eslint:
+        specifier: ^8.47.0
+        version: 8.47.0(eslint@9.39.1)(typescript@5.2.2)
 
 packages:
 
