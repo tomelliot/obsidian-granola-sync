@@ -312,6 +312,18 @@ export default class GranolaSync extends Plugin {
       ) {
         continue;
       }
+
+      // Skip processing if note already exists locally and is up-to-date (unless forceOverwrite is true)
+      if (!forceOverwrite) {
+        const existingNote = this.fileSyncService.findByGranolaId(doc.id, "note");
+        if (existingNote) {
+          // Check if remote is newer than local
+          if (!this.fileSyncService.isRemoteNewer(doc.id, doc.updated_at, "note")) {
+            continue;
+          }
+        }
+      }
+
       processedCount++;
       this.updateSyncStatus("Note", processedCount, documents.length);
 
@@ -359,14 +371,16 @@ export default class GranolaSync extends Plugin {
       const docId = doc.id;
       const title = getTitleOrDefault(doc);
       try {
-        // Skip fetching if transcript already exists locally (unless forceOverwrite is true)
+        // Skip fetching if transcript already exists locally and is up-to-date (unless forceOverwrite is true)
         if (!forceOverwrite) {
           const existingTranscript = this.fileSyncService.findByGranolaId(
             docId,
             "transcript"
           );
           if (existingTranscript) {
-            continue;
+            if (!this.fileSyncService.isRemoteNewer(docId, doc.updated_at, "transcript")) {
+              continue;
+            }
           }
         }
 

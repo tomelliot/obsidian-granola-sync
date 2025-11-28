@@ -64,6 +64,58 @@ export class FileSyncService {
   }
 
   /**
+   * Checks if a remote document is newer than the local file.
+   * Compares the remote document's updated_at timestamp with the local file's updated frontmatter field.
+   *
+   * @param granolaId - The Granola document ID
+   * @param remoteUpdatedAt - The remote document's updated_at timestamp (ISO string)
+   * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
+   * @returns True if remote is newer or if comparison cannot be made, false if local is up-to-date
+   */
+  isRemoteNewer(
+    granolaId: string,
+    remoteUpdatedAt: string | undefined,
+    type: "note" | "transcript" = "note"
+  ): boolean {
+    // If no remote timestamp, assume we should update
+    if (!remoteUpdatedAt) {
+      return true;
+    }
+
+    const localFile = this.findByGranolaId(granolaId, type);
+    if (!localFile) {
+      // File doesn't exist locally, so remote is "newer"
+      return true;
+    }
+
+    try {
+      const cache = this.app.metadataCache.getFileCache(localFile);
+      const localUpdated = cache?.frontmatter?.updated as string | undefined;
+
+      if (!localUpdated) {
+        // Local file has no timestamp, assume we should update
+        return true;
+      }
+
+      // Compare timestamps
+      const remoteDate = new Date(remoteUpdatedAt);
+      const localDate = new Date(localUpdated);
+
+      // Check for invalid dates
+      if (isNaN(remoteDate.getTime()) || isNaN(localDate.getTime())) {
+        log.warn(`Invalid timestamp comparison for ${granolaId}, assuming remote is newer`);
+        return true;
+      }
+
+      return remoteDate > localDate;
+    } catch (e) {
+      log.error(`Error comparing timestamps for ${granolaId}:`, e);
+      // On error, assume we should update
+      return true;
+    }
+  }
+
+  /**
    * Updates the Granola ID cache with a file mapping.
    *
    * @param granolaId - The Granola document ID (optional)

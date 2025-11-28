@@ -155,6 +155,175 @@ describe("FileSyncService", () => {
     });
   });
 
+  describe("isRemoteNewer", () => {
+    it("should return true when local file does not exist", () => {
+      const result = fileSyncService.isRemoteNewer(
+        "non-existent-id",
+        "2024-01-15T12:00:00Z",
+        "note"
+      );
+
+      expect(result).toBe(true);
+    });
+
+    it("should return true when remote has no timestamp", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: { granola_id: "test-id", updated: "2024-01-15T10:00:00Z" },
+      } as any);
+
+      const result = fileSyncService.isRemoteNewer("test-id", undefined, "note");
+
+      expect(result).toBe(true);
+    });
+
+    it("should return true when local has no timestamp in frontmatter", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: { granola_id: "test-id" }, // No updated field
+      } as any);
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z",
+        "note"
+      );
+
+      expect(result).toBe(true);
+    });
+
+    it("should return true when remote is newer than local", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: {
+          granola_id: "test-id",
+          updated: "2024-01-15T10:00:00Z",
+        },
+      } as any);
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z", // 2 hours later
+        "note"
+      );
+
+      expect(result).toBe(true);
+    });
+
+    it("should return false when local is newer than remote", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: {
+          granola_id: "test-id",
+          updated: "2024-01-15T14:00:00Z",
+        },
+      } as any);
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z", // 2 hours earlier
+        "note"
+      );
+
+      expect(result).toBe(false);
+    });
+
+    it("should return false when timestamps are equal", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: {
+          granola_id: "test-id",
+          updated: "2024-01-15T12:00:00Z",
+        },
+      } as any);
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z",
+        "note"
+      );
+
+      expect(result).toBe(false);
+    });
+
+    it("should handle transcripts separately from notes", () => {
+      const mockNote = { path: "note.md" } as TFile;
+      const mockTranscript = { path: "transcript.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockNote, "note");
+      fileSyncService.updateCache("test-id", mockTranscript, "transcript");
+
+      mockApp.metadataCache.getFileCache
+        .mockReturnValueOnce({
+          frontmatter: {
+            granola_id: "test-id",
+            type: "note",
+            updated: "2024-01-15T10:00:00Z",
+          },
+        } as any)
+        .mockReturnValueOnce({
+          frontmatter: {
+            granola_id: "test-id",
+            type: "transcript",
+            updated: "2024-01-15T14:00:00Z",
+          },
+        } as any);
+
+      // Note is older than remote
+      const noteResult = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z",
+        "note"
+      );
+      expect(noteResult).toBe(true);
+
+      // Transcript is newer than remote
+      const transcriptResult = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z",
+        "transcript"
+      );
+      expect(transcriptResult).toBe(false);
+    });
+
+    it("should return true on error during timestamp comparison", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: {
+          granola_id: "test-id",
+          updated: "invalid-date",
+        },
+      } as any);
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z",
+        "note"
+      );
+
+      expect(result).toBe(true);
+    });
+
+    it("should return true when frontmatter cache is null", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue(null);
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z",
+        "note"
+      );
+
+      expect(result).toBe(true);
+    });
+  });
+
   describe("updateCache", () => {
     it("should add file to cache when granolaId provided", () => {
       const mockFile = { path: "note.md" } as TFile;
