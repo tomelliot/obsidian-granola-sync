@@ -5,6 +5,25 @@ import path from "path";
 import os from "os";
 import { log } from "../utils/logger";
 
+interface WorkOsTokens {
+  access_token: string;
+  expires_in?: number;
+  refresh_token?: string;
+  token_type?: string;
+  obtained_at?: string | number;
+  session_id?: string;
+  external_id?: string;
+  [key: string]: unknown;
+}
+
+type TokenFileContent = Record<string, unknown> & {
+  workos_tokens?: unknown;
+};
+
+const TOKEN_REFRESH_ENDPOINT =
+  "https://api.granola.ai/v1/refresh-access-token";
+const TOKEN_EXPIRY_GRACE_PERIOD_MS = 60 * 1000; // 1 minute
+
 let server: http.Server | null = null;
 
 function getTokenFilePath(): string {
@@ -30,6 +49,142 @@ function getTokenFilePath(): string {
 }
 
 const filePath = getTokenFilePath();
+
+function parseWorkOsTokens(tokenData: TokenFileContent): WorkOsTokens | null {
+  const rawTokens = tokenData.workos_tokens;
+  if (!rawTokens) {
+    return null;
+  }
+
+  try {
+    if (typeof rawTokens === "string") {
+      return JSON.parse(rawTokens) as WorkOsTokens;
+    }
+    if (typeof rawTokens === "object") {
+      return rawTokens as WorkOsTokens;
+    }
+  } catch (error) {
+    log.error("Failed to parse workos_tokens:", error);
+  }
+  return null;
+}
+
+function getExpiryTimestamp(tokens: WorkOsTokens): number | null {
+  if (!tokens.expires_in || !tokens.obtained_at) {
+    return null;
+  }
+
+  let obtainedAtMs: number | null = null;
+  if (typeof tokens.obtained_at === "number") {
+    obtainedAtMs =
+      tokens.obtained_at > 1e12
+        ? tokens.obtained_at
+        : Math.trunc(tokens.obtained_at * 1000);
+  } else if (typeof tokens.obtained_at === "string") {
+    const numericValue = Number(tokens.obtained_at);
+    if (!Number.isNaN(numericValue)) {
+      obtainedAtMs =
+        numericValue > 1e12
+          ? numericValue
+          : Math.trunc(numericValue * 1000);
+    } else {
+      const parsedDate = Date.parse(tokens.obtained_at);
+      if (!Number.isNaN(parsedDate)) {
+        obtainedAtMs = parsedDate;
+      }
+    }
+  }
+
+  if (!obtainedAtMs) {
+    return null;
+  }
+
+  return obtainedAtMs + tokens.expires_in * 1000;
+}
+
+function isTokenExpired(tokens: WorkOsTokens): boolean {
+  const expiryTimestamp = getExpiryTimestamp(tokens);
+  if (!expiryTimestamp) {
+    return false;
+  }
+  return Date.now() + TOKEN_EXPIRY_GRACE_PERIOD_MS >= expiryTimestamp;
+}
+
+async function refreshWorkOsTokens(
+  tokens: WorkOsTokens
+): Promise<WorkOsTokens> {
+  if (!tokens.refresh_token) {
+    throw new Error("No refresh token available.");
+  }
+
+  const response = await requestUrl({
+    url: TOKEN_REFRESH_ENDPOINT,
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${tokens.access_token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "User-Agent": "GranolaObsidianPlugin",
+    },
+    body: JSON.stringify({
+      refresh_token: tokens.refresh_token,
+      provider: "workos",
+    }),
+    throw: true,
+  });
+
+  const responseJson =
+    typeof response.json === "string" ? JSON.parse(response.json) : response.json;
+
+  let refreshedTokens: WorkOsTokens | null = null;
+  if (responseJson) {
+    if (responseJson.workos_tokens) {
+      try {
+        refreshedTokens =
+          typeof responseJson.workos_tokens === "string"
+            ? (JSON.parse(responseJson.workos_tokens) as WorkOsTokens)
+            : (responseJson.workos_tokens as WorkOsTokens);
+      } catch (error) {
+        log.error("Failed to parse workos_tokens from refresh response:", error);
+      }
+    } else {
+      refreshedTokens = responseJson as WorkOsTokens;
+    }
+  }
+
+  if (!refreshedTokens || !refreshedTokens.access_token) {
+    throw new Error(
+      "Granola refresh response did not include an access token."
+    );
+  }
+
+  return {
+    ...tokens,
+    ...refreshedTokens,
+    obtained_at: refreshedTokens.obtained_at ?? new Date().toISOString(),
+  };
+}
+
+async function persistRefreshedTokens(
+  tokenData: TokenFileContent,
+  updatedTokens: WorkOsTokens
+): Promise<void> {
+  const updatedData: TokenFileContent = {
+    ...tokenData,
+  };
+
+  const originalValue = tokenData.workos_tokens;
+  updatedData.workos_tokens =
+    typeof originalValue === "string" || !originalValue
+      ? JSON.stringify(updatedTokens)
+      : updatedTokens;
+
+  await fs.promises.writeFile(
+    filePath,
+    JSON.stringify(updatedData, null, 2),
+    "utf8"
+  );
+}
 
 export async function startCredentialsServer(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -115,16 +270,36 @@ export async function loadCredentials(): Promise<{
     });
     log.debug("Credentials server: Received successful response");
     try {
-      const tokenData =
+      const tokenData: TokenFileContent =
         typeof response.json === "string"
           ? JSON.parse(response.json)
-          : response.json;
-      const workosTokens = JSON.parse(tokenData.workos_tokens);
-      accessToken = workosTokens.access_token;
-      if (!accessToken) {
-        log.debug("Credentials server: No access token found in response");
+          : (response.json as TokenFileContent);
+
+      const workosTokens = parseWorkOsTokens(tokenData);
+      if (!workosTokens || !workosTokens.access_token) {
+        log.debug(
+          "Credentials server: No access token found in workos_tokens response"
+        );
         tokenLoadError =
           "No access token found in credentials file. The token may have expired.";
+      } else {
+        let activeTokens = workosTokens;
+
+        if (isTokenExpired(workosTokens)) {
+          try {
+            log.debug("Access token expired. Refreshing via Granola API...");
+            activeTokens = await refreshWorkOsTokens(workosTokens);
+            await persistRefreshedTokens(tokenData, activeTokens);
+            log.debug("Granola access token successfully refreshed.");
+          } catch (refreshError) {
+            log.error("Failed to refresh access token:", refreshError);
+            tokenLoadError =
+              "Failed to refresh expired access token. Please re-authenticate in Granola.";
+            return { accessToken: null, error: tokenLoadError };
+          }
+        }
+
+        accessToken = activeTokens.access_token;
       }
     } catch (parseError) {
       log.error("Failed to parse response:", response);

@@ -64,6 +64,7 @@ sequenceDiagram
 - **File Location**: `{OS-specific}/supabase.json`
 - **Server Port**: `2590` (localhost only)
 - **Token Path**: `workos_tokens.access_token` within the JSON structure
+- **Auto Refresh**: When `workos_tokens` indicates the access token has expired, the plugin calls `POST https://api.granola.ai/v1/refresh-access-token` with the stored refresh token, updates `supabase.json`, and retries with the new access token.
 - **Server Lifecycle**: Started before each sync, closed immediately after token extraction
 
 ## Document Fetching
