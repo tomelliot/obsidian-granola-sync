@@ -1,11 +1,9 @@
 import { loadCredentials } from "../../src/services/credentials";
 import { requestUrl } from "obsidian";
-import fs from "fs";
 import http from "http";
 
 // Mock the modules
 jest.mock("obsidian");
-jest.mock("fs");
 jest.mock("http");
 
 // Mock the logger
@@ -29,11 +27,6 @@ describe("Credentials Service - Token Refresh", () => {
   
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Mock fs.promises
-    (fs.promises as any) = {
-      writeFile: jest.fn().mockResolvedValue(undefined),
-    };
 
     // Mock http server
     mockServer = {
@@ -76,10 +69,9 @@ describe("Credentials Service - Token Refresh", () => {
     expect(result.accessToken).toBe(mockAccessToken);
     expect(result.error).toBeNull();
     expect(requestUrl).toHaveBeenCalledTimes(1);
-    expect(fs.promises.writeFile).not.toHaveBeenCalled();
   });
 
-  it("should refresh token when expired and save to file", async () => {
+  it("should refresh token when expired", async () => {
     const currentTime = Date.now();
     const expiredTime = currentTime - (6 * 60 * 60 * 1000); // 6 hours ago
     
@@ -125,9 +117,6 @@ describe("Credentials Service - Token Refresh", () => {
       refresh_token: mockRefreshToken,
       provider: "workos",
     });
-
-    // Check that tokens were saved to file
-    expect(fs.promises.writeFile).toHaveBeenCalledTimes(1);
   });
 
   it("should refresh token when it will expire soon (within 5 minutes)", async () => {
@@ -167,7 +156,6 @@ describe("Credentials Service - Token Refresh", () => {
     expect(result.accessToken).toBe(mockNewAccessToken);
     expect(result.error).toBeNull();
     expect(requestUrl).toHaveBeenCalledTimes(2);
-    expect(fs.promises.writeFile).toHaveBeenCalledTimes(1);
   });
 
   it("should handle refresh token failure gracefully", async () => {
@@ -199,10 +187,9 @@ describe("Credentials Service - Token Refresh", () => {
     expect(result.accessToken).toBeNull();
     expect(result.error).toContain("Access token has expired and refresh failed");
     expect(requestUrl).toHaveBeenCalledTimes(2);
-    expect(fs.promises.writeFile).not.toHaveBeenCalled();
   });
 
-  it("should preserve refresh_token when response includes new one", async () => {
+  it("should use new access token when refresh succeeds", async () => {
     const currentTime = Date.now();
     const expiredTime = currentTime - (6 * 60 * 60 * 1000);
     const newRefreshToken = "new-refresh-token";
@@ -238,15 +225,9 @@ describe("Credentials Service - Token Refresh", () => {
 
     expect(result.accessToken).toBe(mockNewAccessToken);
     expect(result.error).toBeNull();
-    
-    // Check that the saved tokens include the new refresh token
-    const writeFileCall = (fs.promises.writeFile as jest.Mock).mock.calls[0];
-    const savedData = JSON.parse(writeFileCall[1]);
-    const savedTokens = JSON.parse(savedData.workos_tokens);
-    expect(savedTokens.refresh_token).toBe(newRefreshToken);
   });
 
-  it("should keep original refresh_token when response doesn't include one", async () => {
+  it("should handle refresh response without new refresh_token", async () => {
     const currentTime = Date.now();
     const expiredTime = currentTime - (6 * 60 * 60 * 1000);
     
@@ -281,15 +262,9 @@ describe("Credentials Service - Token Refresh", () => {
 
     expect(result.accessToken).toBe(mockNewAccessToken);
     expect(result.error).toBeNull();
-    
-    // Check that the saved tokens include the original refresh token
-    const writeFileCall = (fs.promises.writeFile as jest.Mock).mock.calls[0];
-    const savedData = JSON.parse(writeFileCall[1]);
-    const savedTokens = JSON.parse(savedData.workos_tokens);
-    expect(savedTokens.refresh_token).toBe(mockRefreshToken);
   });
 
-  it("should update obtained_at timestamp when refreshing token", async () => {
+  it("should return refreshed access token", async () => {
     const currentTime = Date.now();
     const expiredTime = currentTime - (6 * 60 * 60 * 1000);
     
@@ -319,17 +294,11 @@ describe("Credentials Service - Token Refresh", () => {
         json: mockRefreshResponse,
       });
 
-    const beforeRefresh = Date.now();
-    await loadCredentials();
-    const afterRefresh = Date.now();
-
-    // Check that obtained_at was updated to current time
-    const writeFileCall = (fs.promises.writeFile as jest.Mock).mock.calls[0];
-    const savedData = JSON.parse(writeFileCall[1]);
-    const savedTokens = JSON.parse(savedData.workos_tokens);
+    const result = await loadCredentials();
     
-    expect(savedTokens.obtained_at).toBeGreaterThanOrEqual(beforeRefresh);
-    expect(savedTokens.obtained_at).toBeLessThanOrEqual(afterRefresh);
+    expect(result.accessToken).toBe(mockNewAccessToken);
+    expect(result.error).toBeNull();
+    expect(requestUrl).toHaveBeenCalledTimes(2);
   });
 
   it("should include authorization header in refresh request", async () => {

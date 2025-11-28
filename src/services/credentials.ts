@@ -171,39 +171,6 @@ async function refreshAccessToken(
   }
 }
 
-/**
- * Saves the updated tokens back to the credentials file.
- */
-async function saveTokensToFile(
-  workosTokens: WorkosTokens,
-  originalTokenData: TokenData
-): Promise<void> {
-  try {
-    const tokenFilePath = getTokenFilePath();
-    
-    // Update the workos_tokens field with the new tokens
-    const updatedTokenData = {
-      ...originalTokenData,
-      workos_tokens: JSON.stringify(workosTokens),
-    };
-
-    // Write the updated data back to the file
-    await fs.promises.writeFile(
-      tokenFilePath,
-      JSON.stringify(updatedTokenData, null, 2),
-      "utf8"
-    );
-
-    log.debug("Successfully saved refreshed tokens to file");
-  } catch (error) {
-    log.error("Failed to save tokens to file:", error);
-    throw new Error(
-      `Failed to save refreshed tokens: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-}
 
 export async function loadCredentials(): Promise<{
   accessToken: string | null;
@@ -245,9 +212,7 @@ export async function loadCredentials(): Promise<{
         log.debug("Access token has expired or will expire soon, refreshing...");
         try {
           workosTokens = await refreshAccessToken(workosTokens);
-          // Save the refreshed tokens back to the file
-          await saveTokensToFile(workosTokens, tokenData);
-          log.debug("Token refresh and save completed successfully");
+          log.debug("Token refresh completed successfully (kept in memory only)");
         } catch (refreshError) {
           log.error("Failed to refresh token:", refreshError);
           tokenLoadError =
