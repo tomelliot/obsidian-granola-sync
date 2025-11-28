@@ -60,9 +60,10 @@ export async function updateSection(
 
   // Check if content is unchanged (unless force overwrite is enabled)
   if (!forceOverwrite && logbookSectionLineNum !== -1) {
-    const existingSectionLines = nextSectionLineNum !== -1
-      ? fileLines.slice(logbookSectionLineNum, nextSectionLineNum)
-      : fileLines.slice(logbookSectionLineNum);
+    const existingSectionLines =
+      nextSectionLineNum !== -1
+        ? fileLines.slice(logbookSectionLineNum, nextSectionLineNum)
+        : fileLines.slice(logbookSectionLineNum);
     const existingSection = existingSectionLines.join("\n").trim();
     const newSection = sectionContents.trim();
     if (existingSection === newSection) {
@@ -98,12 +99,12 @@ export async function updateSection(
     const suffix =
       nextSectionLineNum !== -1 ? fileLines.slice(nextSectionLineNum) : [];
 
-    await vault.process(file, (data) => {
+    await vault.process(file, () => {
       return [...prefix, sectionContents, ...suffix].join("\n");
     });
   } else {
     // Section does not exist, append to end of file.
-    await vault.process(file, (data) => {
+    await vault.process(file, () => {
       return [...fileLines, "", sectionContents].join("\n");
     });
   }
@@ -146,7 +147,7 @@ export async function updateProperties(
 
   // Don't worry about the case where the editor is open here.
   // It's more unlikely that the user is editing the existing note
-  await vault.process(file, (data) => {
+  await vault.process(file, () => {
     return [properties, ...fileLines].join("\n");
   });
 }

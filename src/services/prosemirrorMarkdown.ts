@@ -7,7 +7,7 @@ export function convertProsemirrorToMarkdown(
     return "";
   }
 
-  let markdownOutput: string[] = [];
+  const markdownOutput: string[] = [];
 
   const processNode = (
     node: ProseMirrorNode,
@@ -42,16 +42,17 @@ export function convertProsemirrorToMarkdown(
     }
 
     switch (node.type) {
-      case "heading":
+      case "heading": {
         const level =
           typeof node.attrs?.level === "number" ? node.attrs.level : 1;
         return `${"#".repeat(level)} ${textContent.trim()}${
           isTopLevel ? "\n\n" : "\n"
         }`;
+      }
       case "paragraph":
         // Only add double newlines for top-level paragraphs
         return textContent + (isTopLevel ? "\n\n" : "");
-      case "bulletList":
+      case "bulletList": {
         if (!node.content) return "";
         const items = node.content
           .map((itemNode) => {
@@ -79,6 +80,7 @@ export function convertProsemirrorToMarkdown(
           .filter((item) => item.length > 0);
         // Only add double newlines for top-level bullet lists
         return items.join("\n") + (isTopLevel ? "\n\n" : "");
+      }
       case "text":
         return node.text || "";
       default:

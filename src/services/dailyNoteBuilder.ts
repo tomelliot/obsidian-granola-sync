@@ -8,9 +8,7 @@ import moment from "moment";
 import { GranolaDoc } from "./granolaApi";
 import { getNoteDate } from "../utils/dateUtils";
 import { DocumentProcessor } from "./documentProcessor";
-import { PathResolver } from "./pathResolver";
 import { updateSection } from "../utils/textUtils";
-import { TranscriptSettings, NoteSettings } from "../settings";
 import { log } from "../utils/logger";
 
 export interface NoteData {
@@ -26,12 +24,7 @@ export interface NoteData {
  * Handles grouping notes by date, building section content, and updating daily notes.
  */
 export class DailyNoteBuilder {
-  constructor(
-    private app: App,
-    private documentProcessor: DocumentProcessor,
-    private pathResolver: PathResolver,
-    private settings: Pick<NoteSettings, "dailyNoteSectionHeading">
-  ) {}
+  constructor(private app: App, private documentProcessor: DocumentProcessor) {}
 
   /**
    * Groups documents by their date and extracts note data for each.
@@ -88,8 +81,7 @@ export class DailyNoteBuilder {
    */
   buildDailyNoteSectionContent(
     notesForDay: NoteData[],
-    sectionHeading: string,
-    dateKey: string
+    sectionHeading: string
   ): string {
     if (notesForDay.length === 0) {
       return sectionHeading;
@@ -143,24 +135,5 @@ export class DailyNoteBuilder {
       );
       log.error("Error updating daily note section:", error);
     }
-  }
-
-  /**
-   * Helper to get the date from a note, with fallback to the date key.
-   *
-   * @param note - Note data with optional timestamps
-   * @param fallbackDateKey - Fallback date key in YYYY-MM-DD format
-   * @returns The note date
-   */
-  private getNoteDateFromNote(
-    note: {
-      createdAt?: string;
-      updatedAt?: string;
-    },
-    fallbackDateKey: string
-  ): Date {
-    if (note.createdAt) return new Date(note.createdAt);
-    if (note.updatedAt) return new Date(note.updatedAt);
-    return new Date(fallbackDateKey);
   }
 }

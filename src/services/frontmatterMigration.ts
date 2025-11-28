@@ -69,8 +69,7 @@ export class FrontmatterMigrationService {
       content,
       granolaId,
       hasTranscriptSuffix,
-      missingTypeField,
-      frontmatter
+      missingTypeField
     );
 
     // Only write if content changed
@@ -86,8 +85,7 @@ export class FrontmatterMigrationService {
     content: string,
     granolaId: string,
     hasTranscriptSuffix: boolean,
-    missingTypeField: boolean,
-    frontmatter: Record<string, unknown>
+    missingTypeField: boolean
   ): string {
     // Extract frontmatter section
     const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
