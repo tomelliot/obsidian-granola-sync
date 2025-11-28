@@ -1,7 +1,6 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
-import { getNoteDate } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
 import { TranscriptSettings } from "../settings";
 

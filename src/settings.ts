@@ -149,7 +149,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     // Only show note-related settings when sync notes is enabled
     if (this.plugin.settings.syncNotes) {
-      new Setting(containerEl)
+      const notesDestSetting = new Setting(containerEl)
         .setName("Notes sync destination")
         .setDesc("Choose where to save your Granola notes")
         .addDropdown((dropdown) =>
@@ -170,25 +170,29 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         );
 
       // Add explanation for each sync destination option
-      const explanationEl = containerEl.createEl("div", {
-        cls: "setting-item-description",
-      });
-      switch (this.plugin.settings.syncDestination) {
-        case SyncDestination.DAILY_NOTES:
-          explanationEl.setText(
-            "Notes will be added as sections within your existing daily notes. Perfect for keeping meeting notes alongside your daily journal."
-          );
-          break;
-        case SyncDestination.GRANOLA_FOLDER:
-          explanationEl.setText(
-            "All notes will be saved as individual files in a single folder. Simple and straightforward organization."
-          );
-          break;
-        case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-          explanationEl.setText(
-            "Notes will be saved as individual files but organized in the same date-based folder structure as your daily notes. Best of both worlds - individual files with chronological organization."
-          );
-          break;
+      const explanationEl = notesDestSetting.settingEl
+        .querySelector(".setting-item-info")
+        ?.createEl("div", {
+          cls: "setting-item-description",
+        });
+      if (explanationEl) {
+        switch (this.plugin.settings.syncDestination) {
+          case SyncDestination.DAILY_NOTES:
+            explanationEl.setText(
+              "Notes will be added as sections within your existing daily notes. Perfect for keeping meeting notes alongside your daily journal."
+            );
+            break;
+          case SyncDestination.GRANOLA_FOLDER:
+            explanationEl.setText(
+              "All notes will be saved as individual files in a single folder. Simple and straightforward organization."
+            );
+            break;
+          case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
+            explanationEl.setText(
+              "Notes will be saved as individual files but organized in the same date-based folder structure as your daily notes. Best of both worlds - individual files with chronological organization."
+            );
+            break;
+        }
       }
 
       // Show relevant settings based on sync destination
@@ -206,6 +210,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               .setValue(this.plugin.settings.dailyNoteSectionHeading)
               .onChange(async (value) => {
                 this.plugin.settings.dailyNoteSectionHeading = value;
+                console.log("dailyNoteSectionHeading", value);
                 await this.plugin.saveSettings();
               })
           );

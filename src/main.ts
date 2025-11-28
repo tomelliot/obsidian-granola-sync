@@ -8,7 +8,6 @@ import {
   DEFAULT_SETTINGS,
   GranolaSyncSettingTab,
   SyncDestination,
-  TranscriptDestination,
 } from "./settings";
 import {
   fetchAllGranolaDocuments,
@@ -67,11 +66,7 @@ export default class GranolaSync extends Plugin {
     );
     this.dailyNoteBuilder = new DailyNoteBuilder(
       this.app,
-      this.documentProcessor,
-      this.pathResolver,
-      {
-        dailyNoteSectionHeading: this.settings.dailyNoteSectionHeading,
-      }
+      this.documentProcessor
     );
 
     // Run silent migration for legacy frontmatter formats
@@ -283,8 +278,7 @@ export default class GranolaSync extends Plugin {
       );
       const sectionContent = this.dailyNoteBuilder.buildDailyNoteSectionContent(
         notesForDay,
-        sectionHeadingSetting,
-        dateKey
+        sectionHeadingSetting
       );
 
       await this.dailyNoteBuilder.updateDailyNoteSection(
@@ -361,7 +355,6 @@ export default class GranolaSync extends Plugin {
   ): Promise<void> {
     let processedCount = 0;
     let syncedCount = 0;
-    let skippedCount = 0;
     for (const doc of documents) {
       const docId = doc.id;
       const title = getTitleOrDefault(doc);
@@ -373,7 +366,6 @@ export default class GranolaSync extends Plugin {
             "transcript"
           );
           if (existingTranscript) {
-            skippedCount++;
             continue;
           }
         }
