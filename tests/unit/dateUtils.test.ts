@@ -93,16 +93,16 @@ describe("getNoteDate", () => {
 });
 
 describe("formatDateForFilename", () => {
-  it("should format date with correct pattern YYYY-MM-DD HH-MM", () => {
-    const date = new Date(2024, 0, 15, 10, 30); // Use local time
+  it("should format date with correct pattern YYYY-MM-DD HH-MM-SS", () => {
+    const date = new Date(2024, 0, 15, 10, 30, 45); // Use local time
     const result = formatDateForFilename(date);
-    expect(result).toBe("2024-01-15 10-30");
+    expect(result).toBe("2024-01-15 10-30-45");
   });
 
-  it("should pad single digit months and days with zeros", () => {
-    const date = new Date(2024, 2, 5, 8, 7);
+  it("should pad single digit months, days, hours, minutes, and seconds with zeros", () => {
+    const date = new Date(2024, 2, 5, 8, 7, 3);
     const result = formatDateForFilename(date);
-    expect(result).toBe("2024-03-05 08-07");
+    expect(result).toBe("2024-03-05 08-07-03");
   });
 
   it("should produce filename-safe strings (no colons or slashes)", () => {

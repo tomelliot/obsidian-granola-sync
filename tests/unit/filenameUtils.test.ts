@@ -82,12 +82,13 @@ describe("getTitleOrDefault", () => {
   it("should return default title with timestamp when title is missing", () => {
     const doc: GranolaDoc = {
       id: "doc-123",
+      title: null,
       created_at: "2024-01-15T10:30:00Z",
     };
 
     const result = getTitleOrDefault(doc);
     expect(result).toMatch(
-      /^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}$/
+      /^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$/
     );
   });
 });
