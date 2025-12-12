@@ -82,6 +82,7 @@ describe("getTitleOrDefault", () => {
   it("should return default title with timestamp when title is missing", () => {
     const doc: GranolaDoc = {
       id: "doc-123",
+      title: null,
       created_at: "2024-01-15T10:30:00Z",
     };
 
