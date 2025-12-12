@@ -3,6 +3,7 @@ import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
 import { PathResolver } from "./pathResolver";
 import { TranscriptSettings } from "../settings";
+import { formatTranscriptBody } from "./transcriptFormatter";
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
@@ -93,6 +94,71 @@ export class DocumentProcessor {
     const filename = sanitizeFilename(title) + "-transcript.md";
 
     return { filename, content: transcriptContent };
+  }
+
+  /**
+   * Prepares a combined note and transcript document for saving.
+   * Combines note content and transcript content in a single file with separate headings.
+   *
+   * @param doc - The Granola document to process
+   * @param transcriptContent - The formatted transcript body content (without frontmatter)
+   * @returns Object containing the filename and full markdown content
+   */
+  prepareCombinedNote(
+    doc: GranolaDoc,
+    transcriptContent: string
+  ): { filename: string; content: string } {
+    const contentToParse = doc.last_viewed_panel?.content;
+    if (
+      !contentToParse ||
+      typeof contentToParse === "string" ||
+      contentToParse.type !== "doc"
+    ) {
+      throw new Error("Document has no valid content to parse");
+    }
+
+    const title = getTitleOrDefault(doc);
+    const docId = doc.id || "unknown_id";
+    const markdownContent = convertProsemirrorToMarkdown(contentToParse);
+
+    // Prepare frontmatter with type: combined
+    const escapedTitleForYaml = title.replace(/"/g, '\\"');
+    const frontmatterLines = [
+      "---",
+      `granola_id: ${docId}`,
+      `title: "${escapedTitleForYaml}"`,
+      `type: combined`,
+    ];
+    if (doc.created_at) frontmatterLines.push(`created: ${doc.created_at}`);
+    if (doc.updated_at) frontmatterLines.push(`updated: ${doc.updated_at}`);
+    const attendees =
+      doc.people?.attendees
+        ?.map((attendee) => attendee.name || attendee.email || "Unknown")
+        .filter((name) => name !== "Unknown") || [];
+    if (attendees.length > 0) {
+      const attendeesYaml = attendees.map((name) => `  - ${name}`).join("\n");
+      frontmatterLines.push(`attendees:\n${attendeesYaml}`);
+    } else {
+      frontmatterLines.push(`attendees: []`);
+    }
+
+    // Note: Combined files do NOT include transcript or note link fields in frontmatter
+    frontmatterLines.push("---", "");
+
+    let finalMarkdown = frontmatterLines.join("\n");
+
+    // Add note content with heading
+    finalMarkdown += "## Note\n\n";
+    finalMarkdown += markdownContent;
+    finalMarkdown += "\n\n";
+
+    // Add transcript content at the end with heading
+    finalMarkdown += "## Transcript\n\n";
+    finalMarkdown += transcriptContent;
+
+    const filename = sanitizeFilename(title) + ".md";
+
+    return { filename, content: finalMarkdown };
   }
 
   /**

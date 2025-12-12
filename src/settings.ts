@@ -10,6 +10,7 @@ export enum SyncDestination {
 export enum TranscriptDestination {
   GRANOLA_TRANSCRIPTS_FOLDER = "granola_transcripts_folder",
   DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
+  COMBINED_WITH_NOTE = "combined_with_note",
 }
 
 export interface NoteSettings {
@@ -259,7 +260,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       const transcriptDestSetting = new Setting(containerEl)
         .setName("Transcripts sync destination")
         .setDesc("Choose where to save your Granola transcripts")
-        .addDropdown((dropdown) =>
+        .addDropdown((dropdown) => {
           dropdown
             .addOption(
               TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
@@ -268,7 +269,15 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             .addOption(
               TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE,
               "Use daily note folder structure"
-            )
+            );
+          // Only show combined option when both notes and transcripts are enabled
+          if (this.plugin.settings.syncNotes) {
+            dropdown.addOption(
+              TranscriptDestination.COMBINED_WITH_NOTE,
+              "Save with note in same file"
+            );
+          }
+          dropdown
             .setValue(this.plugin.settings.transcriptDestination)
             .onChange(async (value) => {
               this.plugin.settings.transcriptDestination =
@@ -276,8 +285,8 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               await this.plugin.saveSettings();
               // Refresh the settings display to show/hide relevant fields
               this.display();
-            })
-        );
+            });
+        });
 
       // Add explanation for transcript destination
       const transcriptExplanationEl = transcriptDestSetting.settingEl
@@ -297,10 +306,15 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               "Transcripts will be saved in the same date-based folder structure as your daily notes."
             );
             break;
+          case TranscriptDestination.COMBINED_WITH_NOTE:
+            transcriptExplanationEl.setText(
+              "Transcripts will be appended to the same file as the note, with the transcript content at the end. Only applies to individual file destinations (not daily notes)."
+            );
+            break;
         }
       }
 
-      // Show folder setting for transcripts folder option
+      // Show folder setting for transcripts folder option (hide when combined mode is selected)
       if (
         this.plugin.settings.transcriptDestination ===
         TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER
