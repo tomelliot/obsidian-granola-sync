@@ -20,7 +20,6 @@ export function formatTranscriptBody(
   for (let i = 0; i < transcriptData.length; i++) {
     const entry = transcriptData[i];
     const speaker = getSpeaker(entry.source);
-
     if (currentSpeaker === null) {
       currentSpeaker = speaker;
       currentStart = entry.start_timestamp;
@@ -29,7 +28,11 @@ export function formatTranscriptBody(
       currentText.push(entry.text);
     } else {
       // Write previous block
-      transcriptMd += `## ${currentSpeaker} (${currentStart})\n\n`;
+      // We use level three headings (###) because it matches the
+      // headings that granola uses for notes. That allows us to
+      // use consistent parent headings for notes and transcripts
+      // (level two headigns: ##).
+      transcriptMd += `### ${currentSpeaker} (${currentStart})\n\n`;
       transcriptMd += currentText.join(" ") + "\n\n";
       // Start new block
       currentSpeaker = speaker;
@@ -40,7 +43,7 @@ export function formatTranscriptBody(
 
   // Write last block
   if (currentSpeaker !== null) {
-    transcriptMd += `## ${currentSpeaker} (${currentStart})\n\n`;
+    transcriptMd += `### ${currentSpeaker} (${currentStart})\n\n`;
     transcriptMd += currentText.join(" ") + "\n\n";
   }
 
@@ -107,5 +110,11 @@ export function formatTranscriptBySpeaker(
 
   frontmatterLines.push("---", "");
 
-  return frontmatterLines.join("\n") + "\n" + `# Transcript for: ${title}\n\n` + transcriptBody;
+  const noteContent =
+    frontmatterLines.join("\n") +
+    "\n" +
+    `# Transcript for: ${title}\n\n` +
+    transcriptBody;
+
+  return noteContent;
 }

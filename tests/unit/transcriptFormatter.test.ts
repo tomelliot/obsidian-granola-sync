@@ -619,4 +619,36 @@ describe("formatTranscriptBody", () => {
 
     expect(result).toContain("## You (01:23:45)");
   });
+
+  it("should use level 3 headings (###) for speaker headings", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Hello, how are you?",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:06",
+        end_timestamp: "00:00:10",
+        text: "I'm doing great, thanks!",
+        source: "speaker",
+        id: "entry2",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBody(transcriptData);
+
+    // Verify headings start with exactly three hashes at the beginning of a line
+    expect(result).toMatch(/^### You \(00:00:01\)/m);
+    expect(result).toMatch(/^### Guest \(00:00:06\)/m);
+    // Ensure no level 2 headings exist (pattern that starts with exactly two hashes)
+    expect(result).not.toMatch(/^## You \(/m);
+    expect(result).not.toMatch(/^## Guest \(/m);
+  });
 });
