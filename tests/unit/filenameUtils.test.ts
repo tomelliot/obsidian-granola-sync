@@ -87,7 +87,7 @@ describe("getTitleOrDefault", () => {
 
     const result = getTitleOrDefault(doc);
     expect(result).toMatch(
-      /^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}$/
+      /^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$/
     );
   });
 });

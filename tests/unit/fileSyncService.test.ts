@@ -408,7 +408,7 @@ describe("FileSyncService", () => {
       mockApp.vault.getAbstractFileByPath.mockReturnValue(existingFile);
       jest
         .spyOn(dateUtils, "formatDateForFilename")
-        .mockReturnValue("2024-01-01 10-30");
+        .mockReturnValue("2024-01-01 10-30-00");
 
       const noteDate = new Date("2024-01-01T10:30:00Z");
       const result = fileSyncService.resolveFilePath(
@@ -418,7 +418,7 @@ describe("FileSyncService", () => {
         false
       );
 
-      expect(result).toBe("granola-folder/note-2024-01-01_10-30.md");
+      expect(result).toBe("granola-folder/note-2024-01-01_10-30-00.md");
     });
 
     it("should not append date suffix when file exists with same granola_id", async () => {

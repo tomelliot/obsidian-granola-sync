@@ -103,7 +103,9 @@ export class FileSyncService {
 
       // Check for invalid dates
       if (isNaN(remoteDate.getTime()) || isNaN(localDate.getTime())) {
-        log.warn(`Invalid timestamp comparison for ${granolaId}, assuming remote is newer`);
+        log.warn(
+          `Invalid timestamp comparison for ${granolaId}, assuming remote is newer`
+        );
         return true;
       }
 
@@ -173,47 +175,107 @@ export class FileSyncService {
     type: "note" | "transcript" = "note",
     forceOverwrite: boolean = false
   ): Promise<boolean> {
+    const normalizedPath = normalizePath(filePath);
+    const existingFile = this.findByGranolaId(granolaId, type);
+
     try {
-      const normalizedPath = normalizePath(filePath);
-
-      // Check if a file with this Granola ID already exists anywhere in the vault
-      const existingFile = this.findByGranolaId(granolaId, type);
-
-      if (existingFile) {
-        const existingContent = await this.app.vault.read(existingFile);
-
-        if (forceOverwrite || existingContent !== content) {
-          await this.app.vault.modify(existingFile, content);
-
-          // If the file path has changed (title changed), rename the file
-          if (existingFile.path !== normalizedPath) {
-            try {
-              await this.app.vault.rename(existingFile, normalizedPath);
-              this.updateCache(granolaId, existingFile, type);
-            } catch (renameError) {
-              // If rename fails (e.g., file already exists at new path), just update content
-              log.warn(
-                `Could not rename file from ${existingFile.path} to ${normalizedPath}:`,
-                renameError
-              );
-            }
-          }
-          this.updateCache(granolaId, existingFile, type);
-          return true; // Content was updated
-        } else {
-          this.updateCache(granolaId, existingFile, type);
-          return false; // No change needed
-        }
-      } else {
-        // File doesn't exist yet, create it
-        const newFile = await this.app.vault.create(normalizedPath, content);
-        this.updateCache(granolaId, newFile, type);
-        return true; // New file created
+      if (!existingFile) {
+        return await this.createNewFile(
+          normalizedPath,
+          content,
+          granolaId,
+          type
+        );
       }
+
+      return await this.updateExistingFile(
+        existingFile,
+        normalizedPath,
+        content,
+        granolaId,
+        type,
+        forceOverwrite
+      );
     } catch (e) {
-      new Notice(`Error saving file: ${filePath}. Check console.`, 7000);
-      log.error("Error saving file to disk:", e);
+      new Notice(`Error saving file: ${normalizedPath}. Check console.`, 7000);
+      log.error(
+        "Error saving file to disk:",
+        {
+          granolaId,
+          type,
+          originalPath: filePath,
+          normalizedPath,
+          existingPath: existingFile?.path,
+          error: e instanceof Error ? e.message : String(e),
+        },
+        e
+      );
       return false;
+    }
+  }
+
+  /**
+   * Creates a new file at the specified path.
+   */
+  private async createNewFile(
+    normalizedPath: string,
+    content: string,
+    granolaId: string,
+    type: "note" | "transcript"
+  ): Promise<boolean> {
+    const newFile = await this.app.vault.create(normalizedPath, content);
+    this.updateCache(granolaId, newFile, type);
+    return true;
+  }
+
+  /**
+   * Updates an existing file with new content, handling path changes.
+   */
+  private async updateExistingFile(
+    existingFile: TFile,
+    normalizedPath: string,
+    content: string,
+    granolaId: string,
+    type: "note" | "transcript",
+    forceOverwrite: boolean
+  ): Promise<boolean> {
+    const existingContent = await this.app.vault.read(existingFile);
+
+    // Skip update if content unchanged and not forcing overwrite
+    if (!forceOverwrite && existingContent === content) {
+      this.updateCache(granolaId, existingFile, type);
+      return false;
+    }
+
+    await this.app.vault.modify(existingFile, content);
+
+    // Handle path change (e.g., title changed)
+    if (existingFile.path !== normalizedPath) {
+      await this.attemptRename(existingFile, normalizedPath, granolaId, type);
+    }
+
+    this.updateCache(granolaId, existingFile, type);
+    return true;
+  }
+
+  /**
+   * Attempts to rename a file, logging a warning if it fails.
+   */
+  private async attemptRename(
+    file: TFile,
+    newPath: string,
+    granolaId: string,
+    type: "note" | "transcript"
+  ): Promise<void> {
+    try {
+      await this.app.vault.rename(file, newPath);
+      this.updateCache(granolaId, file, type);
+    } catch (renameError) {
+      // If rename fails (e.g., file already exists at new path), just update content
+      log.warn(
+        `Could not rename file from ${file.path} to ${newPath} (granolaId: ${granolaId}, type: ${type}):`,
+        renameError
+      );
     }
   }
 
@@ -282,7 +344,12 @@ export class FileSyncService {
       return false;
     }
 
-    const filePath = this.resolveFilePath(filename, noteDate, granolaId, isTranscript);
+    const filePath = this.resolveFilePath(
+      filename,
+      noteDate,
+      granolaId,
+      isTranscript
+    );
     if (!filePath) {
       return false;
     }
@@ -338,7 +405,10 @@ export class FileSyncService {
       log.error("Document missing required id field:", doc);
       return false;
     }
-    const { filename, content } = documentProcessor.prepareNote(doc, transcriptPath);
+    const { filename, content } = documentProcessor.prepareNote(
+      doc,
+      transcriptPath
+    );
     const noteDate = getNoteDate(doc);
 
     return this.saveToDisk(
