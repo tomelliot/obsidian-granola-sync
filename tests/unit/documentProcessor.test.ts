@@ -420,9 +420,9 @@ describe("DocumentProcessor", () => {
       expect(result.content).toContain("type: combined");
       expect(result.content).toContain("created: 2024-01-15T10:00:00Z");
       expect(result.content).toContain("updated: 2024-01-15T12:00:00Z");
-      expect(result.content).toContain("## Note\n\n");
+      expect(result.content).toContain("# Note\n\n");
       expect(result.content).toContain("# Mock Content");
-      expect(result.content).toContain("## Transcript\n\n");
+      expect(result.content).toContain("# Transcript\n\n");
       expect(result.content).toContain("## You (00:00:01)");
       expect(result.content).toContain("Hello world.");
       expect(result.content).toContain("## Guest (00:00:05)");
@@ -560,8 +560,8 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
 
-      const noteIndex = result.content.indexOf("## Note");
-      const transcriptIndex = result.content.indexOf("## Transcript");
+      const noteIndex = result.content.indexOf("# Note");
+      const transcriptIndex = result.content.indexOf("# Transcript");
       const noteContentIndex = result.content.indexOf("# Mock Content");
       const transcriptContentIndex = result.content.indexOf("Transcript text");
 

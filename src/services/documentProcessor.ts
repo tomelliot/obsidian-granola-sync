@@ -147,12 +147,12 @@ export class DocumentProcessor {
     let finalMarkdown = frontmatterLines.join("\n");
 
     // Add note content with heading
-    finalMarkdown += "## Note\n\n";
+    finalMarkdown += "# Note\n\n";
     finalMarkdown += markdownContent;
     finalMarkdown += "\n\n";
 
     // Add transcript content at the end with heading
-    finalMarkdown += "## Transcript\n\n";
+    finalMarkdown += "# Transcript\n\n";
     finalMarkdown += transcriptContent;
 
     const filename = sanitizeFilename(title) + ".md";
