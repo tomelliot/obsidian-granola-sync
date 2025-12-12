@@ -103,6 +103,25 @@ describe("FileSyncService", () => {
       expect(fileSyncService.findByGranolaId("id-1")).toBe(mockFile1);
     });
 
+    it("should handle errors when reading frontmatter", async () => {
+      const mockFile = { path: "note.md" } as TFile;
+      const error = new Error("Cache read error");
+
+      mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+      mockApp.metadataCache.getFileCache.mockImplementation(() => {
+        throw error;
+      });
+
+      await fileSyncService.buildCache();
+
+      expect(fileSyncService.getCacheSize()).toBe(0);
+      expect(console.error).toHaveBeenCalledWith(
+        "[Granola Sync]",
+        expect.stringContaining("Error reading frontmatter"),
+        error
+      );
+    });
+
     it("should handle files with no frontmatter", async () => {
       const mockFile = { path: "note.md" } as TFile;
 
@@ -307,6 +326,29 @@ describe("FileSyncService", () => {
       );
 
       expect(result).toBe(true);
+    });
+
+    it("should handle exceptions in timestamp comparison and return true", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      
+      // Mock getFileCache to throw an error
+      mockApp.metadataCache.getFileCache.mockImplementation(() => {
+        throw new Error("Unexpected error");
+      });
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:00Z",
+        "note"
+      );
+
+      expect(result).toBe(true); // Should return true on error
+      expect(console.error).toHaveBeenCalledWith(
+        "[Granola Sync]",
+        expect.stringContaining("Error comparing timestamps"),
+        expect.any(Error)
+      );
     });
 
     it("should return true when frontmatter cache is null", () => {
@@ -528,6 +570,98 @@ describe("FileSyncService", () => {
         "note",
         false
       );
+    });
+
+    it("should return false when ensureFolder fails", async () => {
+      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(false);
+
+      const result = await fileSyncService.saveToDisk(
+        "note.md",
+        "content",
+        new Date(),
+        "doc-1"
+      );
+
+      expect(result).toBe(false);
+    });
+
+    it("should return false when resolveFilePath returns null", async () => {
+      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
+      jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue(null);
+
+      const result = await fileSyncService.saveToDisk(
+        "note.md",
+        "content",
+        new Date(),
+        "doc-1"
+      );
+
+      expect(result).toBe(false);
+    });
+
+    it("should handle DAILY_NOTE_FOLDER_STRUCTURE for notes", async () => {
+      mockSettings.syncDestination = SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE;
+      mockPathResolver.computeDailyNoteFolderPath.mockReturnValue("2024/01-15");
+
+      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
+      jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue("2024/01-15/note.md");
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile")
+        .mockResolvedValue(true);
+
+      await fileSyncService.saveToDisk(
+        "note.md",
+        "content",
+        new Date("2024-01-15"),
+        "doc-1",
+        false
+      );
+
+      expect(mockPathResolver.computeDailyNoteFolderPath).toHaveBeenCalled();
+      expect(saveFileSpy).toHaveBeenCalled();
+    });
+
+    it("should handle DAILY_NOTE_FOLDER_STRUCTURE for transcripts", async () => {
+      mockSettings.transcriptDestination = TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE;
+      mockPathResolver.computeDailyNoteFolderPath.mockReturnValue("2024/01-15");
+
+      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
+      jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue("2024/01-15/transcript.md");
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile")
+        .mockResolvedValue(true);
+
+      await fileSyncService.saveToDisk(
+        "transcript.md",
+        "content",
+        new Date("2024-01-15"),
+        "doc-1",
+        true
+      );
+
+      expect(mockPathResolver.computeDailyNoteFolderPath).toHaveBeenCalled();
+      expect(saveFileSpy).toHaveBeenCalled();
+    });
+
+    it("should return null for COMBINED_WITH_NOTE transcript destination in resolveFolderPath", () => {
+      mockSettings.transcriptDestination = TranscriptDestination.COMBINED_WITH_NOTE;
+      
+      // This tests the private resolveFolderPath through saveToDisk
+      // When COMBINED_WITH_NOTE is set for transcripts, resolveFolderPath should return null
+      // We test this indirectly by checking that saveToDisk returns false
+      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
+      
+      const result = fileSyncService.saveToDisk(
+        "transcript.md",
+        "content",
+        new Date("2024-01-15"),
+        "doc-1",
+        true
+      );
+
+      // Since resolveFolderPath returns null for COMBINED_WITH_NOTE transcripts,
+      // saveToDisk should return false
+      return expect(result).resolves.toBe(false);
     });
   });
 
@@ -1287,6 +1421,51 @@ describe("FileSyncService", () => {
       expect(mockApp.vault.create).toHaveBeenCalled();
       // The actual collision handling happens in resolveFilePath, which we test elsewhere
       // This test mainly verifies that saveCombinedNoteToDisk works with the collision logic
+    });
+
+    it("should return false when resolveFolderPath returns null", async () => {
+      // Set up a scenario where resolveFolderPath would return null
+      // This happens when syncDestination is DAILY_NOTES (invalid for individual files)
+      mockSettings.syncDestination = SyncDestination.DAILY_NOTES;
+
+      const result = await fileSyncService.saveCombinedNoteToDisk(
+        mockDoc,
+        mockDocumentProcessor,
+        "## Transcript\n\nContent",
+        false
+      );
+
+      expect(result).toBe(false);
+      expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalled();
+    });
+
+    it("should return false when ensureFolder fails", async () => {
+      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(false);
+
+      const result = await fileSyncService.saveCombinedNoteToDisk(
+        mockDoc,
+        mockDocumentProcessor,
+        "## Transcript\n\nContent",
+        false
+      );
+
+      expect(result).toBe(false);
+      expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalled();
+    });
+
+    it("should return false when resolveFilePath returns null", async () => {
+      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
+      jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue(null);
+
+      const result = await fileSyncService.saveCombinedNoteToDisk(
+        mockDoc,
+        mockDocumentProcessor,
+        "## Transcript\n\nContent",
+        false
+      );
+
+      expect(result).toBe(false);
+      expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalled();
     });
   });
 });
