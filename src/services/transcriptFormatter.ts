@@ -5,12 +5,10 @@ import { TranscriptEntry } from "./granolaApi";
  * Returns only the transcript markdown content without frontmatter.
  *
  * @param transcriptData - Array of transcript entries from Granola API
- * @param title - Title of the note/transcript
  * @returns Formatted markdown string with speaker-grouped content (no frontmatter)
  */
 export function formatTranscriptBody(
-  transcriptData: TranscriptEntry[],
-  title: string
+  transcriptData: TranscriptEntry[]
 ): string {
   let transcriptMd = "";
   let currentSpeaker: string | null = null;
@@ -73,7 +71,7 @@ export function formatTranscriptBySpeaker(
   includeFrontmatter: boolean = true
 ): string {
   // Get the transcript body content
-  const transcriptBody = formatTranscriptBody(transcriptData, title);
+  const transcriptBody = formatTranscriptBody(transcriptData);
 
   // If frontmatter is not needed, return just the body
   if (!includeFrontmatter) {

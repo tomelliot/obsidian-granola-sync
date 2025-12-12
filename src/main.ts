@@ -359,8 +359,7 @@ export default class GranolaSync extends Plugin {
       if (isCombinedMode && transcriptDataMap) {
         const transcriptData = transcriptDataMap.get(doc.id || "");
         if (transcriptData && transcriptData.length > 0) {
-          const title = getTitleOrDefault(doc);
-          const transcriptBody = formatTranscriptBody(transcriptData, title);
+          const transcriptBody = formatTranscriptBody(transcriptData);
           if (
             await this.fileSyncService.saveCombinedNoteToDisk(
               doc,

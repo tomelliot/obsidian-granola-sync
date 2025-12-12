@@ -3,7 +3,6 @@ import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
 import { PathResolver } from "./pathResolver";
 import { TranscriptSettings } from "../settings";
-import { formatTranscriptBody } from "./transcriptFormatter";
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
