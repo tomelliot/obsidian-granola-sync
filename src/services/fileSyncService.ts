@@ -52,12 +52,12 @@ export class FileSyncService {
    * Finds an existing file with the given Granola ID using the cache.
    *
    * @param granolaId - The Granola document ID to search for
-   * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
+   * @param type - Optional type ('note', 'transcript', or 'combined'). Defaults to 'note' for backward compatibility
    * @returns The file if found, null otherwise
    */
   findByGranolaId(
     granolaId: string,
-    type: "note" | "transcript" = "note"
+    type: "note" | "transcript" | "combined" = "note"
   ): TFile | null {
     const cacheKey = `${granolaId}-${type}`;
     return this.granolaIdCache.get(cacheKey) || null;
@@ -69,13 +69,13 @@ export class FileSyncService {
    *
    * @param granolaId - The Granola document ID
    * @param remoteUpdatedAt - The remote document's updated_at timestamp (ISO string)
-   * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
+   * @param type - Optional type ('note', 'transcript', or 'combined'). Defaults to 'note' for backward compatibility
    * @returns True if remote is newer or if comparison cannot be made, false if local is up-to-date
    */
   isRemoteNewer(
     granolaId: string,
     remoteUpdatedAt: string | undefined,
-    type: "note" | "transcript" = "note"
+    type: "note" | "transcript" | "combined" = "note"
   ): boolean {
     // If no remote timestamp, assume we should update
     if (!remoteUpdatedAt) {
@@ -122,12 +122,12 @@ export class FileSyncService {
    *
    * @param granolaId - The Granola document ID (optional)
    * @param file - The file to associate with the ID
-   * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
+   * @param type - Optional type ('note', 'transcript', or 'combined'). Defaults to 'note' for backward compatibility
    */
   updateCache(
     granolaId: string | undefined,
     file: TFile,
-    type: "note" | "transcript" = "note"
+    type: "note" | "transcript" | "combined" = "note"
   ): void {
     if (granolaId) {
       const cacheKey = `${granolaId}-${type}`;
@@ -164,7 +164,7 @@ export class FileSyncService {
    * @param filePath - The full path where the file should be saved
    * @param content - The content to write to the file
    * @param granolaId - Granola ID for caching and deduplication
-   * @param type - Optional type ('note' or 'transcript'). Defaults to 'note' for backward compatibility
+   * @param type - Optional type ('note', 'transcript', or 'combined'). Defaults to 'note' for backward compatibility
    * @param forceOverwrite - If true, always writes the file even if content is unchanged
    * @returns True if the file was created or modified, false if no change or error
    */
@@ -172,7 +172,7 @@ export class FileSyncService {
     filePath: string,
     content: string,
     granolaId: string,
-    type: "note" | "transcript" = "note",
+    type: "note" | "transcript" | "combined" = "note",
     forceOverwrite: boolean = false
   ): Promise<boolean> {
     const normalizedPath = normalizePath(filePath);
@@ -221,7 +221,7 @@ export class FileSyncService {
     normalizedPath: string,
     content: string,
     granolaId: string,
-    type: "note" | "transcript"
+    type: "note" | "transcript" | "combined"
   ): Promise<boolean> {
     const newFile = await this.app.vault.create(normalizedPath, content);
     this.updateCache(granolaId, newFile, type);
@@ -236,7 +236,7 @@ export class FileSyncService {
     normalizedPath: string,
     content: string,
     granolaId: string,
-    type: "note" | "transcript",
+    type: "note" | "transcript" | "combined",
     forceOverwrite: boolean
   ): Promise<boolean> {
     const existingContent = await this.app.vault.read(existingFile);
@@ -265,7 +265,7 @@ export class FileSyncService {
     file: TFile,
     newPath: string,
     granolaId: string,
-    type: "note" | "transcript"
+    type: "note" | "transcript" | "combined"
   ): Promise<void> {
     try {
       await this.app.vault.rename(file, newPath);
@@ -390,6 +390,53 @@ export class FileSyncService {
     }
 
     return null;
+  }
+
+  /**
+   * Prepares and saves a combined Granola note and transcript to disk.
+   */
+  async saveCombinedNoteToDisk(
+    doc: GranolaDoc,
+    documentProcessor: DocumentProcessor,
+    transcriptContent: string,
+    forceOverwrite: boolean = false
+  ): Promise<boolean> {
+    if (!doc.id) {
+      log.error("Document missing required id field:", doc);
+      return false;
+    }
+    const { filename, content } = documentProcessor.prepareCombinedNote(
+      doc,
+      transcriptContent
+    );
+    const noteDate = getNoteDate(doc);
+
+    // Resolve folder path (combined files use note folder path, not transcript folder)
+    const folderPath = this.resolveFolderPath(noteDate, false);
+    if (!folderPath) {
+      return false;
+    }
+
+    if (!(await this.ensureFolder(folderPath))) {
+      new Notice(
+        `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
+        7000
+      );
+      return false;
+    }
+
+    const filePath = this.resolveFilePath(
+      filename,
+      noteDate,
+      doc.id,
+      false
+    );
+    if (!filePath) {
+      return false;
+    }
+
+    // Save with type "combined"
+    return this.saveFile(filePath, content, doc.id, "combined", forceOverwrite);
   }
 
   /**

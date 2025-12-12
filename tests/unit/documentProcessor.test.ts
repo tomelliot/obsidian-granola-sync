@@ -393,4 +393,214 @@ describe("DocumentProcessor", () => {
       });
     });
   });
+
+  describe("prepareCombinedNote", () => {
+    it("should prepare a combined note with both note and transcript content", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        updated_at: "2024-01-15T12:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nHello world.\n\n## Guest (00:00:05)\n\nHi there.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+      expect(result.filename).toBe("Test Note.md");
+      expect(result.content).toContain("---");
+      expect(result.content).toContain("granola_id: doc-123");
+      expect(result.content).toContain('title: "Test Note"');
+      expect(result.content).toContain("type: combined");
+      expect(result.content).toContain("created: 2024-01-15T10:00:00Z");
+      expect(result.content).toContain("updated: 2024-01-15T12:00:00Z");
+      expect(result.content).toContain("## Note\n\n");
+      expect(result.content).toContain("# Mock Content");
+      expect(result.content).toContain("## Transcript\n\n");
+      expect(result.content).toContain("## You (00:00:01)");
+      expect(result.content).toContain("Hello world.");
+      expect(result.content).toContain("## Guest (00:00:05)");
+      expect(result.content).toContain("Hi there.");
+    });
+
+    it("should not include transcript or note link fields in frontmatter", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+      expect(result.content).not.toContain("transcript:");
+      expect(result.content).not.toContain("note:");
+      expect(result.content).not.toContain("[[");
+    });
+
+    it("should include attendees in frontmatter", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        people: {
+          attendees: [
+            { name: "Alice", email: "alice@example.com" },
+            { name: "Bob", email: "bob@example.com" },
+          ],
+        },
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+      expect(result.content).toContain("attendees:");
+      expect(result.content).toContain("- Alice");
+      expect(result.content).toContain("- Bob");
+    });
+
+    it("should handle empty attendees array", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        people: {
+          attendees: [],
+        },
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+      expect(result.content).toContain("attendees: []");
+    });
+
+    it("should handle documents without timestamps", () => {
+      const doc: GranolaDoc = {
+        id: "doc-456",
+        title: "Minimal Note",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+      expect(result.filename).toBe("Minimal Note.md");
+      expect(result.content).toContain("granola_id: doc-456");
+      expect(result.content).toContain("type: combined");
+      expect(result.content).not.toContain("created:");
+      expect(result.content).not.toContain("updated:");
+    });
+
+    it("should escape quotes in titles for YAML frontmatter", () => {
+      const doc: GranolaDoc = {
+        id: "doc-789",
+        title: 'Note with "quotes"',
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+      expect(result.content).toContain('title: "Note with \\"quotes\\""');
+    });
+
+    it("should place transcript content after note content", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTranscript text.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+      const noteIndex = result.content.indexOf("## Note");
+      const transcriptIndex = result.content.indexOf("## Transcript");
+      const noteContentIndex = result.content.indexOf("# Mock Content");
+      const transcriptContentIndex = result.content.indexOf("Transcript text");
+
+      expect(noteIndex).toBeLessThan(transcriptIndex);
+      expect(noteContentIndex).toBeLessThan(transcriptIndex);
+      expect(transcriptIndex).toBeLessThan(transcriptContentIndex);
+    });
+
+    it("should throw error when document has no valid content", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Invalid Note",
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+
+      expect(() =>
+        documentProcessor.prepareCombinedNote(doc, transcriptContent)
+      ).toThrow("Document has no valid content to parse");
+    });
+
+    it("should use default title when title is missing", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+      expect(result.content).toContain(
+        'title: "Untitled Granola Note at 2024-01-15 00-00"'
+      );
+    });
+  });
 });
