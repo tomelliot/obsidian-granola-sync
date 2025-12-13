@@ -1,6 +1,7 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
+import { escapeYamlString } from "../utils/yamlUtils";
 import { PathResolver } from "./pathResolver";
 import { TranscriptSettings } from "../settings";
 
@@ -53,7 +54,7 @@ export class DocumentProcessor {
         ?.map((attendee) => attendee.name || attendee.email || "Unknown")
         .filter((name) => name !== "Unknown") || [];
     if (attendees.length > 0) {
-      const attendeesYaml = attendees.map((name) => `  - ${name}`).join("\n");
+      const attendeesYaml = attendees.map((name) => `  - ${escapeYamlString(name)}`).join("\n");
       frontmatterLines.push(`attendees:\n${attendeesYaml}`);
     } else {
       frontmatterLines.push(`attendees: []`);
@@ -135,7 +136,7 @@ export class DocumentProcessor {
         ?.map((attendee) => attendee.name || attendee.email || "Unknown")
         .filter((name) => name !== "Unknown") || [];
     if (attendees.length > 0) {
-      const attendeesYaml = attendees.map((name) => `  - ${name}`).join("\n");
+      const attendeesYaml = attendees.map((name) => `  - ${escapeYamlString(name)}`).join("\n");
       frontmatterLines.push(`attendees:\n${attendeesYaml}`);
     } else {
       frontmatterLines.push(`attendees: []`);
