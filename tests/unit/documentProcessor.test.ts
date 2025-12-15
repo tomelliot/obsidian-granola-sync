@@ -475,8 +475,8 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
 
       expect(result.content).toContain("attendees:");
-      expect(result.content).toContain("- Alice");
-      expect(result.content).toContain("- Bob");
+      expect(result.content).toContain('- "Alice"');
+      expect(result.content).toContain('- "Bob"');
     });
 
     it("should handle empty attendees array", () => {

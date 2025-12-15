@@ -42,11 +42,7 @@ describe("DailyNoteBuilder", () => {
 
     dailyNoteBuilder = new DailyNoteBuilder(
       mockApp,
-      mockDocumentProcessor,
-      mockPathResolver,
-      {
-        dailyNoteSectionHeading: "## Granola Notes",
-      }
+      mockDocumentProcessor
     );
   });
 
@@ -97,9 +93,9 @@ describe("DailyNoteBuilder", () => {
         .mockReturnValueOnce(noteData3);
 
       (getNoteDate as jest.Mock)
-        .mockReturnValueOnce(new Date("2024-01-15"))
-        .mockReturnValueOnce(new Date("2024-01-15"))
-        .mockReturnValueOnce(new Date("2024-01-16"));
+        .mockReturnValueOnce(new Date("2024-01-15T12:00:00Z"))
+        .mockReturnValueOnce(new Date("2024-01-15T12:00:00Z"))
+        .mockReturnValueOnce(new Date("2024-01-16T12:00:00Z"));
 
       const result = dailyNoteBuilder.buildDailyNotesMap([doc1, doc2, doc3]);
 
@@ -128,7 +124,7 @@ describe("DailyNoteBuilder", () => {
           markdown: "Content 2",
         });
 
-      (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15"));
+      (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15T12:00:00Z"));
 
       const result = dailyNoteBuilder.buildDailyNotesMap([doc1, doc2]);
 

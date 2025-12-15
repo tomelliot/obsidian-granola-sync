@@ -1,4 +1,5 @@
 import { TranscriptEntry } from "./granolaApi";
+import { escapeYamlString } from "../utils/yamlUtils";
 
 /**
  * Formats transcript body content into markdown, grouped by speaker.
@@ -94,7 +95,7 @@ export function formatTranscriptBySpeaker(
   const attendeesArray = attendees || [];
   if (attendeesArray.length > 0) {
     const attendeesYaml = attendeesArray
-      .map((name) => `  - ${name}`)
+      .map((name) => `  - ${escapeYamlString(name)}`)
       .join("\n");
     frontmatterLines.push(`attendees:\n${attendeesYaml}`);
   } else {
