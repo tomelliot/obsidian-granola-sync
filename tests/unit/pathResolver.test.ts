@@ -135,6 +135,60 @@ describe("PathResolver", () => {
 
       expect(result).toBe("transcripts/Test_File_Name_-transcript.md");
     });
+
+    it("should use combined mode filename pattern", () => {
+      settings.transcriptHandling = "combined";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-01-15");
+      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+
+      expect(result).toBe("/Test Meeting-transcript.md");
+    });
+
+    it("should handle same-location with no subfolder", () => {
+      settings.transcriptHandling = "same-location";
+      settings.subfolderPattern = "none";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-01-15");
+      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+
+      expect(result).toBe("granola/Test Meeting-transcript.md");
+    });
+
+    it("should handle custom-location with no subfolder", () => {
+      settings.transcriptHandling = "custom-location";
+      settings.transcriptSubfolderPattern = "none";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-01-15");
+      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+
+      expect(result).toBe("transcripts/Test Meeting-transcript.md");
+    });
+
+    it("should handle same-location with subfolder", () => {
+      settings.transcriptHandling = "same-location";
+      settings.subfolderPattern = "day";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-03-15");
+      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+
+      expect(result).toBe("granola/2024-03-15/Test Meeting-transcript.md");
+    });
+
+    it("should handle custom-location with subfolder", () => {
+      settings.transcriptHandling = "custom-location";
+      settings.transcriptSubfolderPattern = "month";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-03-15");
+      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+
+      expect(result).toBe("transcripts/2024-03/Test Meeting-transcript.md");
+    });
   });
 
   describe("computeNoteBaseFolder", () => {

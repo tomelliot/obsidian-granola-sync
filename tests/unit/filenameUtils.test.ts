@@ -251,4 +251,12 @@ describe("resolveSubfolderPattern", () => {
     const result = resolveSubfolderPattern("year-quarter", q4Date);
     expect(result).toBe("2024/Q4");
   });
+
+  it("should return empty string for invalid pattern type", () => {
+    const result = resolveSubfolderPattern(
+      "invalid" as any,
+      new Date("2024-03-15")
+    );
+    expect(result).toBe("");
+  });
 });
