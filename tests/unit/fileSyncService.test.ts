@@ -6,8 +6,6 @@ import type { PathResolver } from "../../src/services/pathResolver";
 import {
   DEFAULT_SETTINGS,
   GranolaSyncSettings,
-  SyncDestination,
-  TranscriptDestination,
 } from "../../src/settings";
 import * as dateUtils from "../../src/utils/dateUtils";
 
@@ -42,14 +40,22 @@ describe("FileSyncService", () => {
     mockPathResolver = {
       computeDailyNoteFolderPath: jest.fn().mockReturnValue("daily-folder"),
       computeTranscriptPath: jest.fn(),
+      computeNoteFolderPath: jest.fn().mockReturnValue("granola-folder"),
+      computeTranscriptFolderPath: jest.fn().mockReturnValue("granola-transcripts"),
+      computeNotePath: jest.fn(),
     } as unknown as jest.Mocked<PathResolver>;
 
     mockSettings = {
       ...DEFAULT_SETTINGS,
-      syncDestination: SyncDestination.GRANOLA_FOLDER,
-      granolaFolder: "granola-folder",
-      transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
-      granolaTranscriptsFolder: "granola-transcripts",
+      saveAsIndividualFiles: true,
+      baseFolderType: "custom",
+      customBaseFolder: "granola-folder",
+      subfolderPattern: "none",
+      filenamePattern: "{title}",
+      transcriptHandling: "custom-location",
+      customTranscriptBaseFolder: "granola-transcripts",
+      transcriptSubfolderPattern: "none",
+      transcriptFilenamePattern: "{title}-transcript",
     };
 
     fileSyncService = new FileSyncService(
@@ -418,7 +424,7 @@ describe("FileSyncService", () => {
 
   describe("resolveFilePath", () => {
     it("should return null when folder path cannot be resolved", () => {
-      mockSettings.syncDestination = "invalid" as SyncDestination;
+      mockSettings.saveAsIndividualFiles = false; // Invalid for individual files
 
       const result = fileSyncService.resolveFilePath(
         "note.md",
@@ -431,7 +437,6 @@ describe("FileSyncService", () => {
     });
 
     it("should return resolved path when no conflicts", () => {
-      mockSettings.syncDestination = SyncDestination.GRANOLA_FOLDER;
       mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
 
       const result = fileSyncService.resolveFilePath(
@@ -445,7 +450,6 @@ describe("FileSyncService", () => {
     });
 
     it("should append date suffix when filename collision exists", () => {
-      mockSettings.syncDestination = SyncDestination.GRANOLA_FOLDER;
       const existingFile = new TFile("granola-folder/note.md");
       mockApp.vault.getAbstractFileByPath.mockReturnValue(existingFile);
       jest
@@ -464,7 +468,6 @@ describe("FileSyncService", () => {
     });
 
     it("should not append date suffix when file exists with same granola_id", async () => {
-      mockSettings.syncDestination = SyncDestination.GRANOLA_FOLDER;
       const existingFile = new TFile("granola-folder/note.md");
       mockApp.vault.getAbstractFileByPath.mockReturnValue(existingFile);
       
@@ -482,7 +485,6 @@ describe("FileSyncService", () => {
     });
 
     it("should handle transcript files", () => {
-      mockSettings.transcriptDestination = TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER;
       mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
 
       const result = fileSyncService.resolveFilePath(
@@ -498,7 +500,7 @@ describe("FileSyncService", () => {
 
   describe("saveToDisk", () => {
     it("should return false when folder path cannot be resolved", async () => {
-      mockSettings.syncDestination = "invalid" as SyncDestination;
+      mockSettings.saveAsIndividualFiles = false; // Invalid for individual files
       const ensureFolderSpy = jest.spyOn(fileSyncService, "ensureFolder");
       const saveFileSpy = jest.spyOn(fileSyncService, "saveFile");
 
@@ -515,7 +517,6 @@ describe("FileSyncService", () => {
     });
 
     it("should ensure folder and delegate to saveFile when no conflicts", async () => {
-      mockSettings.syncDestination = SyncDestination.GRANOLA_FOLDER;
       jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
       const saveFileSpy = jest
         .spyOn(fileSyncService, "saveFile")
@@ -599,12 +600,12 @@ describe("FileSyncService", () => {
       expect(result).toBe(false);
     });
 
-    it("should handle DAILY_NOTE_FOLDER_STRUCTURE for notes", async () => {
-      mockSettings.syncDestination = SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE;
-      mockPathResolver.computeDailyNoteFolderPath.mockReturnValue("2024/01-15");
+    it("should handle day subfolder pattern for notes", async () => {
+      mockSettings.subfolderPattern = "day";
+      mockPathResolver.computeNoteFolderPath = jest.fn().mockReturnValue("granola-folder/2024-01-15");
 
       jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
-      jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue("2024/01-15/note.md");
+      jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue("granola-folder/2024-01-15/note.md");
       const saveFileSpy = jest
         .spyOn(fileSyncService, "saveFile")
         .mockResolvedValue(true);
@@ -617,16 +618,15 @@ describe("FileSyncService", () => {
         false
       );
 
-      expect(mockPathResolver.computeDailyNoteFolderPath).toHaveBeenCalled();
       expect(saveFileSpy).toHaveBeenCalled();
     });
 
-    it("should handle DAILY_NOTE_FOLDER_STRUCTURE for transcripts", async () => {
-      mockSettings.transcriptDestination = TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE;
-      mockPathResolver.computeDailyNoteFolderPath.mockReturnValue("2024/01-15");
+    it("should handle custom subfolder pattern for transcripts", async () => {
+      mockSettings.transcriptSubfolderPattern = "day";
+      mockPathResolver.computeTranscriptFolderPath = jest.fn().mockReturnValue("granola-transcripts/2024-01-15");
 
       jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
-      jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue("2024/01-15/transcript.md");
+      jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue("granola-transcripts/2024-01-15/transcript.md");
       const saveFileSpy = jest
         .spyOn(fileSyncService, "saveFile")
         .mockResolvedValue(true);
@@ -639,29 +639,7 @@ describe("FileSyncService", () => {
         true
       );
 
-      expect(mockPathResolver.computeDailyNoteFolderPath).toHaveBeenCalled();
       expect(saveFileSpy).toHaveBeenCalled();
-    });
-
-    it("should return null for COMBINED_WITH_NOTE transcript destination in resolveFolderPath", () => {
-      mockSettings.transcriptDestination = TranscriptDestination.COMBINED_WITH_NOTE;
-      
-      // This tests the private resolveFolderPath through saveToDisk
-      // When COMBINED_WITH_NOTE is set for transcripts, resolveFolderPath should return null
-      // We test this indirectly by checking that saveToDisk returns false
-      jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
-      
-      const result = fileSyncService.saveToDisk(
-        "transcript.md",
-        "content",
-        new Date("2024-01-15"),
-        "doc-1",
-        true
-      );
-
-      // Since resolveFolderPath returns null for COMBINED_WITH_NOTE transcripts,
-      // saveToDisk should return false
-      return expect(result).resolves.toBe(false);
     });
   });
 
@@ -972,7 +950,6 @@ describe("FileSyncService", () => {
     });
 
     it("should pass forceOverwrite through saveToDisk to saveFile", async () => {
-      mockSettings.syncDestination = SyncDestination.GRANOLA_FOLDER;
       jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
       const saveFileSpy = jest
         .spyOn(fileSyncService, "saveFile")
@@ -1425,8 +1402,8 @@ describe("FileSyncService", () => {
 
     it("should return false when resolveFolderPath returns null", async () => {
       // Set up a scenario where resolveFolderPath would return null
-      // This happens when syncDestination is DAILY_NOTES (invalid for individual files)
-      mockSettings.syncDestination = SyncDestination.DAILY_NOTES;
+      // This happens when saveAsIndividualFiles is false (invalid for individual files)
+      mockSettings.saveAsIndividualFiles = false;
 
       const result = await fileSyncService.saveCombinedNoteToDisk(
         mockDoc,

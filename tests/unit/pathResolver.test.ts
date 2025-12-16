@@ -1,5 +1,5 @@
 import { PathResolver } from "../../src/services/pathResolver";
-import { TranscriptDestination, TranscriptSettings, SyncDestination, NoteSettings } from "../../src/settings";
+import { GranolaSyncSettings, DEFAULT_SETTINGS } from "../../src/settings";
 
 // Mock obsidian-daily-notes-interface
 jest.mock("obsidian-daily-notes-interface", () => ({
@@ -10,16 +10,21 @@ jest.mock("obsidian-daily-notes-interface", () => ({
 }));
 
 describe("PathResolver", () => {
-  let settings: Pick<TranscriptSettings, 'transcriptDestination' | 'granolaTranscriptsFolder'> &
-                 Pick<NoteSettings, 'syncDestination' | 'granolaFolder'>;
+  let settings: GranolaSyncSettings;
   let pathResolver: PathResolver;
 
   beforeEach(() => {
     settings = {
-      transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
-      granolaTranscriptsFolder: "transcripts",
-      syncDestination: SyncDestination.GRANOLA_FOLDER,
-      granolaFolder: "granola",
+      ...DEFAULT_SETTINGS,
+      saveAsIndividualFiles: true,
+      baseFolderType: "custom",
+      customBaseFolder: "granola",
+      subfolderPattern: "none",
+      filenamePattern: "{title}",
+      transcriptHandling: "custom-location",
+      customTranscriptBaseFolder: "transcripts",
+      transcriptSubfolderPattern: "none",
+      transcriptFilenamePattern: "{title}-transcript",
     };
     pathResolver = new PathResolver(settings);
   });
@@ -77,31 +82,32 @@ describe("PathResolver", () => {
   });
 
   describe("computeTranscriptPath", () => {
-    it("should compute path to granola transcripts folder when configured", () => {
+    it("should compute path to custom transcripts folder when configured", () => {
       const noteDate = new Date("2024-01-15");
       const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
 
       expect(result).toBe("transcripts/Test Meeting-transcript.md");
     });
 
-    it("should compute path to daily note folder structure when configured", () => {
-      const { getDailyNoteSettings } = require("obsidian-daily-notes-interface");
-      getDailyNoteSettings.mockReturnValue({
-        format: "YYYY/MM/DD",
-        folder: "journal",
-      });
-
-      pathResolver = new PathResolver({
-        transcriptDestination: TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE,
-        granolaTranscriptsFolder: "transcripts",
-        syncDestination: SyncDestination.GRANOLA_FOLDER,
-        granolaFolder: "granola",
-      });
+    it("should compute path with subfolder pattern when configured", () => {
+      settings.transcriptSubfolderPattern = "day";
+      pathResolver = new PathResolver(settings);
 
       const noteDate = new Date("2024-03-20");
       const result = pathResolver.computeTranscriptPath("Project Alpha", noteDate);
 
-      expect(result).toBe("journal/2024/03/Project Alpha-transcript.md");
+      expect(result).toBe("transcripts/2024-03-20/Project Alpha-transcript.md");
+    });
+
+    it("should use same location as notes when configured", () => {
+      settings.transcriptHandling = "same-location";
+      settings.subfolderPattern = "month";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-03-20");
+      const result = pathResolver.computeTranscriptPath("Project Alpha", noteDate);
+
+      expect(result).toBe("granola/2024-03/Project Alpha-transcript.md");
     });
 
     it("should sanitize title in transcript filename", () => {
@@ -120,26 +126,42 @@ describe("PathResolver", () => {
   });
 
   describe("computeNotePath", () => {
-    it("should compute path to granola folder when configured", () => {
+    it("should compute path to custom folder when configured", () => {
       const noteDate = new Date("2024-01-15");
       const result = pathResolver.computeNotePath("Test Meeting", noteDate);
 
       expect(result).toBe("granola/Test Meeting.md");
     });
 
-    it("should compute path to daily note folder structure when configured", () => {
+    it("should compute path with day subfolder pattern", () => {
+      settings.subfolderPattern = "day";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-03-20");
+      const result = pathResolver.computeNotePath("Project Alpha", noteDate);
+
+      expect(result).toBe("granola/2024-03-20/Project Alpha.md");
+    });
+
+    it("should compute path with year-month subfolder pattern", () => {
+      settings.subfolderPattern = "year-month";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-03-20");
+      const result = pathResolver.computeNotePath("Project Alpha", noteDate);
+
+      expect(result).toBe("granola/2024/03/Project Alpha.md");
+    });
+
+    it("should use daily notes folder when configured", () => {
       const { getDailyNoteSettings } = require("obsidian-daily-notes-interface");
       getDailyNoteSettings.mockReturnValue({
         format: "YYYY/MM/DD",
         folder: "journal",
       });
 
-      pathResolver = new PathResolver({
-        transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
-        granolaTranscriptsFolder: "transcripts",
-        syncDestination: SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE,
-        granolaFolder: "granola",
-      });
+      settings.baseFolderType = "daily-notes";
+      pathResolver = new PathResolver(settings);
 
       const noteDate = new Date("2024-03-20");
       const result = pathResolver.computeNotePath("Project Alpha", noteDate);
@@ -159,6 +181,16 @@ describe("PathResolver", () => {
       const result = pathResolver.computeNotePath("Test/File<Name>", noteDate);
 
       expect(result).toBe("granola/Test_File_Name_.md");
+    });
+
+    it("should use custom filename pattern", () => {
+      settings.filenamePattern = "{date}-{title}";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-01-15");
+      const result = pathResolver.computeNotePath("Test Meeting", noteDate);
+
+      expect(result).toBe("granola/2024-01-15-Test Meeting.md");
     });
   });
 });

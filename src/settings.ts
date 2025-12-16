@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
 
+// Legacy enums - kept for migration purposes
 export enum SyncDestination {
   GRANOLA_FOLDER = "granola_folder",
   DAILY_NOTES = "daily_notes",
@@ -15,15 +16,40 @@ export enum TranscriptDestination {
 
 export interface NoteSettings {
   syncNotes: boolean;
-  syncDestination: SyncDestination;
-  dailyNoteSectionHeading: string;
-  granolaFolder: string;
+  saveAsIndividualFiles: boolean; // true = files, false = sections
+
+  // Only if saveAsIndividualFiles = true:
+  baseFolderType: "custom" | "daily-notes"; // custom folder vs Daily Notes location
+  customBaseFolder?: string; // only if baseFolderType = 'custom'
+  subfolderPattern:
+    | "none"
+    | "day"
+    | "month"
+    | "year-month"
+    | "year-quarter"
+    | "custom";
+  customSubfolderPattern?: string; // only if subfolderPattern = 'custom'
+  filenamePattern: string; // default "{title}", supports variables
+
+  // Only if saveAsIndividualFiles = false:
+  dailyNoteSectionHeading?: string;
 }
 
 export interface TranscriptSettings {
   syncTranscripts: boolean;
-  transcriptDestination: TranscriptDestination;
-  granolaTranscriptsFolder: string;
+  transcriptHandling: "combined" | "same-location" | "custom-location";
+
+  // Only if transcriptHandling = 'custom-location':
+  customTranscriptBaseFolder?: string;
+  transcriptSubfolderPattern?:
+    | "none"
+    | "day"
+    | "month"
+    | "year-month"
+    | "year-quarter"
+    | "custom";
+  customTranscriptSubfolderPattern?: string;
+  transcriptFilenamePattern?: string;
 }
 
 export interface AutomaticSyncSettings {
@@ -35,7 +61,16 @@ export interface AutomaticSyncSettings {
 
 export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
-  AutomaticSyncSettings;
+  AutomaticSyncSettings & {
+    // Legacy settings preserved for potential rollback
+    _legacySettings?: {
+      syncDestination?: SyncDestination;
+      transcriptDestination?: TranscriptDestination;
+      granolaFolder?: string;
+      granolaTranscriptsFolder?: string;
+      dailyNoteSectionHeading?: string;
+    };
+  };
 
 export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   // AutomaticSyncSettings
@@ -45,14 +80,114 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   syncDaysBack: 7, // sync notes from last 7 days
   // NoteSettings
   syncNotes: true,
-  syncDestination: SyncDestination.DAILY_NOTES,
+  saveAsIndividualFiles: false, // Default to daily notes (sections)
+  baseFolderType: "custom",
+  customBaseFolder: "Granola",
+  subfolderPattern: "none",
+  filenamePattern: "{title}",
   dailyNoteSectionHeading: "## Granola Notes",
-  granolaFolder: "Granola",
   // TranscriptSettings
   syncTranscripts: false,
-  transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
-  granolaTranscriptsFolder: "Granola/Transcripts",
+  transcriptHandling: "custom-location",
+  customTranscriptBaseFolder: "Granola/Transcripts",
+  transcriptSubfolderPattern: "none",
+  transcriptFilenamePattern: "{title}-transcript",
 };
+
+/**
+ * Migrates old settings format to new format.
+ * Detects old format by checking for presence of syncDestination enum.
+ *
+ * @param oldSettings - The settings object to migrate
+ * @returns Migrated settings in new format
+ */
+export function migrateSettingsToNewFormat(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  oldSettings: any
+): GranolaSyncSettings {
+  // Check if migration is needed (old format has syncDestination)
+  if (!oldSettings.syncDestination) {
+    // Already in new format or fresh install
+    return Object.assign({}, DEFAULT_SETTINGS, oldSettings);
+  }
+
+  // Preserve old settings for potential rollback
+  const legacySettings = {
+    _legacySettings: {
+      syncDestination: oldSettings.syncDestination,
+      transcriptDestination: oldSettings.transcriptDestination,
+      granolaFolder: oldSettings.granolaFolder,
+      granolaTranscriptsFolder: oldSettings.granolaTranscriptsFolder,
+      dailyNoteSectionHeading: oldSettings.dailyNoteSectionHeading,
+    },
+  };
+
+  // Build new settings structure
+  const newSettings: Partial<GranolaSyncSettings> = {
+    ...oldSettings, // Preserve automatic sync settings and other unchanged fields
+    ...legacySettings,
+  };
+
+  // Migrate note settings
+  if (oldSettings.syncDestination === SyncDestination.DAILY_NOTES) {
+    newSettings.saveAsIndividualFiles = false;
+    newSettings.dailyNoteSectionHeading =
+      oldSettings.dailyNoteSectionHeading ||
+      DEFAULT_SETTINGS.dailyNoteSectionHeading;
+  } else {
+    newSettings.saveAsIndividualFiles = true;
+    newSettings.filenamePattern = "{title}"; // Default pattern
+
+    if (oldSettings.syncDestination === SyncDestination.GRANOLA_FOLDER) {
+      newSettings.baseFolderType = "custom";
+      newSettings.customBaseFolder =
+        oldSettings.granolaFolder || DEFAULT_SETTINGS.customBaseFolder;
+      newSettings.subfolderPattern = "none";
+    } else if (
+      oldSettings.syncDestination === SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE
+    ) {
+      // User wanted date-based organization, but unclear if they wanted custom folder or Daily Notes folder
+      // Default to custom folder with day-based subfolders (preserves existing behavior)
+      newSettings.baseFolderType = "custom";
+      newSettings.customBaseFolder =
+        oldSettings.granolaFolder || DEFAULT_SETTINGS.customBaseFolder;
+      newSettings.subfolderPattern = "day";
+    }
+  }
+
+  // Migrate transcript settings
+  if (
+    oldSettings.transcriptDestination ===
+    TranscriptDestination.COMBINED_WITH_NOTE
+  ) {
+    newSettings.transcriptHandling = "combined";
+  } else if (
+    oldSettings.transcriptDestination ===
+    TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE
+  ) {
+    newSettings.transcriptHandling = "same-location";
+    // Will use same organization as notes
+  } else {
+    newSettings.transcriptHandling = "custom-location";
+    newSettings.customTranscriptBaseFolder =
+      oldSettings.granolaTranscriptsFolder ||
+      DEFAULT_SETTINGS.customTranscriptBaseFolder;
+    newSettings.transcriptSubfolderPattern = "none";
+    newSettings.transcriptFilenamePattern = "{title}-transcript";
+  }
+
+  // Remove old enum fields
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (newSettings as any).syncDestination;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (newSettings as any).transcriptDestination;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (newSettings as any).granolaFolder;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (newSettings as any).granolaTranscriptsFolder;
+
+  return Object.assign({}, DEFAULT_SETTINGS, newSettings);
+}
 
 export class GranolaSyncSettingTab extends PluginSettingTab {
   plugin: GranolaSync;
@@ -150,90 +285,134 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     // Only show note-related settings when sync notes is enabled
     if (this.plugin.settings.syncNotes) {
-      const notesDestSetting = new Setting(containerEl)
-        .setName("Notes sync destination")
-        .setDesc("Choose where to save your Granola notes")
+      // How to package notes: individual files or sections in daily notes
+      new Setting(containerEl)
+        .setName("Save notes as")
+        .setDesc("Choose how to package your Granola notes")
         .addDropdown((dropdown) =>
           dropdown
-            .addOption(SyncDestination.DAILY_NOTES, "Append to daily notes")
-            .addOption(SyncDestination.GRANOLA_FOLDER, "Save to Granola folder")
-            .addOption(
-              SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE,
-              "Use daily note folder structure"
+            .addOption("sections", "Sections in daily notes")
+            .addOption("files", "Individual files")
+            .setValue(
+              this.plugin.settings.saveAsIndividualFiles ? "files" : "sections"
             )
-            .setValue(this.plugin.settings.syncDestination)
             .onChange(async (value) => {
-              this.plugin.settings.syncDestination = value as SyncDestination;
+              this.plugin.settings.saveAsIndividualFiles = value === "files";
               await this.plugin.saveSettings();
-              // Refresh the settings display to show/hide relevant fields
               this.display();
             })
         );
 
-      // Add explanation for each sync destination option
-      const explanationEl = notesDestSetting.settingEl
-        .querySelector(".setting-item-info")
-        ?.createEl("div", {
-          cls: "setting-item-description",
-        });
-      if (explanationEl) {
-        switch (this.plugin.settings.syncDestination) {
-          case SyncDestination.DAILY_NOTES:
-            explanationEl.setText(
-              "Notes will be added as sections within your existing daily notes. Perfect for keeping meeting notes alongside your daily journal."
-            );
-            break;
-          case SyncDestination.GRANOLA_FOLDER:
-            explanationEl.setText(
-              "All notes will be saved as individual files in a single folder. Simple and straightforward organization."
-            );
-            break;
-          case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            explanationEl.setText(
-              "Notes will be saved as individual files but organized in the same date-based folder structure as your daily notes. Best of both worlds - individual files with chronological organization."
-            );
-            break;
-        }
-      }
+      if (this.plugin.settings.saveAsIndividualFiles) {
+        // Individual files mode
+        new Setting(containerEl)
+          .setName("Base folder")
+          .setDesc("Choose where to save your note files")
+          .addDropdown((dropdown) =>
+            dropdown
+              .addOption("custom", "Custom folder")
+              .addOption("daily-notes", "Daily Notes folder")
+              .setValue(this.plugin.settings.baseFolderType)
+              .onChange(async (value) => {
+                this.plugin.settings.baseFolderType = value as
+                  | "custom"
+                  | "daily-notes";
+                await this.plugin.saveSettings();
+                this.display();
+              })
+          );
 
-      // Show relevant settings based on sync destination
-      if (
-        this.plugin.settings.syncDestination === SyncDestination.DAILY_NOTES
-      ) {
+        if (this.plugin.settings.baseFolderType === "custom") {
+          new Setting(containerEl)
+            .setName("Custom base folder")
+            .setDesc("The folder where your Granola notes will be saved")
+            .addText((text) =>
+              text
+                .setPlaceholder("Granola")
+                .setValue(this.plugin.settings.customBaseFolder || "Granola")
+                .onChange(async (value) => {
+                  this.plugin.settings.customBaseFolder = value;
+                  await this.plugin.saveSettings();
+                })
+            );
+        }
+
+        new Setting(containerEl)
+          .setName("Subfolder organization")
+          .setDesc("Choose how to organize notes in subfolders")
+          .addDropdown((dropdown) =>
+            dropdown
+              .addOption("none", "No subfolders (flat)")
+              .addOption("day", "By day (YYYY-MM-DD)")
+              .addOption("month", "By month (YYYY-MM)")
+              .addOption("year-month", "By year/month (YYYY/MM)")
+              .addOption("year-quarter", "By year/quarter (YYYY/Q1)")
+              .addOption("custom", "Custom pattern")
+              .setValue(this.plugin.settings.subfolderPattern)
+              .onChange(async (value) => {
+                this.plugin.settings.subfolderPattern = value as
+                  | "none"
+                  | "day"
+                  | "month"
+                  | "year-month"
+                  | "year-quarter"
+                  | "custom";
+                await this.plugin.saveSettings();
+                this.display();
+              })
+          );
+
+        if (this.plugin.settings.subfolderPattern === "custom") {
+          new Setting(containerEl)
+            .setName("Custom subfolder pattern")
+            .setDesc(
+              "Use variables: {year}, {month}, {day}, {quarter}. Example: {year}/{month}"
+            )
+            .addText((text) =>
+              text
+                .setPlaceholder("{year}/{month}")
+                .setValue(this.plugin.settings.customSubfolderPattern || "")
+                .onChange(async (value) => {
+                  this.plugin.settings.customSubfolderPattern = value;
+                  await this.plugin.saveSettings();
+                })
+            );
+        }
+
+        new Setting(containerEl)
+          .setName("Filename pattern")
+          .setDesc(
+            "Customize note filenames. Variables: {title}, {date}, {time}, {year}, {month}, {day}"
+          )
+          .addText((text) =>
+            text
+              .setPlaceholder("{title}")
+              .setValue(this.plugin.settings.filenamePattern)
+              .onChange(async (value) => {
+                this.plugin.settings.filenamePattern = value || "{title}";
+                await this.plugin.saveSettings();
+              })
+          );
+      } else {
+        // Sections in daily notes mode
         new Setting(containerEl)
           .setName("Daily note section heading")
           .setDesc(
-            'The markdown heading that will be used to mark the Granola notes section in your daily notes. Include the heading markers (e.g., "## Meeting Notes").'
+            'The markdown heading for the Granola notes section. Include heading markers (e.g., "## Meeting Notes").'
           )
           .addText((text) =>
             text
-              .setPlaceholder("Enter section heading")
-              .setValue(this.plugin.settings.dailyNoteSectionHeading)
+              .setPlaceholder("## Granola Notes")
+              .setValue(
+                this.plugin.settings.dailyNoteSectionHeading ||
+                  "## Granola Notes"
+              )
               .onChange(async (value) => {
                 this.plugin.settings.dailyNoteSectionHeading = value;
-                console.log("dailyNoteSectionHeading", value);
-                await this.plugin.saveSettings();
-              })
-          );
-      } else if (
-        this.plugin.settings.syncDestination === SyncDestination.GRANOLA_FOLDER
-      ) {
-        new Setting(containerEl)
-          .setName("Granola folder")
-          .setDesc(
-            "The folder where all your Granola notes will be saved. The folder will be created if it doesn't exist."
-          )
-          .addText((text) =>
-            text
-              .setPlaceholder("Name of the folder to write notes to")
-              .setValue(this.plugin.settings.granolaFolder)
-              .onChange(async (value) => {
-                this.plugin.settings.granolaFolder = value;
                 await this.plugin.saveSettings();
               })
           );
       }
-      // For DAILY_NOTE_FOLDER_STRUCTURE, no additional settings are needed
     }
 
     // Transcripts Section
@@ -242,7 +421,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Sync transcripts")
       .setDesc(
-        "Enable syncing of meeting transcripts from Granola. Transcripts are saved as separate files with speaker-by-speaker formatting."
+        "Enable syncing of meeting transcripts from Granola. Transcripts are saved with speaker-by-speaker formatting."
       )
       .addToggle((toggle) =>
         toggle
@@ -250,86 +429,115 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.syncTranscripts = value;
             await this.plugin.saveSettings();
-            // Refresh display to show/hide transcript-related settings
             this.display();
           })
       );
 
-    // Only show transcript-related settings when sync transcripts is enabled
     if (this.plugin.settings.syncTranscripts) {
-      const transcriptDestSetting = new Setting(containerEl)
-        .setName("Transcripts sync destination")
-        .setDesc("Choose where to save your Granola transcripts")
+      new Setting(containerEl)
+        .setName("Transcript handling")
+        .setDesc("Choose how to save transcripts")
         .addDropdown((dropdown) => {
           dropdown
-            .addOption(
-              TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
-              "Save to transcripts folder"
-            )
-            .addOption(
-              TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE,
-              "Use daily note folder structure"
-            );
-          // Only show combined option when both notes and transcripts are enabled
-          if (this.plugin.settings.syncNotes) {
-            dropdown.addOption(
-              TranscriptDestination.COMBINED_WITH_NOTE,
-              "Save with note in same file"
-            );
+            .addOption("custom-location", "Custom location")
+            .addOption("same-location", "Same location as notes");
+          // Only show combined option when notes are also being synced as individual files
+          if (
+            this.plugin.settings.syncNotes &&
+            this.plugin.settings.saveAsIndividualFiles
+          ) {
+            dropdown.addOption("combined", "Combined with notes");
           }
           dropdown
-            .setValue(this.plugin.settings.transcriptDestination)
+            .setValue(this.plugin.settings.transcriptHandling)
             .onChange(async (value) => {
-              this.plugin.settings.transcriptDestination =
-                value as TranscriptDestination;
+              this.plugin.settings.transcriptHandling = value as
+                | "combined"
+                | "same-location"
+                | "custom-location";
               await this.plugin.saveSettings();
-              // Refresh the settings display to show/hide relevant fields
               this.display();
             });
         });
 
-      // Add explanation for transcript destination
-      const transcriptExplanationEl = transcriptDestSetting.settingEl
-        .querySelector(".setting-item-info")
-        ?.createEl("div", {
-          cls: "setting-item-description",
-        });
-      if (transcriptExplanationEl) {
-        switch (this.plugin.settings.transcriptDestination) {
-          case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-            transcriptExplanationEl.setText(
-              "All transcripts will be saved as individual files in a dedicated folder."
-            );
-            break;
-          case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-            transcriptExplanationEl.setText(
-              "Transcripts will be saved in the same date-based folder structure as your daily notes."
-            );
-            break;
-          case TranscriptDestination.COMBINED_WITH_NOTE:
-            transcriptExplanationEl.setText(
-              "Transcripts will be appended to the same file as the note, with the transcript content at the end. Only applies to individual file destinations (not daily notes)."
-            );
-            break;
-        }
-      }
-
-      // Show folder setting for transcripts folder option (hide when combined mode is selected)
-      if (
-        this.plugin.settings.transcriptDestination ===
-        TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER
-      ) {
+      if (this.plugin.settings.transcriptHandling === "custom-location") {
         new Setting(containerEl)
-          .setName("Granola transcripts folder")
+          .setName("Transcript base folder")
+          .setDesc("The folder where transcripts will be saved")
+          .addText((text) =>
+            text
+              .setPlaceholder("Granola/Transcripts")
+              .setValue(
+                this.plugin.settings.customTranscriptBaseFolder ||
+                  "Granola/Transcripts"
+              )
+              .onChange(async (value) => {
+                this.plugin.settings.customTranscriptBaseFolder = value;
+                await this.plugin.saveSettings();
+              })
+          );
+
+        new Setting(containerEl)
+          .setName("Transcript subfolder organization")
+          .setDesc("Choose how to organize transcripts in subfolders")
+          .addDropdown((dropdown) =>
+            dropdown
+              .addOption("none", "No subfolders (flat)")
+              .addOption("day", "By day (YYYY-MM-DD)")
+              .addOption("month", "By month (YYYY-MM)")
+              .addOption("year-month", "By year/month (YYYY/MM)")
+              .addOption("year-quarter", "By year/quarter (YYYY/Q1)")
+              .addOption("custom", "Custom pattern")
+              .setValue(
+                this.plugin.settings.transcriptSubfolderPattern || "none"
+              )
+              .onChange(async (value) => {
+                this.plugin.settings.transcriptSubfolderPattern = value as
+                  | "none"
+                  | "day"
+                  | "month"
+                  | "year-month"
+                  | "year-quarter"
+                  | "custom";
+                await this.plugin.saveSettings();
+                this.display();
+              })
+          );
+
+        if (this.plugin.settings.transcriptSubfolderPattern === "custom") {
+          new Setting(containerEl)
+            .setName("Custom transcript subfolder pattern")
+            .setDesc(
+              "Use variables: {year}, {month}, {day}, {quarter}. Example: {year}/{month}"
+            )
+            .addText((text) =>
+              text
+                .setPlaceholder("{year}/{month}")
+                .setValue(
+                  this.plugin.settings.customTranscriptSubfolderPattern || ""
+                )
+                .onChange(async (value) => {
+                  this.plugin.settings.customTranscriptSubfolderPattern = value;
+                  await this.plugin.saveSettings();
+                })
+            );
+        }
+
+        new Setting(containerEl)
+          .setName("Transcript filename pattern")
           .setDesc(
-            "The folder where all your Granola transcripts will be saved. The folder will be created if it doesn't exist."
+            "Customize transcript filenames. Variables: {title}, {date}, {time}, {year}, {month}, {day}"
           )
           .addText((text) =>
             text
-              .setPlaceholder("Name of the folder for transcripts")
-              .setValue(this.plugin.settings.granolaTranscriptsFolder)
+              .setPlaceholder("{title}-transcript")
+              .setValue(
+                this.plugin.settings.transcriptFilenamePattern ||
+                  "{title}-transcript"
+              )
               .onChange(async (value) => {
-                this.plugin.settings.granolaTranscriptsFolder = value;
+                this.plugin.settings.transcriptFilenamePattern =
+                  value || "{title}-transcript";
                 await this.plugin.saveSettings();
               })
           );
