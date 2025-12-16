@@ -428,6 +428,306 @@ describe("formatTranscriptBySpeaker", () => {
     expect(resultWithoutFrontmatter).not.toContain("granola_id:");
     expect(resultWithoutFrontmatter).toContain("## You (00:00:01)");
   });
+
+  it("should escape attendee names with asterisks", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["John* Doe", "*Jane Smith*"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"John* Doe"');
+    expect(result).toContain('"*Jane Smith*"');
+  });
+
+  it("should escape attendee names with colons", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["Jane: Smith", "Dr: Professor"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"Jane: Smith"');
+    expect(result).toContain('"Dr: Professor"');
+  });
+
+  it("should escape attendee names with quotes", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ['John "Johnny" Doe', '"Quoted Name"']
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"John \\"Johnny\\" Doe"');
+    expect(result).toContain('"\\"Quoted Name\\""');
+  });
+
+  it("should escape attendee names with at signs", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["user@example.com", "@mention"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"user@example.com"');
+    expect(result).toContain('"@mention"');
+  });
+
+  it("should escape attendee names with hash signs", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["#hashtag", "Name # comment"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"#hashtag"');
+    expect(result).toContain('"Name # comment"');
+  });
+
+  it("should escape attendee names with brackets", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["[Array] Person", "{Object} Person"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"[Array] Person"');
+    expect(result).toContain('"{Object} Person"');
+  });
+
+  it("should escape attendee names with ampersands", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["Tom & Jerry", "&anchor"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"Tom & Jerry"');
+    expect(result).toContain('"&anchor"');
+  });
+
+  it("should escape attendee names with apostrophes", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["O'Brien", "It's Fine"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain("\"O'Brien\"");
+    expect(result).toContain("\"It's Fine\"");
+  });
+
+  it("should escape attendee names with mixed special characters", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ['*John "Johnny" Doe*', "user@example.com: admin"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"*John \\"Johnny\\" Doe*"');
+    expect(result).toContain('"user@example.com: admin"');
+  });
+
+  it("should handle multiple attendees with special characters", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["John* Doe", "Jane: Smith", "O'Brien", "Tom & Jerry", "#hashtag"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"John* Doe"');
+    expect(result).toContain('"Jane: Smith"');
+    expect(result).toContain("\"O'Brien\"");
+    expect(result).toContain('"Tom & Jerry"');
+    expect(result).toContain('"#hashtag"');
+  });
+
+  it("should escape unicode characters in attendee names", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "Test Meeting",
+      "test-id",
+      undefined,
+      undefined,
+      ["José García", "田中太郎"]
+    );
+
+    expect(result).toContain("attendees:");
+    expect(result).toContain('"José García"');
+    expect(result).toContain('"田中太郎"');
+  });
 });
 
 describe("formatTranscriptBody", () => {

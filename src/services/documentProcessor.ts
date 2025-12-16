@@ -1,9 +1,9 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
-import { escapeYamlString } from "../utils/yamlUtils";
 import { PathResolver } from "./pathResolver";
 import { TranscriptSettings } from "../settings";
+import { escapeYamlString } from "../utils/yamlUtils";
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
