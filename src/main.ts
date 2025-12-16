@@ -281,15 +281,6 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false
   ): Promise<number> {
-    // Extract attendees from people.attendees for all documents before processing
-    for (const doc of documents) {
-      if (doc.people?.attendees && doc.people.attendees.length > 0) {
-        doc.attendees = doc.people.attendees
-          .map((attendee) => attendee.name || attendee.email || "Unknown")
-          .filter((name) => name !== "Unknown");
-      }
-    }
-    
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
     let processedCount = 0;
@@ -324,15 +315,6 @@ export default class GranolaSync extends Plugin {
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
   ): Promise<number> {
-    // Extract attendees from people.attendees for all documents before processing
-    for (const doc of documents) {
-      if (doc.people?.attendees && doc.people.attendees.length > 0) {
-        doc.attendees = doc.people.attendees
-          .map((attendee) => attendee.name || attendee.email || "Unknown")
-          .filter((name) => name !== "Unknown");
-      }
-    }
-    
     let processedCount = 0;
     let syncedCount = 0;
     const isCombinedMode =
@@ -450,15 +432,6 @@ export default class GranolaSync extends Plugin {
     const isCombinedMode =
       this.settings.transcriptDestination ===
       TranscriptDestination.COMBINED_WITH_NOTE;
-
-    // Extract attendees from people.attendees for all documents before processing transcripts
-    for (const doc of documents) {
-      if (doc.people?.attendees && doc.people.attendees.length > 0) {
-        doc.attendees = doc.people.attendees
-          .map((attendee) => attendee.name || attendee.email || "Unknown")
-          .filter((name) => name !== "Unknown");
-      }
-    }
 
     let processedCount = 0;
     let syncedCount = 0;
