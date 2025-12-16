@@ -81,6 +81,18 @@ describe("PathResolver", () => {
     });
   });
 
+  describe("computeTranscriptBaseFolder", () => {
+    it("should return empty string for combined mode", () => {
+      settings.transcriptHandling = "combined";
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-01-15");
+      const result = pathResolver.computeTranscriptFolderPath(noteDate);
+
+      expect(result).toBe("");
+    });
+  });
+
   describe("computeTranscriptPath", () => {
     it("should compute path to custom transcripts folder when configured", () => {
       const noteDate = new Date("2024-01-15");
@@ -122,6 +134,18 @@ describe("PathResolver", () => {
       const result = pathResolver.computeTranscriptPath("Test/File<Name>", noteDate);
 
       expect(result).toBe("transcripts/Test_File_Name_-transcript.md");
+    });
+  });
+
+  describe("computeNoteBaseFolder", () => {
+    it("should return empty string when saveAsIndividualFiles is false", () => {
+      settings.saveAsIndividualFiles = false;
+      pathResolver = new PathResolver(settings);
+
+      const noteDate = new Date("2024-01-15");
+      const result = pathResolver.computeNoteFolderPath(noteDate);
+
+      expect(result).toBe("");
     });
   });
 
