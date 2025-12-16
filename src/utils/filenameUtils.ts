@@ -70,7 +70,9 @@ export function validatePattern(pattern: string): {
     if (!validVariables.includes(variable)) {
       return {
         isValid: false,
-        error: `Invalid variable: {${variable}}. Valid variables are: ${validVariables.map((v) => `{${v}}`).join(", ")}`,
+        error: `Invalid variable: {${variable}}. Valid variables are: ${validVariables
+          .map((v) => `{${v}}`)
+          .join(", ")}`,
       };
     }
   }

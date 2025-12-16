@@ -1,3 +1,6 @@
+// Set timezone to UTC for consistent test results
+process.env.TZ = "UTC";
+
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
