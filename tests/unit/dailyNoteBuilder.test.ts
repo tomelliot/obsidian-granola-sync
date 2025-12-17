@@ -4,6 +4,7 @@ import {
 } from "../../src/services/dailyNoteBuilder";
 import { GranolaDoc } from "../../src/services/granolaApi";
 import { DocumentProcessor } from "../../src/services/documentProcessor";
+import { PathResolver } from "../../src/services/pathResolver";
 import { App, TFile } from "obsidian";
 
 // Mock dependencies
@@ -23,6 +24,7 @@ describe("DailyNoteBuilder", () => {
   let dailyNoteBuilder: DailyNoteBuilder;
   let mockApp: App;
   let mockDocumentProcessor: DocumentProcessor;
+  let mockPathResolver: PathResolver;
 
   beforeEach(() => {
     // Setup mocks
@@ -30,6 +32,9 @@ describe("DailyNoteBuilder", () => {
     mockDocumentProcessor = {
       extractNoteForDailyNote: jest.fn(),
     } as unknown as DocumentProcessor;
+    mockPathResolver = {
+      computeTranscriptPath: jest.fn(),
+    } as unknown as PathResolver;
 
     (getNoteDate as jest.Mock).mockReturnValue(
       new Date("2024-01-15T10:00:00Z")
@@ -37,7 +42,11 @@ describe("DailyNoteBuilder", () => {
 
     dailyNoteBuilder = new DailyNoteBuilder(
       mockApp,
-      mockDocumentProcessor
+      mockDocumentProcessor,
+      mockPathResolver,
+      {
+        dailyNoteSectionHeading: "## Granola Notes",
+      }
     );
   });
 
@@ -87,12 +96,10 @@ describe("DailyNoteBuilder", () => {
         .mockReturnValueOnce(noteData2)
         .mockReturnValueOnce(noteData3);
 
-      // Reset and set up getNoteDate mock for this specific test
-      (getNoteDate as jest.Mock).mockReset();
       (getNoteDate as jest.Mock)
-        .mockReturnValueOnce(new Date("2024-01-15T12:00:00Z"))
-        .mockReturnValueOnce(new Date("2024-01-15T12:00:00Z"))
-        .mockReturnValueOnce(new Date("2024-01-16T12:00:00Z"));
+        .mockReturnValueOnce(new Date("2024-01-15"))
+        .mockReturnValueOnce(new Date("2024-01-15"))
+        .mockReturnValueOnce(new Date("2024-01-16"));
 
       const result = dailyNoteBuilder.buildDailyNotesMap([doc1, doc2, doc3]);
 
@@ -121,9 +128,7 @@ describe("DailyNoteBuilder", () => {
           markdown: "Content 2",
         });
 
-      // Reset and set up getNoteDate mock
-      (getNoteDate as jest.Mock).mockReset();
-      (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15T12:00:00Z"));
+      (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15"));
 
       const result = dailyNoteBuilder.buildDailyNotesMap([doc1, doc2]);
 
@@ -182,7 +187,8 @@ describe("DailyNoteBuilder", () => {
     it("should return just heading when no notes", () => {
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [],
-        "## Granola Notes"
+        "## Granola Notes",
+        "2024-01-15"
       );
 
       expect(result).toBe("## Granola Notes");
@@ -191,7 +197,8 @@ describe("DailyNoteBuilder", () => {
     it("should build section content with note metadata", () => {
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData],
-        "## Granola Notes"
+        "## Granola Notes",
+        "2024-01-15"
       );
 
       expect(result).toContain("## Granola Notes");
@@ -211,7 +218,8 @@ describe("DailyNoteBuilder", () => {
 
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteWithoutTimestamps],
-        "## Granola Notes"
+        "## Granola Notes",
+        "2024-01-15"
       );
 
       expect(result).not.toContain("**Created:**");
@@ -223,11 +231,13 @@ describe("DailyNoteBuilder", () => {
     it("should not add transcript link to daily note sections", () => {
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData],
-        "## Granola Notes"
+        "## Granola Notes",
+        "2024-01-15"
       );
 
       expect(result).not.toContain("**Transcript:**");
       expect(result).not.toContain("[[<");
+      expect(mockPathResolver.computeTranscriptPath).not.toHaveBeenCalled();
     });
 
     it("should handle multiple notes", () => {
@@ -239,7 +249,8 @@ describe("DailyNoteBuilder", () => {
 
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData, noteData2],
-        "## Granola Notes"
+        "## Granola Notes",
+        "2024-01-15"
       );
 
       expect(result).toContain("## Test Note");
@@ -251,7 +262,8 @@ describe("DailyNoteBuilder", () => {
     it("should trim and add newline at end", () => {
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData],
-        "## Granola Notes"
+        "## Granola Notes",
+        "2024-01-15"
       );
 
       expect(result.endsWith("\n")).toBe(true);
