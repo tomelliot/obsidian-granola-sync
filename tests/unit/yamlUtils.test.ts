@@ -1,4 +1,7 @@
-import { escapeYamlString } from "../../src/utils/yamlUtils";
+import {
+  escapeYamlString,
+  formatAttendeesAsYaml,
+} from "../../src/utils/yamlUtils";
 
 describe("escapeYamlString", () => {
   it("should wrap simple strings in double quotes", () => {
@@ -79,8 +82,8 @@ describe("escapeYamlString", () => {
   });
 
   it("should handle names with apostrophes", () => {
-    expect(escapeYamlString("O'Brien")).toBe("\"O'Brien\"");
-    expect(escapeYamlString("It's fine")).toBe("\"It's fine\"");
+    expect(escapeYamlString("O'Brien")).toBe('"O\'Brien"');
+    expect(escapeYamlString("It's fine")).toBe('"It\'s fine"');
   });
 
   it("should handle unicode characters", () => {
@@ -92,5 +95,57 @@ describe("escapeYamlString", () => {
     expect(escapeYamlString(" leading")).toBe('" leading"');
     expect(escapeYamlString("trailing ")).toBe('"trailing "');
     expect(escapeYamlString("  both  ")).toBe('"  both  "');
+  });
+});
+
+describe("formatAttendeesAsYaml", () => {
+  it("should format a single attendee with leading newline", () => {
+    expect(formatAttendeesAsYaml(["Alice"])).toBe('\n  - "Alice"');
+  });
+
+  it("should format multiple attendees with leading newline", () => {
+    const result = formatAttendeesAsYaml(["Alice", "Bob Smith", "Carol"]);
+    expect(result).toBe('\n  - "Alice"\n  - "Bob Smith"\n  - "Carol"');
+  });
+
+  it("should return [] for empty array", () => {
+    expect(formatAttendeesAsYaml([])).toBe("[]");
+  });
+
+  it("should properly escape special characters in attendee names", () => {
+    const result = formatAttendeesAsYaml(['John "Johnny" Doe', "O'Brien"]);
+    expect(result).toBe('\n  - "John \\"Johnny\\" Doe"\n  - "O\'Brien"');
+  });
+
+  it("should handle attendees with backslashes", () => {
+    const result = formatAttendeesAsYaml(["path\\to\\user"]);
+    expect(result).toBe('\n  - "path\\\\to\\\\user"');
+  });
+
+  it("should handle attendees with special YAML characters", () => {
+    const result = formatAttendeesAsYaml([
+      "user@example.com",
+      "#hashtag",
+      "key: value",
+    ]);
+    expect(result).toBe(
+      '\n  - "user@example.com"\n  - "#hashtag"\n  - "key: value"'
+    );
+  });
+
+  it("should handle unicode characters in attendee names", () => {
+    const result = formatAttendeesAsYaml(["José García", "田中太郎"]);
+    expect(result).toBe('\n  - "José García"\n  - "田中太郎"');
+  });
+
+  it("should maintain proper indentation for all items", () => {
+    const result = formatAttendeesAsYaml(["A", "B", "C"]);
+    const lines = result.split("\n");
+    // First line is empty (the leading newline), then 3 items
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toBe("");
+    lines.slice(1).forEach((line) => {
+      expect(line.startsWith("  - ")).toBe(true);
+    });
   });
 });
