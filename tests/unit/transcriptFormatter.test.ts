@@ -5,6 +5,15 @@ import {
 import { TranscriptEntry } from "../../src/services/granolaApi";
 
 describe("formatTranscriptBySpeaker", () => {
+  beforeEach(() => {
+    // Use fake timers to ensure consistent behavior across timezones
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2024-01-15T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
   it("should format a basic transcript with alternating speakers", () => {
     const transcriptData: TranscriptEntry[] = [
       {
@@ -431,6 +440,16 @@ describe("formatTranscriptBySpeaker", () => {
 });
 
 describe("formatTranscriptBody", () => {
+  beforeEach(() => {
+    // Use fake timers to ensure consistent behavior across timezones
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2024-01-15T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("should format transcript body without frontmatter", () => {
     const transcriptData: TranscriptEntry[] = [
       {

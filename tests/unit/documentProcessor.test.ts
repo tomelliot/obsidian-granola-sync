@@ -20,6 +20,10 @@ describe("DocumentProcessor", () => {
   let mockPathResolver: PathResolver;
 
   beforeEach(() => {
+    // Use fake timers and set a fixed time to ensure consistent date formatting across timezones
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2024-01-15T00:00:00.000Z"));
+
     // Setup mocks
     (convertProsemirrorToMarkdown as jest.Mock).mockReturnValue(
       "# Mock Content\n\nThis is mock markdown content."
@@ -29,9 +33,11 @@ describe("DocumentProcessor", () => {
     );
     (getTitleOrDefault as jest.Mock).mockImplementation(
       (doc: GranolaDoc) =>
-        doc.title || "Untitled Granola Note at 2024-01-15 00-00"
+        doc.title || "Untitled Granola Note at 2024-01-15 00-00-00"
     );
-    (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15"));
+    (getNoteDate as jest.Mock).mockReturnValue(
+      new Date("2024-01-15T00:00:00.000Z")
+    );
 
     mockPathResolver = new PathResolver({
       transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
@@ -51,6 +57,7 @@ describe("DocumentProcessor", () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.useRealTimers();
   });
 
   describe("prepareNote", () => {
@@ -268,7 +275,7 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain(
-        'title: "Untitled Granola Note at 2024-01-15 00-00"'
+        'title: "Untitled Granola Note at 2024-01-15 00-00-00"'
       );
     });
 
@@ -330,7 +337,7 @@ describe("DocumentProcessor", () => {
       );
 
       expect(result.filename).toBe(
-        "Untitled Granola Note at 2024-01-15 00-00-transcript.md"
+        "Untitled Granola Note at 2024-01-15 00-00-00-transcript.md"
       );
     });
   });
@@ -624,7 +631,7 @@ describe("DocumentProcessor", () => {
       );
 
       expect(result.content).toContain(
-        'title: "Untitled Granola Note at 2024-01-15 00-00"'
+        'title: "Untitled Granola Note at 2024-01-15 00-00-00"'
       );
     });
   });
