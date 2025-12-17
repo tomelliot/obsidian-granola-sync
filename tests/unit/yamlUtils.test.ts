@@ -5,12 +5,12 @@ import { formatAttendeesAsYaml } from "../../src/utils/yamlUtils";
 
 describe("formatAttendeesAsYaml", () => {
   it("should format a single attendee with leading newline", () => {
-    expect(formatAttendeesAsYaml(["Alice"])).toBe('\n  - "Alice"');
+    expect(formatAttendeesAsYaml(["Alice"])).toBe("\n  - Alice");
   });
 
   it("should format multiple attendees with leading newline", () => {
     const result = formatAttendeesAsYaml(["Alice", "Bob Smith", "Carol"]);
-    expect(result).toBe('\n  - "Alice"\n  - "Bob Smith"\n  - "Carol"');
+    expect(result).toBe("\n  - Alice\n  - Bob Smith\n  - Carol");
   });
 
   it("should return [] for empty array", () => {
