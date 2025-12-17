@@ -47,3 +47,20 @@ export const Platform = {
   isMobile: false,
   isDesktop: true,
 };
+
+/**
+ * Mock implementation of Obsidian's stringifyYaml function
+ * Converts a JavaScript value to YAML format
+ * 
+ * Note: We assume Obsidian's stringifyYaml handles proper escaping of special characters.
+ * This mock simply returns the quoted string without escaping.
+ */
+export function stringifyYaml(value: unknown): string {
+  if (typeof value === "string") {
+    return `"${value}"`;
+  }
+
+  // For arrays, objects, etc., use JSON stringification as a simple mock
+  // In real Obsidian, this would use a proper YAML library
+  return JSON.stringify(value);
+}

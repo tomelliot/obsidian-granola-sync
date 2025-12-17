@@ -1,21 +1,4 @@
-/**
- * Escapes a string for safe use as a YAML value.
- * Wraps the string in double quotes and escapes special characters.
- *
- * @param value - The string to escape
- * @returns A properly escaped YAML string value
- */
-export function escapeYamlString(value: string): string {
-  if (value === "") {
-    return '""';
-  }
-
-  // Escape backslashes first, then double quotes
-  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-
-  // Always wrap in double quotes to handle all special characters safely
-  return `"${escaped}"`;
-}
+import { stringifyYaml } from "obsidian";
 
 /**
  * Formats an array of attendee names as a YAML value.
@@ -30,6 +13,7 @@ export function formatAttendeesAsYaml(attendees: string[]): string {
   }
 
   return (
-    "\n" + attendees.map((name) => `  - ${escapeYamlString(name)}`).join("\n")
+    "\n" +
+    attendees.map((name) => `  - ${stringifyYaml(name).trim()}`).join("\n")
   );
 }
