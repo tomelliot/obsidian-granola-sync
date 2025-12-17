@@ -1,4 +1,5 @@
 import { TranscriptEntry } from "./granolaApi";
+import { formatAttendeesAsYaml } from "../utils/yamlUtils";
 
 /**
  * Formats transcript body content into markdown, grouped by speaker.
@@ -92,14 +93,7 @@ export function formatTranscriptBySpeaker(
   if (createdAt) frontmatterLines.push(`created: ${createdAt}`);
   if (updatedAt) frontmatterLines.push(`updated: ${updatedAt}`);
   const attendeesArray = attendees || [];
-  if (attendeesArray.length > 0) {
-    const attendeesYaml = attendeesArray
-      .map((name) => `  - ${name}`)
-      .join("\n");
-    frontmatterLines.push(`attendees:\n${attendeesYaml}`);
-  } else {
-    frontmatterLines.push(`attendees: []`);
-  }
+  frontmatterLines.push(`attendees: ${formatAttendeesAsYaml(attendeesArray)}`);
 
   // Add note link to frontmatter if path provided
   // Path is only provided when notes are synced to individual files (not DAILY_NOTES)

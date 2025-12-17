@@ -409,9 +409,13 @@ describe("DocumentProcessor", () => {
         },
       };
 
-      const transcriptContent = "## You (00:00:01)\n\nHello world.\n\n## Guest (00:00:05)\n\nHi there.\n\n";
+      const transcriptContent =
+        "## You (00:00:01)\n\nHello world.\n\n## Guest (00:00:05)\n\nHi there.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
 
       expect(result.filename).toBe("Test Note.md");
       expect(result.content).toContain("---");
@@ -444,7 +448,10 @@ describe("DocumentProcessor", () => {
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
 
       expect(result.content).not.toContain("transcript:");
       expect(result.content).not.toContain("note:");
@@ -472,11 +479,14 @@ describe("DocumentProcessor", () => {
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
 
       expect(result.content).toContain("attendees:");
-      expect(result.content).toContain("- Alice");
-      expect(result.content).toContain("- Bob");
+      expect(result.content).toContain("  - Alice");
+      expect(result.content).toContain("  - Bob");
     });
 
     it("should handle empty attendees array", () => {
@@ -497,7 +507,10 @@ describe("DocumentProcessor", () => {
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
 
       expect(result.content).toContain("attendees: []");
     });
@@ -516,7 +529,10 @@ describe("DocumentProcessor", () => {
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
 
       expect(result.filename).toBe("Minimal Note.md");
       expect(result.content).toContain("granola_id: doc-456");
@@ -539,7 +555,10 @@ describe("DocumentProcessor", () => {
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
 
       expect(result.content).toContain('title: "Note with \\"quotes\\""');
     });
@@ -558,7 +577,10 @@ describe("DocumentProcessor", () => {
 
       const transcriptContent = "## You (00:00:01)\n\nTranscript text.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
 
       const noteIndex = result.content.indexOf("## Note");
       const transcriptIndex = result.content.indexOf("## Transcript");
@@ -596,7 +618,10 @@ describe("DocumentProcessor", () => {
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
 
       expect(result.content).toContain(
         'title: "Untitled Granola Note at 2024-01-15 00-00"'

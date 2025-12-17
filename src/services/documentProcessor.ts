@@ -3,6 +3,7 @@ import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
 import { PathResolver } from "./pathResolver";
 import { TranscriptSettings } from "../settings";
+import { formatAttendeesAsYaml } from "../utils/yamlUtils";
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
@@ -52,12 +53,7 @@ export class DocumentProcessor {
       doc.people?.attendees
         ?.map((attendee) => attendee.name || attendee.email || "Unknown")
         .filter((name) => name !== "Unknown") || [];
-    if (attendees.length > 0) {
-      const attendeesYaml = attendees.map((name) => `  - ${name}`).join("\n");
-      frontmatterLines.push(`attendees:\n${attendeesYaml}`);
-    } else {
-      frontmatterLines.push(`attendees: []`);
-    }
+    frontmatterLines.push(`attendees: ${formatAttendeesAsYaml(attendees)}`);
 
     // Add transcript link to frontmatter if path provided
     // Path is only provided for individual note files (not for DAILY_NOTES destination)
@@ -134,12 +130,7 @@ export class DocumentProcessor {
       doc.people?.attendees
         ?.map((attendee) => attendee.name || attendee.email || "Unknown")
         .filter((name) => name !== "Unknown") || [];
-    if (attendees.length > 0) {
-      const attendeesYaml = attendees.map((name) => `  - ${name}`).join("\n");
-      frontmatterLines.push(`attendees:\n${attendeesYaml}`);
-    } else {
-      frontmatterLines.push(`attendees: []`);
-    }
+    frontmatterLines.push(`attendees: ${formatAttendeesAsYaml(attendees)}`);
 
     // Note: Combined files do NOT include transcript or note link fields in frontmatter
     frontmatterLines.push("---", "");
