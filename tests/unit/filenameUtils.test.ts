@@ -1,6 +1,9 @@
 import {
   sanitizeFilename,
   getTitleOrDefault,
+  validatePattern,
+  resolveFilenamePattern,
+  resolveSubfolderPattern,
 } from "../../src/utils/filenameUtils";
 import { GranolaDoc } from "../../src/services/granolaApi";
 
@@ -90,5 +93,170 @@ describe("getTitleOrDefault", () => {
     expect(result).toMatch(
       /^Untitled Granola Note at \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$/
     );
+  });
+});
+
+describe("validatePattern", () => {
+  it("should validate pattern with valid variables", () => {
+    const result = validatePattern("{title}-{date}");
+    expect(result.isValid).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("should reject pattern with invalid variables", () => {
+    const result = validatePattern("{title}-{invalid}");
+    expect(result.isValid).toBe(false);
+    expect(result.error).toContain("Invalid variable: {invalid}");
+  });
+
+  it("should reject empty pattern", () => {
+    const result = validatePattern("");
+    expect(result.isValid).toBe(false);
+    expect(result.error).toBe("Pattern cannot be empty");
+  });
+
+  it("should accept pattern with no variables", () => {
+    const result = validatePattern("static-filename");
+    expect(result.isValid).toBe(true);
+  });
+
+  it("should accept all valid variables", () => {
+    const result = validatePattern(
+      "{title}-{date}-{time}-{year}-{month}-{day}-{quarter}"
+    );
+    expect(result.isValid).toBe(true);
+  });
+});
+
+describe("resolveFilenamePattern", () => {
+  const testDate = new Date("2024-03-15T14:30:45Z");
+
+  it("should resolve {title} variable", () => {
+    const result = resolveFilenamePattern("{title}", "Test Meeting", testDate);
+    expect(result).toBe("Test Meeting");
+  });
+
+  it("should resolve {date} variable", () => {
+    const result = resolveFilenamePattern("{date}", "Test", testDate);
+    expect(result).toBe("2024-03-15");
+  });
+
+  it("should resolve {time} variable", () => {
+    const result = resolveFilenamePattern("{time}", "Test", testDate);
+    expect(result).toBe("14-30-45");
+  });
+
+  it("should resolve {year} variable", () => {
+    const result = resolveFilenamePattern("{year}", "Test", testDate);
+    expect(result).toBe("2024");
+  });
+
+  it("should resolve {month} variable", () => {
+    const result = resolveFilenamePattern("{month}", "Test", testDate);
+    expect(result).toBe("03");
+  });
+
+  it("should resolve {day} variable", () => {
+    const result = resolveFilenamePattern("{day}", "Test", testDate);
+    expect(result).toBe("15");
+  });
+
+  it("should resolve {quarter} variable", () => {
+    const result = resolveFilenamePattern("{quarter}", "Test", testDate);
+    expect(result).toBe("1");
+  });
+
+  it("should resolve multiple variables", () => {
+    const result = resolveFilenamePattern(
+      "{date}-{title}",
+      "Test Meeting",
+      testDate
+    );
+    expect(result).toBe("2024-03-15-Test Meeting");
+  });
+
+  it("should sanitize title in pattern", () => {
+    const result = resolveFilenamePattern(
+      "{title}",
+      "Test: Meeting/Notes",
+      testDate
+    );
+    expect(result).toBe("Test_ Meeting_Notes");
+  });
+
+  it("should handle pattern with no variables", () => {
+    const result = resolveFilenamePattern("static-name", "Test", testDate);
+    expect(result).toBe("static-name");
+  });
+});
+
+describe("resolveSubfolderPattern", () => {
+  const testDate = new Date("2024-03-15T14:30:45Z");
+
+  it("should return empty string for 'none' pattern", () => {
+    const result = resolveSubfolderPattern("none", testDate);
+    expect(result).toBe("");
+  });
+
+  it("should resolve 'day' pattern", () => {
+    const result = resolveSubfolderPattern("day", testDate);
+    expect(result).toBe("2024-03-15");
+  });
+
+  it("should resolve 'month' pattern", () => {
+    const result = resolveSubfolderPattern("month", testDate);
+    expect(result).toBe("2024-03");
+  });
+
+  it("should resolve 'year-month' pattern", () => {
+    const result = resolveSubfolderPattern("year-month", testDate);
+    expect(result).toBe("2024/03");
+  });
+
+  it("should resolve 'year-quarter' pattern", () => {
+    const result = resolveSubfolderPattern("year-quarter", testDate);
+    expect(result).toBe("2024/Q1");
+  });
+
+  it("should resolve custom pattern with {year}/{month}", () => {
+    const result = resolveSubfolderPattern(
+      "custom",
+      testDate,
+      "{year}/{month}"
+    );
+    expect(result).toBe("2024/03");
+  });
+
+  it("should resolve custom pattern with {year}/Q{quarter}", () => {
+    const result = resolveSubfolderPattern(
+      "custom",
+      testDate,
+      "{year}/Q{quarter}"
+    );
+    expect(result).toBe("2024/Q1");
+  });
+
+  it("should handle custom pattern with no variables", () => {
+    const result = resolveSubfolderPattern("custom", testDate, "static-folder");
+    expect(result).toBe("static-folder");
+  });
+
+  it("should return empty string for custom pattern without customPattern", () => {
+    const result = resolveSubfolderPattern("custom", testDate);
+    expect(result).toBe("");
+  });
+
+  it("should handle Q4 quarter correctly", () => {
+    const q4Date = new Date("2024-12-15T14:30:45Z");
+    const result = resolveSubfolderPattern("year-quarter", q4Date);
+    expect(result).toBe("2024/Q4");
+  });
+
+  it("should return empty string for invalid pattern type", () => {
+    const result = resolveSubfolderPattern(
+      "invalid" as any,
+      new Date("2024-03-15")
+    );
+    expect(result).toBe("");
   });
 });

@@ -2,11 +2,7 @@ import { App, Notice, TFile, normalizePath } from "obsidian";
 import type { GranolaDoc } from "./granolaApi";
 import type { DocumentProcessor } from "./documentProcessor";
 import { PathResolver } from "./pathResolver";
-import {
-  GranolaSyncSettings,
-  SyncDestination,
-  TranscriptDestination,
-} from "../settings";
+import { GranolaSyncSettings } from "../settings";
 import { getNoteDate, formatDateForFilename } from "../utils/dateUtils";
 import { log } from "../utils/logger";
 
@@ -368,28 +364,17 @@ export class FileSyncService {
     const settings = this.getSettings();
 
     if (isTranscript) {
-      switch (settings.transcriptDestination) {
-        case TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-          return this.pathResolver.computeDailyNoteFolderPath(noteDate);
-        case TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER:
-          return normalizePath(settings.granolaTranscriptsFolder);
-      }
+      return this.pathResolver.computeTranscriptFolderPath(noteDate);
     } else {
-      switch (settings.syncDestination) {
-        case SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE:
-          return this.pathResolver.computeDailyNoteFolderPath(noteDate);
-        case SyncDestination.GRANOLA_FOLDER:
-          return normalizePath(settings.granolaFolder);
-        default:
-          new Notice(
-            `Invalid sync destination for individual files: ${settings.syncDestination}`,
-            7000
-          );
-          return null;
+      if (!settings.saveAsIndividualFiles) {
+        new Notice(
+          "Invalid configuration: trying to save individual file when saveAsIndividualFiles is false",
+          7000
+        );
+        return null;
       }
+      return this.pathResolver.computeNoteFolderPath(noteDate);
     }
-
-    return null;
   }
 
   /**

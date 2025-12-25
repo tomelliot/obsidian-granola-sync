@@ -1,14 +1,13 @@
 import { Notice, Plugin } from "obsidian";
 import moment from "moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
-import { getTitleOrDefault, sanitizeFilename } from "./utils/filenameUtils";
+import { getTitleOrDefault } from "./utils/filenameUtils";
 import { getNoteDate } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
   GranolaSyncSettingTab,
-  SyncDestination,
-  TranscriptDestination,
+  migrateSettingsToNewFormat,
 } from "./settings";
 import {
   fetchAllGranolaDocuments,
@@ -51,12 +50,7 @@ export default class GranolaSync extends Plugin {
     await this.loadSettings();
 
     // Initialize services
-    this.pathResolver = new PathResolver({
-      transcriptDestination: this.settings.transcriptDestination,
-      granolaTranscriptsFolder: this.settings.granolaTranscriptsFolder,
-      syncDestination: this.settings.syncDestination,
-      granolaFolder: this.settings.granolaFolder,
-    });
+    this.pathResolver = new PathResolver(this.settings);
     this.fileSyncService = new FileSyncService(
       this.app,
       this.pathResolver,
@@ -114,7 +108,21 @@ export default class GranolaSync extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loadedData = await this.loadData();
+    const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+
+    // Check if migration is needed
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((mergedSettings as any).syncDestination) {
+      // Migrate old settings to new format
+      this.settings = migrateSettingsToNewFormat(mergedSettings);
+      // Save migrated settings immediately
+      await this.saveData(this.settings);
+      log.info("Migrated settings from old format to new format");
+    } else {
+      // Already in new format
+      this.settings = mergedSettings;
+    }
   }
 
   async saveSettings() {
@@ -262,14 +270,13 @@ export default class GranolaSync extends Plugin {
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
   ): Promise<void> {
-    const syncedCount =
-      this.settings.syncDestination === SyncDestination.DAILY_NOTES
-        ? await this.syncNotesToDailyNotes(documents, forceOverwrite)
-        : await this.syncNotesToIndividualFiles(
-            documents,
-            forceOverwrite,
-            transcriptDataMap
-          );
+    const syncedCount = !this.settings.saveAsIndividualFiles
+      ? await this.syncNotesToDailyNotes(documents, forceOverwrite)
+      : await this.syncNotesToIndividualFiles(
+          documents,
+          forceOverwrite,
+          transcriptDataMap
+        );
 
     this.settings.latestSyncTime = Date.now();
     await this.saveSettings();
@@ -282,7 +289,9 @@ export default class GranolaSync extends Plugin {
     forceOverwrite: boolean = false
   ): Promise<number> {
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
-    const sectionHeadingSetting = this.settings.dailyNoteSectionHeading.trim();
+    const sectionHeadingSetting = (
+      this.settings.dailyNoteSectionHeading || DEFAULT_SETTINGS.dailyNoteSectionHeading!
+    ).trim();
     let processedCount = 0;
     let syncedCount = 0;
 
@@ -319,8 +328,7 @@ export default class GranolaSync extends Plugin {
     let syncedCount = 0;
     const isCombinedMode =
       this.settings.syncTranscripts &&
-      this.settings.transcriptDestination ===
-        TranscriptDestination.COMBINED_WITH_NOTE;
+      this.settings.transcriptHandling === "combined";
 
     for (const doc of documents) {
       const contentToParse = doc.last_viewed_panel?.content;
@@ -385,22 +393,17 @@ export default class GranolaSync extends Plugin {
       } else {
         // Regular mode: save note separately (with optional transcript link)
         // Compute transcript path before preparing note (for frontmatter linking)
-        // Only add transcript link when syncing to individual files (not DAILY_NOTES)
-        // and not in combined mode
+        // Only add transcript link when syncing transcripts and not in combined mode
         let transcriptPath: string | null = null;
         if (
           this.settings.syncTranscripts &&
-          this.settings.transcriptDestination !==
-            TranscriptDestination.COMBINED_WITH_NOTE
+          this.settings.transcriptHandling !== "combined"
         ) {
           const title = getTitleOrDefault(doc);
           const noteDate = getNoteDate(doc);
-          const transcriptFilename = sanitizeFilename(title) + "-transcript.md";
-          transcriptPath = this.fileSyncService.resolveFilePath(
-            transcriptFilename,
-            noteDate,
-            doc.id,
-            true
+          transcriptPath = this.pathResolver.computeTranscriptPath(
+            title,
+            noteDate
           );
         }
 
@@ -429,9 +432,7 @@ export default class GranolaSync extends Plugin {
     forceOverwrite: boolean = false
   ): Promise<Map<string, TranscriptEntry[]>> {
     const transcriptDataMap = new Map<string, TranscriptEntry[]>();
-    const isCombinedMode =
-      this.settings.transcriptDestination ===
-      TranscriptDestination.COMBINED_WITH_NOTE;
+    const isCombinedMode = this.settings.transcriptHandling === "combined";
 
     let processedCount = 0;
     let syncedCount = 0;
@@ -486,7 +487,7 @@ export default class GranolaSync extends Plugin {
         if (this.settings.syncNotes) {
           const noteDate = getNoteDate(doc);
 
-          if (this.settings.syncDestination === SyncDestination.DAILY_NOTES) {
+          if (!this.settings.saveAsIndividualFiles) {
             // For daily notes, link to the daily note file with a heading anchor
             const noteMoment = moment(noteDate);
             const dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
@@ -496,13 +497,7 @@ export default class GranolaSync extends Plugin {
             }
           } else {
             // For individual files, use the resolved file path
-            const noteFilename = sanitizeFilename(title) + ".md";
-            notePath = this.fileSyncService.resolveFilePath(
-              noteFilename,
-              noteDate,
-              docId,
-              false
-            );
+            notePath = this.pathResolver.computeNotePath(title, noteDate);
           }
         }
 
