@@ -28,7 +28,6 @@ import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
-import { FrontmatterMigrationService } from "./services/frontmatterMigration";
 import { log } from "./utils/logger";
 import {
   showStatusBar,
@@ -66,12 +65,6 @@ export default class GranolaSync extends Plugin {
       this.app,
       this.documentProcessor
     );
-
-    // Run silent migration for legacy frontmatter formats
-    const migrationService = new FrontmatterMigrationService(this.app);
-    migrationService.migrateLegacyFrontmatter().catch((error) => {
-      log.error("Error during frontmatter migration:", error);
-    });
 
     // This adds a simple command that can be triggered anywhere
     this.addCommand({
@@ -290,7 +283,8 @@ export default class GranolaSync extends Plugin {
   ): Promise<number> {
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = (
-      this.settings.dailyNoteSectionHeading || DEFAULT_SETTINGS.dailyNoteSectionHeading!
+      this.settings.dailyNoteSectionHeading ||
+      DEFAULT_SETTINGS.dailyNoteSectionHeading!
     ).trim();
     let processedCount = 0;
     let syncedCount = 0;
