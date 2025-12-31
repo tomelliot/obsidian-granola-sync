@@ -116,6 +116,20 @@ export function resolveFilenamePattern(
 }
 
 /**
+ * Resolves a filename pattern for a Granola document.
+ * Convenience function that extracts title and date from doc.
+ *
+ * @param doc - The Granola document
+ * @param pattern - The filename pattern (e.g., "{title}", "{date}-{title}")
+ * @returns The resolved filename with .md extension
+ */
+export function resolveDocFilename(doc: GranolaDoc, pattern: string): string {
+  const title = getTitleOrDefault(doc);
+  const noteDate = getNoteDate(doc);
+  return resolveFilenamePattern(pattern, title, noteDate) + ".md";
+}
+
+/**
  * Resolves a subfolder pattern by substituting date variables with actual values.
  *
  * @param pattern - The subfolder pattern type or custom pattern

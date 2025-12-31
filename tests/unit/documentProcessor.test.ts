@@ -12,7 +12,7 @@ import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMark
 import {
   sanitizeFilename,
   getTitleOrDefault,
-  resolveFilenamePattern,
+  resolveDocFilename,
 } from "../../src/utils/filenameUtils";
 import { getNoteDate } from "../../src/utils/dateUtils";
 
@@ -39,13 +39,15 @@ describe("DocumentProcessor", () => {
     (getNoteDate as jest.Mock).mockReturnValue(
       new Date("2024-01-15T00:00:00.000Z")
     );
-    // Mock resolveFilenamePattern to return pattern-based filenames
-    (resolveFilenamePattern as jest.Mock).mockImplementation(
-      (pattern: string, title: string) => {
+    // Mock resolveDocFilename to return pattern-based filenames
+    (resolveDocFilename as jest.Mock).mockImplementation(
+      (doc: GranolaDoc, pattern: string) => {
+        const title = doc.title || "Untitled Granola Note at 2024-01-15 00-00-00";
         // Simple mock: replace {title} with title, {date} with fixed date
-        return pattern
+        const resolved = pattern
           .replace("{title}", title.replace(/[^a-zA-Z0-9\s\-_]/g, "").trim())
           .replace("{date}", "2024-01-15");
+        return resolved + ".md";
       }
     );
 
@@ -351,13 +353,9 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      // resolveFilenamePattern mock replaces {date} with "2024-01-15" and {title} with "Test Note"
+      // resolveDocFilename mock replaces {date} with "2024-01-15" and {title} with "Test Note"
       expect(result.filename).toBe("2024-01-15-Test Note.md");
-      expect(resolveFilenamePattern).toHaveBeenCalledWith(
-        "{date}-{title}",
-        "Test Note",
-        expect.any(Date)
-      );
+      expect(resolveDocFilename).toHaveBeenCalledWith(doc, "{date}-{title}");
     });
   });
 
@@ -417,10 +415,9 @@ describe("DocumentProcessor", () => {
       );
 
       expect(result.filename).toBe("2024-01-15-Test Note-transcript.md");
-      expect(resolveFilenamePattern).toHaveBeenCalledWith(
-        "{date}-{title}-transcript",
-        "Test Note",
-        expect.any(Date)
+      expect(resolveDocFilename).toHaveBeenCalledWith(
+        doc,
+        "{date}-{title}-transcript"
       );
     });
   });

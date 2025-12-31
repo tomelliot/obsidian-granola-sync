@@ -1,12 +1,8 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
-import {
-  getTitleOrDefault,
-  resolveFilenamePattern,
-} from "../utils/filenameUtils";
+import { getTitleOrDefault, resolveDocFilename } from "../utils/filenameUtils";
 import { PathResolver } from "./pathResolver";
 import { formatAttendeesAsYaml } from "../utils/yamlUtils";
-import { getNoteDate } from "../utils/dateUtils";
 
 export interface DocumentProcessorSettings {
   syncTranscripts: boolean;
@@ -23,26 +19,6 @@ export class DocumentProcessor {
     private settings: DocumentProcessorSettings,
     private pathResolver: PathResolver
   ) {}
-
-  /**
-   * Generates a filename based on the configured pattern.
-   *
-   * @param title - The document title
-   * @param noteDate - The date of the note
-   * @param isTranscript - Whether this is a transcript file
-   * @returns The generated filename with .md extension
-   */
-  private generateFilename(
-    title: string,
-    noteDate: Date,
-    isTranscript: boolean = false
-  ): string {
-    const pattern = isTranscript
-      ? this.settings.transcriptFilenamePattern || "{title}-transcript"
-      : this.settings.filenamePattern || "{title}";
-
-    return resolveFilenamePattern(pattern, title, noteDate) + ".md";
-  }
 
   /**
    * Prepares a note document for saving, including frontmatter and optional transcript links.
@@ -98,8 +74,7 @@ export class DocumentProcessor {
     // Add the actual note content
     finalMarkdown += markdownContent;
 
-    const noteDate = getNoteDate(doc);
-    const filename = this.generateFilename(title, noteDate, false);
+    const filename = resolveDocFilename(doc, this.settings.filenamePattern);
 
     return { filename, content: finalMarkdown };
   }
@@ -115,9 +90,9 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     transcriptContent: string
   ): { filename: string; content: string } {
-    const title = getTitleOrDefault(doc);
-    const noteDate = getNoteDate(doc);
-    const filename = this.generateFilename(title, noteDate, true);
+    const pattern =
+      this.settings.transcriptFilenamePattern || "{title}-transcript";
+    const filename = resolveDocFilename(doc, pattern);
 
     return { filename, content: transcriptContent };
   }
@@ -177,8 +152,7 @@ export class DocumentProcessor {
     finalMarkdown += "## Transcript\n\n";
     finalMarkdown += transcriptContent;
 
-    const noteDate = getNoteDate(doc);
-    const filename = this.generateFilename(title, noteDate, false);
+    const filename = resolveDocFilename(doc, this.settings.filenamePattern);
 
     return { filename, content: finalMarkdown };
   }
