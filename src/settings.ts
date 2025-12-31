@@ -40,6 +40,11 @@ export interface NoteSettings {
   customSubfolderPattern?: string; // only if subfolderPattern = 'custom'
   filenamePattern: string; // default "{title}", supports variables
 
+  // Only if saveAsIndividualFiles = true:
+  // Option to add links to daily notes pointing to individual note files
+  linkFromDailyNotes: boolean;
+  dailyNoteLinkHeading?: string; // heading for links section, default "## Meetings"
+
   // Only if saveAsIndividualFiles = false:
   dailyNoteSectionHeading?: string;
 }
@@ -94,6 +99,8 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   customBaseFolder: "Granola",
   subfolderPattern: "none",
   filenamePattern: "{title}",
+  linkFromDailyNotes: false,
+  dailyNoteLinkHeading: "## Meetings",
   dailyNoteSectionHeading: "## Granola Notes",
   // TranscriptSettings
   syncTranscripts: false,
@@ -402,6 +409,41 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
                 await this.plugin.saveSettings();
               })
           );
+
+        // Daily note linking option (only for individual files mode)
+        new Setting(containerEl)
+          .setName("Link from daily notes")
+          .setDesc(
+            "Add links to your individual note files from the corresponding daily notes. This creates a section in each daily note with links to meetings from that day."
+          )
+          .addToggle((toggle) =>
+            toggle
+              .setValue(this.plugin.settings.linkFromDailyNotes)
+              .onChange(async (value) => {
+                this.plugin.settings.linkFromDailyNotes = value;
+                await this.plugin.saveSettings();
+                this.display();
+              })
+          );
+
+        if (this.plugin.settings.linkFromDailyNotes) {
+          new Setting(containerEl)
+            .setName("Daily note link heading")
+            .setDesc(
+              'The markdown heading for the meeting links section in daily notes. Include heading markers (e.g., "## Meetings").'
+            )
+            .addText((text) =>
+              text
+                .setPlaceholder("## Meetings")
+                .setValue(
+                  this.plugin.settings.dailyNoteLinkHeading || "## Meetings"
+                )
+                .onChange(async (value) => {
+                  this.plugin.settings.dailyNoteLinkHeading = value;
+                  await this.plugin.saveSettings();
+                })
+            );
+        }
       } else {
         // Sections in daily notes mode
         new Setting(containerEl)

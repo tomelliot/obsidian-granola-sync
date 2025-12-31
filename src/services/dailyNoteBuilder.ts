@@ -19,6 +19,12 @@ export interface NoteData {
   markdown: string;
 }
 
+export interface NoteLinkData {
+  title: string;
+  filePath: string;
+  time?: string; // HH:MM format
+}
+
 /**
  * Service for building and managing daily notes with Granola content.
  * Handles grouping notes by date, building section content, and updating daily notes.
@@ -134,6 +140,124 @@ export class DailyNoteBuilder {
         7000
       );
       log.error("Error updating daily note section:", error);
+    }
+  }
+
+  /**
+   * Groups note link data by date and returns a map of date keys to arrays of link data.
+   *
+   * @param notesWithPaths - Array of objects containing doc, note path, and date
+   * @returns Map of date keys (YYYY-MM-DD) to arrays of note link data
+   */
+  buildDailyNoteLinksMap(
+    notesWithPaths: Array<{
+      doc: GranolaDoc;
+      notePath: string;
+      noteDate: Date;
+    }>
+  ): Map<string, NoteLinkData[]> {
+    const linksMap = new Map<string, NoteLinkData[]>();
+
+    for (const { doc, notePath, noteDate } of notesWithPaths) {
+      const mapKey = moment(noteDate).format("YYYY-MM-DD");
+      const title = doc.title || "Untitled";
+
+      // Extract time from the note date
+      const hours = noteDate.getHours().toString().padStart(2, "0");
+      const minutes = noteDate.getMinutes().toString().padStart(2, "0");
+      const time = `${hours}:${minutes}`;
+
+      const linkData: NoteLinkData = {
+        title,
+        filePath: notePath,
+        time,
+      };
+
+      if (!linksMap.has(mapKey)) {
+        linksMap.set(mapKey, []);
+      }
+
+      linksMap.get(mapKey)!.push(linkData);
+    }
+
+    // Sort links within each day by time
+    for (const [, links] of linksMap) {
+      links.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    }
+
+    return linksMap;
+  }
+
+  /**
+   * Builds the section content for daily note links.
+   *
+   * @param linksForDay - Array of note link data for the day
+   * @param sectionHeading - The heading to use for the section
+   * @returns The formatted section content with links
+   */
+  buildDailyNoteLinksSectionContent(
+    linksForDay: NoteLinkData[],
+    sectionHeading: string
+  ): string {
+    if (linksForDay.length === 0) {
+      return sectionHeading;
+    }
+
+    let content = sectionHeading;
+
+    for (const link of linksForDay) {
+      // Extract just the filename without extension for the wiki link
+      const filename = link.filePath.replace(/\.md$/, "");
+      const timePrefix = link.time ? `${link.time} - ` : "";
+      content += `\n- ${timePrefix}[[${filename}|${link.title}]]`;
+    }
+
+    return content.trim() + "\n";
+  }
+
+  /**
+   * Adds links to daily notes for a set of synced individual note files.
+   *
+   * @param notesWithPaths - Array of objects containing doc, note path, and date
+   * @param sectionHeading - The heading for the links section
+   * @param forceOverwrite - If true, always updates the section even if content is unchanged
+   */
+  async addLinksToDailyNotes(
+    notesWithPaths: Array<{
+      doc: GranolaDoc;
+      notePath: string;
+      noteDate: Date;
+    }>,
+    sectionHeading: string,
+    forceOverwrite: boolean = false
+  ): Promise<void> {
+    const linksMap = this.buildDailyNoteLinksMap(notesWithPaths);
+
+    for (const [dateKey, linksForDay] of linksMap) {
+      try {
+        const dailyNoteFile = await this.getOrCreateDailyNote(dateKey);
+        const sectionContent = this.buildDailyNoteLinksSectionContent(
+          linksForDay,
+          sectionHeading
+        );
+
+        await this.updateDailyNoteSection(
+          dailyNoteFile,
+          sectionHeading,
+          sectionContent,
+          forceOverwrite
+        );
+
+        log.debug(
+          `Added ${linksForDay.length} link(s) to daily note for ${dateKey}`
+        );
+      } catch (error) {
+        log.error(`Error adding links to daily note for ${dateKey}:`, error);
+        new Notice(
+          `Error adding meeting links to daily note for ${dateKey}. Check console.`,
+          7000
+        );
+      }
     }
   }
 }
