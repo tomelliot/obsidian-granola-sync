@@ -12,6 +12,7 @@ import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMark
 import {
   sanitizeFilename,
   getTitleOrDefault,
+  resolveFilenamePattern,
 } from "../../src/utils/filenameUtils";
 import { getNoteDate } from "../../src/utils/dateUtils";
 
@@ -38,6 +39,15 @@ describe("DocumentProcessor", () => {
     (getNoteDate as jest.Mock).mockReturnValue(
       new Date("2024-01-15T00:00:00.000Z")
     );
+    // Mock resolveFilenamePattern to return pattern-based filenames
+    (resolveFilenamePattern as jest.Mock).mockImplementation(
+      (pattern: string, title: string) => {
+        // Simple mock: replace {title} with title, {date} with fixed date
+        return pattern
+          .replace("{title}", title.replace(/[^a-zA-Z0-9\s\-_]/g, "").trim())
+          .replace("{date}", "2024-01-15");
+      }
+    );
 
     mockPathResolver = new PathResolver({
       transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
@@ -50,6 +60,8 @@ describe("DocumentProcessor", () => {
     documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: false,
+        filenamePattern: "{title}",
+        transcriptFilenamePattern: "{title}-transcript",
       },
       mockPathResolver
     );
@@ -129,6 +141,8 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
+          filenamePattern: "{title}",
+          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -160,6 +174,8 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
+          filenamePattern: "{title}",
+          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -205,6 +221,8 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
+          filenamePattern: "{title}",
+          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -235,6 +253,8 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
+          filenamePattern: "{title}",
+          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -306,6 +326,39 @@ describe("DocumentProcessor", () => {
         "Document has no valid content to parse"
       );
     });
+
+    it("should use filenamePattern setting for filename generation", () => {
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: false,
+          filenamePattern: "{date}-{title}",
+          transcriptFilenamePattern: "{title}-transcript",
+        },
+        mockPathResolver
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      // resolveFilenamePattern mock replaces {date} with "2024-01-15" and {title} with "Test Note"
+      expect(result.filename).toBe("2024-01-15-Test Note.md");
+      expect(resolveFilenamePattern).toHaveBeenCalledWith(
+        "{date}-{title}",
+        "Test Note",
+        expect.any(Date)
+      );
+    });
   });
 
   describe("prepareTranscript", () => {
@@ -338,6 +391,36 @@ describe("DocumentProcessor", () => {
 
       expect(result.filename).toBe(
         "Untitled Granola Note at 2024-01-15 00-00-00-transcript.md"
+      );
+    });
+
+    it("should use transcriptFilenamePattern setting for filename generation", () => {
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: true,
+          filenamePattern: "{title}",
+          transcriptFilenamePattern: "{date}-{title}-transcript",
+        },
+        mockPathResolver
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const transcriptContent = "Speaker 1: Hello";
+
+      const result = documentProcessor.prepareTranscript(
+        doc,
+        transcriptContent
+      );
+
+      expect(result.filename).toBe("2024-01-15-Test Note-transcript.md");
+      expect(resolveFilenamePattern).toHaveBeenCalledWith(
+        "{date}-{title}-transcript",
+        "Test Note",
+        expect.any(Date)
       );
     });
   });
