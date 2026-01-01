@@ -3,8 +3,14 @@ import { GranolaDoc } from "../../src/services/granolaApi";
 import { PathResolver } from "../../src/services/pathResolver";
 import { TranscriptDestination } from "../../src/settings";
 
-// Mock the dependencies
+// Mock convertProsemirrorToMarkdown: While this is a pure function, we mock it to
+// isolate DocumentProcessor's logic (frontmatter generation, formatting) from
+// the ProseMirror conversion logic, making tests more maintainable and focused.
 jest.mock("../../src/services/prosemirrorMarkdown");
+
+// Mock getNoteDate: This function has time-dependent behavior (returns new Date()
+// as fallback), so we mock it to ensure consistent, deterministic test results
+// and avoid brittleness from time-dependent test failures.
 jest.mock("../../src/utils/dateUtils", () => {
   const actual = jest.requireActual("../../src/utils/dateUtils");
   return {
@@ -21,10 +27,6 @@ describe("DocumentProcessor", () => {
   let mockPathResolver: PathResolver;
 
   beforeEach(() => {
-    // Use fake timers and set a fixed time to ensure consistent date formatting across timezones
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date("2024-01-15T00:00:00.000Z"));
-
     // Setup mocks
     (convertProsemirrorToMarkdown as jest.Mock).mockReturnValue(
       "# Mock Content\n\nThis is mock markdown content."
@@ -33,6 +35,8 @@ describe("DocumentProcessor", () => {
       new Date("2024-01-15T00:00:00.000Z")
     );
 
+    // Use real PathResolver instance but spy on computeTranscriptPath method
+    // to control its return value for testing transcript path scenarios.
     mockPathResolver = new PathResolver({
       transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
       granolaTranscriptsFolder: "Transcripts",
@@ -53,7 +57,6 @@ describe("DocumentProcessor", () => {
 
   afterEach(() => {
     jest.clearAllMocks();
-    jest.useRealTimers();
   });
 
   describe("prepareNote", () => {
