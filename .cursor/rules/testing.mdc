@@ -1,0 +1,192 @@
+---
+globs: *.test.ts,*.test.tsx
+alwaysApply: false
+---
+
+# Unit Testing: Mocking vs Real Dependencies
+
+## When to Mock Internal Dependencies
+
+### Mock when the dependency:
+- **Has side effects** (database calls, API requests, file I/O)
+- **Is slow or expensive** to execute
+- **Has complex setup requirements**
+- **Makes the test brittle** (random values, time-dependent behavior)
+- **You want to test error handling** of the current function
+
+```typescript
+// Example: Mock a database call
+import { jest } from '@jest/globals';
+
+// Mock the database module
+jest.mock('./database');
+
+import { fetchUser } from './database';
+import { get_user_profile } from './userService';
+
+describe('get_user_profile', () => {
+  it('should format user profile correctly', () => {
+    // Mock the external dependency
+    (fetchUser as jest.Mock).mockResolvedValue({ name: 'John', age: 30 });
+    
+    const result = await get_user_profile(123);
+    
+    expect(result.formatted_name).toBe('John');
+    expect(fetchUser).toHaveBeenCalledTimes(1);
+    expect(fetchUser).toHaveBeenCalledWith(123);
+  });
+});
+```
+
+## When to Use Real Dependencies
+
+### Use real dependencies when:
+- **The dependency is pure** (no side effects)
+- **It's fast and simple**
+- **You want integration-style confidence**
+- **The dependency is stable and unlikely to change**
+
+```typescript
+// Example: Use real utility function
+import { calculate_total_price } from './pricing';
+
+describe('calculate_total_price', () => {
+  it('should calculate total with tax', () => {
+    // No mocking needed - these are fast, pure functions
+    const items = [{ price: 10 }, { price: 20 }];
+    const total = calculate_total_price(items);
+    
+    expect(total).toBe(33.0); // 30 + 10% tax
+  });
+});
+```
+
+## Best Practices
+
+### 1. **Layer Your Testing Strategy**
+```typescript
+// Unit tests - mock external boundaries
+jest.mock('../services/externalApi');
+
+import { fetchData } from '../services/externalApi';
+import { processData } from './dataProcessor';
+
+describe('processData - unit', () => {
+  it('should process data correctly', () => {
+    (fetchData as jest.Mock).mockResolvedValue(sampleData);
+    // Test just this function's logic
+  });
+});
+
+// Integration tests - use real internal dependencies
+describe('processData - integration', () => {
+  it('should process data end-to-end', () => {
+    // Use real database, real internal functions
+    // Test the whole flow together
+  });
+});
+```
+
+### 2. **Mock at Boundaries**
+Mock at the edges of your system, not internal business logic:
+
+```typescript
+// Good: Mock at system boundary
+jest.mock('../services/externalService');
+
+import { apiCall } from '../services/externalService';
+import { processBusinessLogic } from './businessLogic';
+
+describe('processBusinessLogic', () => {
+  it('should handle business logic correctly', () => {
+    (apiCall as jest.Mock).mockResolvedValue(mockData);
+    // Real internal business logic, mocked external call
+  });
+});
+
+// Avoid: Over-mocking internal logic
+jest.mock('../utils/simpleCalculation'); // Probably unnecessary
+
+import { simpleCalculation } from '../utils/simpleCalculation';
+
+describe('processBusinessLogic', () => {
+  it('should handle business logic', () => {
+    // Over-mocking makes tests brittle
+  });
+});
+```
+
+### 3. **Consider Dependency Injection**
+Makes testing easier and more explicit:
+
+```typescript
+// Instead of hard-coded imports
+import { paymentService } from './paymentService';
+
+function processOrder(orderId: number) {
+  const payment = paymentService.chargeCard(orderId); // Hard to mock
+}
+
+// Use dependency injection
+interface PaymentService {
+  chargeCard(orderId: number): Promise<Payment>;
+}
+
+function processOrder(
+  orderId: number,
+  paymentService?: PaymentService
+): Promise<void> {
+  const service = paymentService || defaultPaymentService;
+  return service.chargeCard(orderId); // Easy to test
+}
+
+// Test becomes cleaner
+describe('processOrder', () => {
+  it('should process order correctly', () => {
+    const mockService: PaymentService = {
+      chargeCard: jest.fn().mockResolvedValue(mockPayment),
+    };
+    
+    await processOrder(123, mockService);
+    
+    expect(mockService.chargeCard).toHaveBeenCalledWith(123);
+  });
+});
+```
+
+### 4. **Test Both Paths**
+For critical code paths, consider both unit tests (with mocks) and integration tests (without mocks):
+
+```typescript
+// Unit test - fast, isolated
+jest.mock('../services/database');
+
+import { database } from '../services/database';
+import { UserService } from './userService';
+
+describe('UserService - unit', () => {
+  it('should handle user operations', () => {
+    (database.fetchUser as jest.Mock).mockResolvedValue(mockUser);
+    // Fast, focused on business logic
+  });
+});
+
+// Integration test - slower, more realistic
+describe('UserService - integration', () => {
+  it('should work with real database', () => {
+    // Uses real database (test DB)
+    // Catches integration issues
+  });
+});
+```
+
+## Decision Framework
+
+Ask yourself:
+1. **Does this dependency cross a system boundary?** → Mock it
+2. **Will this make my test slow or flaky?** → Mock it  
+3. **Am I testing error handling for this dependency?** → Mock it
+4. **Is this just pure business logic?** → Probably don't mock
+5. **Do I need fast feedback in a large test suite?** → Consider mocking
+
+The goal is **fast, reliable tests that give you confidence**. Start with less mocking for simplicity, then add mocks when you encounter the problems they solve (slow tests, flaky tests, hard-to-reproduce scenarios).
