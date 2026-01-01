@@ -263,13 +263,30 @@ export default class GranolaSync extends Plugin {
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
   ): Promise<void> {
-    const syncedCount = !this.settings.saveAsIndividualFiles
-      ? await this.syncNotesToDailyNotes(documents, forceOverwrite)
-      : await this.syncNotesToIndividualFiles(
-          documents,
-          forceOverwrite,
-          transcriptDataMap
+    let syncedCount: number;
+
+    if (!this.settings.saveAsIndividualFiles) {
+      syncedCount = await this.syncNotesToDailyNotes(documents, forceOverwrite);
+    } else {
+      const result = await this.syncNotesToIndividualFiles(
+        documents,
+        forceOverwrite,
+        transcriptDataMap
+      );
+      syncedCount = result.syncedCount;
+
+      // Add links to daily notes if enabled
+      if (this.settings.linkFromDailyNotes && result.syncedNotes.length > 0) {
+        const linkHeading =
+          this.settings.dailyNoteLinkHeading ||
+          DEFAULT_SETTINGS.dailyNoteLinkHeading!;
+        await this.dailyNoteBuilder.addLinksToDailyNotes(
+          result.syncedNotes,
+          linkHeading,
+          forceOverwrite
         );
+      }
+    }
 
     this.settings.latestSyncTime = Date.now();
     await this.saveSettings();
@@ -317,9 +334,16 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
-  ): Promise<number> {
+  ): Promise<{
+    syncedCount: number;
+    syncedNotes: Array<{ doc: GranolaDoc; notePath: string }>;
+  }> {
     let processedCount = 0;
     let syncedCount = 0;
+    const syncedNotes: Array<{
+      doc: GranolaDoc;
+      notePath: string;
+    }> = [];
     const isCombinedMode =
       this.settings.syncTranscripts &&
       this.settings.transcriptHandling === "combined";
@@ -333,6 +357,8 @@ export default class GranolaSync extends Plugin {
       ) {
         continue;
       }
+
+      const notePath = this.pathResolver.computeNotePath(doc);
 
       // Skip processing if note already exists locally and is up-to-date (unless forceOverwrite is true)
       if (!forceOverwrite) {
@@ -349,6 +375,8 @@ export default class GranolaSync extends Plugin {
               isCombinedMode ? "combined" : "note"
             )
           ) {
+            // Still track for daily note linking even if not synced
+            syncedNotes.push({ doc, notePath });
             continue;
           }
         }
@@ -371,6 +399,7 @@ export default class GranolaSync extends Plugin {
             )
           ) {
             syncedCount++;
+            syncedNotes.push({ doc, notePath });
           }
         } else {
           // No transcript available, save as regular note
@@ -382,6 +411,7 @@ export default class GranolaSync extends Plugin {
             )
           ) {
             syncedCount++;
+            syncedNotes.push({ doc, notePath });
           }
         }
       } else {
@@ -405,6 +435,7 @@ export default class GranolaSync extends Plugin {
           )
         ) {
           syncedCount++;
+          syncedNotes.push({ doc, notePath });
         }
       }
     }
@@ -412,7 +443,7 @@ export default class GranolaSync extends Plugin {
     log.debug(
       `syncNotesToIndividualFiles - Completed: ${syncedCount} saved out of ${processedCount} processed`
     );
-    return syncedCount;
+    return { syncedCount, syncedNotes };
   }
 
   private async syncTranscripts(
