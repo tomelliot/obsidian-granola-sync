@@ -5,6 +5,7 @@ import {
 } from "../../src/services/dailyNoteBuilder";
 import { GranolaDoc } from "../../src/services/granolaApi";
 import { DocumentProcessor } from "../../src/services/documentProcessor";
+import { PathResolver } from "../../src/services/pathResolver";
 import { App, TFile } from "obsidian";
 
 // Mock dependencies
@@ -14,11 +15,16 @@ jest.mock("obsidian-daily-notes-interface");
 
 import { getNoteDate } from "../../src/utils/dateUtils";
 import { updateSection } from "../../src/utils/textUtils";
+import { getEditorForFile } from "../../src/utils/fileUtils";
 import {
   getDailyNote,
   getAllDailyNotes,
   createDailyNote,
 } from "obsidian-daily-notes-interface";
+
+jest.mock("../../src/utils/fileUtils", () => ({
+  getEditorForFile: jest.fn(),
+}));
 
 describe("DailyNoteBuilder", () => {
   let dailyNoteBuilder: DailyNoteBuilder;
@@ -590,6 +596,197 @@ describe("DailyNoteBuilder", () => {
         "## Meetings",
         expect.any(String),
         true
+      );
+    });
+
+    it("should add new notes correctly when syncing multiple times on the same day", async () => {
+      const mockFile = { path: "2024-01-15.md" } as TFile;
+      (getDailyNote as jest.Mock).mockReturnValue(mockFile);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+      (updateSection as jest.Mock).mockResolvedValue(undefined);
+
+      const morningDoc: GranolaDoc = {
+        id: "doc-1",
+        title: "Morning Standup",
+        created_at: "2024-01-15T09:00:00Z",
+      };
+
+      const afternoonDoc: GranolaDoc = {
+        id: "doc-2",
+        title: "Afternoon Planning",
+        created_at: "2024-01-15T14:00:00Z",
+      };
+
+      // First sync: Add morning meeting
+      (getNoteDate as jest.Mock).mockReturnValue(
+        new Date("2024-01-15T09:00:00Z")
+      );
+
+      await dailyNoteBuilder.addLinksToDailyNotes(
+        [
+          {
+            doc: morningDoc,
+            notePath: "Granola/Morning Standup.md",
+          },
+        ],
+        "## Meetings"
+      );
+
+      expect(updateSection).toHaveBeenCalledTimes(1);
+      const firstCallContent = (updateSection as jest.Mock).mock.calls[0][3];
+      expect(firstCallContent).toContain("## Meetings");
+      expect(firstCallContent).toContain(
+        "- 09:00 - [[Granola/Morning Standup|Morning Standup]]"
+      );
+      expect(firstCallContent).not.toContain("Afternoon Planning");
+
+      // Second sync: Add both morning and afternoon meetings
+      (getNoteDate as jest.Mock)
+        .mockReturnValueOnce(new Date("2024-01-15T09:00:00Z"))
+        .mockReturnValueOnce(new Date("2024-01-15T14:00:00Z"));
+
+      await dailyNoteBuilder.addLinksToDailyNotes(
+        [
+          {
+            doc: morningDoc,
+            notePath: "Granola/Morning Standup.md",
+          },
+          {
+            doc: afternoonDoc,
+            notePath: "Granola/Afternoon Planning.md",
+          },
+        ],
+        "## Meetings"
+      );
+
+      expect(updateSection).toHaveBeenCalledTimes(2);
+      const secondCallContent = (updateSection as jest.Mock).mock.calls[1][3];
+      expect(secondCallContent).toContain("## Meetings");
+      // Verify heading comes first
+      expect(secondCallContent).toMatch(/^## Meetings\n/);
+      // Verify both links are present and sorted by time
+      expect(secondCallContent).toContain(
+        "- 09:00 - [[Granola/Morning Standup|Morning Standup]]"
+      );
+      expect(secondCallContent).toContain(
+        "- 14:00 - [[Granola/Afternoon Planning|Afternoon Planning]]"
+      );
+      // Verify morning meeting comes before afternoon meeting
+      const morningIndex = secondCallContent.indexOf("Morning Standup");
+      const afternoonIndex = secondCallContent.indexOf("Afternoon Planning");
+      expect(morningIndex).toBeLessThan(afternoonIndex);
+    });
+
+    it("should preserve other content in daily note when updating section", async () => {
+      // Use the real updateSection function for this test
+      const textUtilsModule = jest.requireActual("../../src/utils/textUtils");
+      const realUpdateSection = textUtilsModule.updateSection;
+
+      // Temporarily replace the mock with the real function
+      (updateSection as jest.Mock).mockImplementation(realUpdateSection);
+
+      // Mock getEditorForFile to return null so we use vault.process path
+      (getEditorForFile as jest.Mock).mockReturnValue(null);
+
+      const mockFile = { path: "2024-01-15.md" } as TFile;
+      (getDailyNote as jest.Mock).mockReturnValue(mockFile);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+
+      // Daily note with content before and after the section
+      const existingFileContent = [
+        "# Daily Note",
+        "",
+        "Some content before the section",
+        "",
+        "## Meetings",
+        "- Old meeting link",
+        "",
+        "## Other Section",
+        "Content after the section",
+      ].join("\n");
+
+      // Mock vault to capture the modified content
+      let modifiedContent = "";
+      const mockVault = {
+        read: jest.fn().mockResolvedValue(existingFileContent),
+        process: jest.fn(async (file, callback) => {
+          modifiedContent = callback(existingFileContent);
+          return modifiedContent;
+        }),
+      };
+      const mockAppWithVault = {
+        vault: mockVault,
+      } as unknown as App;
+
+      (getNoteDate as jest.Mock).mockReturnValue(
+        new Date("2024-01-15T10:00:00Z")
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-1",
+        title: "New Meeting",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+
+      // Use real DocumentProcessor and PathResolver: addLinksToDailyNotes doesn't use
+      // DocumentProcessor, but using real dependencies provides integration-style
+      // confidence and avoids over-mocking internal business logic
+      const pathResolver = new PathResolver({
+        syncNotes: true,
+        saveAsIndividualFiles: true,
+        baseFolderType: "custom",
+        customBaseFolder: "Granola",
+        subfolderPattern: "none",
+        filenamePattern: "{title}",
+        linkFromDailyNotes: false,
+        syncTranscripts: false,
+        transcriptHandling: "combined",
+      });
+      const documentProcessor = new DocumentProcessor(
+        { syncTranscripts: false },
+        pathResolver
+      );
+
+      const dailyNoteBuilderWithVault = new DailyNoteBuilder(
+        mockAppWithVault,
+        documentProcessor
+      );
+
+      await dailyNoteBuilderWithVault.addLinksToDailyNotes(
+        [
+          {
+            doc,
+            notePath: "Granola/New Meeting.md",
+          },
+        ],
+        "## Meetings"
+      );
+
+      expect(mockVault.process).toHaveBeenCalled();
+
+      // Verify content before the section is preserved
+      expect(modifiedContent).toContain("# Daily Note");
+      expect(modifiedContent).toContain("Some content before the section");
+
+      // Verify content after the section is preserved
+      expect(modifiedContent).toContain("## Other Section");
+      expect(modifiedContent).toContain("Content after the section");
+
+      // Verify the section itself is updated
+      expect(modifiedContent).toContain("## Meetings");
+      expect(modifiedContent).toContain(
+        "- 10:00 - [[Granola/New Meeting|New Meeting]]"
+      );
+      expect(modifiedContent).not.toContain("- Old meeting link");
+
+      // Verify section structure: heading comes first in the section
+      const meetingsSectionMatch = modifiedContent.match(
+        /## Meetings\n([\s\S]*?)(?=\n## |$)/
+      );
+      expect(meetingsSectionMatch).not.toBeNull();
+      const meetingsContent = meetingsSectionMatch![1];
+      expect(meetingsContent).toMatch(
+        /^- 10:00 - \[\[Granola\/New Meeting\|New Meeting\]\]/
       );
     });
   });
