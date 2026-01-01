@@ -82,7 +82,6 @@ export class DailyNoteBuilder {
    *
    * @param notesForDay - Array of note data for the day
    * @param sectionHeading - The heading to use for the section
-   * @param dateKey - Date key for fallback date calculations
    * @returns The formatted section content
    */
   buildDailyNoteSectionContent(
@@ -146,19 +145,19 @@ export class DailyNoteBuilder {
   /**
    * Groups note link data by date and returns a map of date keys to arrays of link data.
    *
-   * @param notesWithPaths - Array of objects containing doc, note path, and date
+   * @param notesWithPaths - Array of objects containing doc and note path
    * @returns Map of date keys (YYYY-MM-DD) to arrays of note link data
    */
   buildDailyNoteLinksMap(
     notesWithPaths: Array<{
       doc: GranolaDoc;
       notePath: string;
-      noteDate: Date;
     }>
   ): Map<string, NoteLinkData[]> {
     const linksMap = new Map<string, NoteLinkData[]>();
 
-    for (const { doc, notePath, noteDate } of notesWithPaths) {
+    for (const { doc, notePath } of notesWithPaths) {
+      const noteDate = getNoteDate(doc);
       const mapKey = moment(noteDate).format("YYYY-MM-DD");
       const title = doc.title || "Untitled";
 
@@ -218,7 +217,7 @@ export class DailyNoteBuilder {
   /**
    * Adds links to daily notes for a set of synced individual note files.
    *
-   * @param notesWithPaths - Array of objects containing doc, note path, and date
+   * @param notesWithPaths - Array of objects containing doc and note path
    * @param sectionHeading - The heading for the links section
    * @param forceOverwrite - If true, always updates the section even if content is unchanged
    */
@@ -226,7 +225,6 @@ export class DailyNoteBuilder {
     notesWithPaths: Array<{
       doc: GranolaDoc;
       notePath: string;
-      noteDate: Date;
     }>,
     sectionHeading: string,
     forceOverwrite: boolean = false

@@ -336,14 +336,13 @@ export default class GranolaSync extends Plugin {
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
   ): Promise<{
     syncedCount: number;
-    syncedNotes: Array<{ doc: GranolaDoc; notePath: string; noteDate: Date }>;
+    syncedNotes: Array<{ doc: GranolaDoc; notePath: string }>;
   }> {
     let processedCount = 0;
     let syncedCount = 0;
     const syncedNotes: Array<{
       doc: GranolaDoc;
       notePath: string;
-      noteDate: Date;
     }> = [];
     const isCombinedMode =
       this.settings.syncTranscripts &&
@@ -359,9 +358,7 @@ export default class GranolaSync extends Plugin {
         continue;
       }
 
-      const title = getTitleOrDefault(doc);
-      const noteDate = getNoteDate(doc);
-      const notePath = this.pathResolver.computeNotePath(title, noteDate);
+      const notePath = this.pathResolver.computeNotePath(doc);
 
       // Skip processing if note already exists locally and is up-to-date (unless forceOverwrite is true)
       if (!forceOverwrite) {
@@ -379,7 +376,7 @@ export default class GranolaSync extends Plugin {
             )
           ) {
             // Still track for daily note linking even if not synced
-            syncedNotes.push({ doc, notePath, noteDate });
+            syncedNotes.push({ doc, notePath });
             continue;
           }
         }
@@ -402,7 +399,7 @@ export default class GranolaSync extends Plugin {
             )
           ) {
             syncedCount++;
-            syncedNotes.push({ doc, notePath, noteDate });
+            syncedNotes.push({ doc, notePath });
           }
         } else {
           // No transcript available, save as regular note
@@ -414,7 +411,7 @@ export default class GranolaSync extends Plugin {
             )
           ) {
             syncedCount++;
-            syncedNotes.push({ doc, notePath, noteDate });
+            syncedNotes.push({ doc, notePath });
           }
         }
       } else {
@@ -438,7 +435,7 @@ export default class GranolaSync extends Plugin {
           )
         ) {
           syncedCount++;
-          syncedNotes.push({ doc, notePath, noteDate });
+          syncedNotes.push({ doc, notePath });
         }
       }
     }

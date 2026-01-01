@@ -5,7 +5,6 @@ import {
 } from "../../src/services/dailyNoteBuilder";
 import { GranolaDoc } from "../../src/services/granolaApi";
 import { DocumentProcessor } from "../../src/services/documentProcessor";
-import { PathResolver } from "../../src/services/pathResolver";
 import { App, TFile } from "obsidian";
 
 // Mock dependencies
@@ -25,7 +24,6 @@ describe("DailyNoteBuilder", () => {
   let dailyNoteBuilder: DailyNoteBuilder;
   let mockApp: App;
   let mockDocumentProcessor: DocumentProcessor;
-  let mockPathResolver: PathResolver;
 
   beforeEach(() => {
     // Setup mocks
@@ -33,22 +31,12 @@ describe("DailyNoteBuilder", () => {
     mockDocumentProcessor = {
       extractNoteForDailyNote: jest.fn(),
     } as unknown as DocumentProcessor;
-    mockPathResolver = {
-      computeTranscriptPath: jest.fn(),
-    } as unknown as PathResolver;
 
     (getNoteDate as jest.Mock).mockReturnValue(
       new Date("2024-01-15T10:00:00Z")
     );
 
-    dailyNoteBuilder = new DailyNoteBuilder(
-      mockApp,
-      mockDocumentProcessor,
-      mockPathResolver,
-      {
-        dailyNoteSectionHeading: "## Granola Notes",
-      }
-    );
+    dailyNoteBuilder = new DailyNoteBuilder(mockApp, mockDocumentProcessor);
   });
 
   afterEach(() => {
@@ -188,8 +176,7 @@ describe("DailyNoteBuilder", () => {
     it("should return just heading when no notes", () => {
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [],
-        "## Granola Notes",
-        "2024-01-15"
+        "## Granola Notes"
       );
 
       expect(result).toBe("## Granola Notes");
@@ -198,8 +185,7 @@ describe("DailyNoteBuilder", () => {
     it("should build section content with note metadata", () => {
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData],
-        "## Granola Notes",
-        "2024-01-15"
+        "## Granola Notes"
       );
 
       expect(result).toContain("## Granola Notes");
@@ -219,8 +205,7 @@ describe("DailyNoteBuilder", () => {
 
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteWithoutTimestamps],
-        "## Granola Notes",
-        "2024-01-15"
+        "## Granola Notes"
       );
 
       expect(result).not.toContain("**Created:**");
@@ -232,13 +217,11 @@ describe("DailyNoteBuilder", () => {
     it("should not add transcript link to daily note sections", () => {
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData],
-        "## Granola Notes",
-        "2024-01-15"
+        "## Granola Notes"
       );
 
       expect(result).not.toContain("**Transcript:**");
       expect(result).not.toContain("[[<");
-      expect(mockPathResolver.computeTranscriptPath).not.toHaveBeenCalled();
     });
 
     it("should handle multiple notes", () => {
@@ -250,8 +233,7 @@ describe("DailyNoteBuilder", () => {
 
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData, noteData2],
-        "## Granola Notes",
-        "2024-01-15"
+        "## Granola Notes"
       );
 
       expect(result).toContain("## Test Note");
@@ -263,8 +245,7 @@ describe("DailyNoteBuilder", () => {
     it("should trim and add newline at end", () => {
       const result = dailyNoteBuilder.buildDailyNoteSectionContent(
         [noteData],
-        "## Granola Notes",
-        "2024-01-15"
+        "## Granola Notes"
       );
 
       expect(result.endsWith("\n")).toBe(true);
@@ -336,21 +317,23 @@ describe("DailyNoteBuilder", () => {
         created_at: "2024-01-16T10:00:00Z",
       };
 
+      (getNoteDate as jest.Mock)
+        .mockReturnValueOnce(new Date("2024-01-15T09:00:00Z"))
+        .mockReturnValueOnce(new Date("2024-01-15T14:00:00Z"))
+        .mockReturnValueOnce(new Date("2024-01-16T10:00:00Z"));
+
       const notesWithPaths = [
         {
           doc: doc1,
           notePath: "Granola/Morning Standup.md",
-          noteDate: new Date("2024-01-15T09:00:00Z"),
         },
         {
           doc: doc2,
           notePath: "Granola/Planning Meeting.md",
-          noteDate: new Date("2024-01-15T14:00:00Z"),
         },
         {
           doc: doc3,
           notePath: "Granola/Retrospective.md",
-          noteDate: new Date("2024-01-16T10:00:00Z"),
         },
       ];
 
@@ -373,16 +356,18 @@ describe("DailyNoteBuilder", () => {
         created_at: "2024-01-15T09:00:00Z",
       };
 
+      (getNoteDate as jest.Mock)
+        .mockReturnValueOnce(new Date("2024-01-15T14:00:00Z"))
+        .mockReturnValueOnce(new Date("2024-01-15T09:00:00Z"));
+
       const notesWithPaths = [
         {
           doc: doc1,
           notePath: "Granola/Afternoon Meeting.md",
-          noteDate: new Date("2024-01-15T14:00:00Z"),
         },
         {
           doc: doc2,
           notePath: "Granola/Morning Standup.md",
-          noteDate: new Date("2024-01-15T09:00:00Z"),
         },
       ];
 
@@ -395,16 +380,20 @@ describe("DailyNoteBuilder", () => {
     });
 
     it("should handle documents without titles", () => {
+      //@ts-expect-error - title is missing
       const doc: GranolaDoc = {
         id: "doc-1",
         created_at: "2024-01-15T10:00:00Z",
       };
 
+      (getNoteDate as jest.Mock).mockReturnValue(
+        new Date("2024-01-15T10:00:00Z")
+      );
+
       const notesWithPaths = [
         {
           doc,
           notePath: "Granola/Untitled.md",
-          noteDate: new Date("2024-01-15T10:00:00Z"),
         },
       ];
 
@@ -501,6 +490,9 @@ describe("DailyNoteBuilder", () => {
       (getDailyNote as jest.Mock).mockReturnValue(mockFile);
       (getAllDailyNotes as jest.Mock).mockReturnValue({});
       (updateSection as jest.Mock).mockResolvedValue(undefined);
+      (getNoteDate as jest.Mock).mockReturnValue(
+        new Date("2024-01-15T10:00:00Z")
+      );
 
       const doc: GranolaDoc = {
         id: "doc-1",
@@ -512,7 +504,6 @@ describe("DailyNoteBuilder", () => {
         {
           doc,
           notePath: "Granola/Test Meeting.md",
-          noteDate: new Date("2024-01-15T10:00:00Z"),
         },
       ];
 
@@ -535,6 +526,9 @@ describe("DailyNoteBuilder", () => {
       (getDailyNote as jest.Mock).mockReturnValue(null);
       (getAllDailyNotes as jest.Mock).mockReturnValue({});
       (createDailyNote as jest.Mock).mockRejectedValue(error);
+      (getNoteDate as jest.Mock).mockReturnValue(
+        new Date("2024-01-15T10:00:00Z")
+      );
 
       const consoleErrorSpy = jest
         .spyOn(console, "error")
@@ -550,7 +544,6 @@ describe("DailyNoteBuilder", () => {
         {
           doc,
           notePath: "Granola/Test Meeting.md",
-          noteDate: new Date("2024-01-15T10:00:00Z"),
         },
       ];
 
@@ -568,6 +561,9 @@ describe("DailyNoteBuilder", () => {
       (getDailyNote as jest.Mock).mockReturnValue(mockFile);
       (getAllDailyNotes as jest.Mock).mockReturnValue({});
       (updateSection as jest.Mock).mockResolvedValue(undefined);
+      (getNoteDate as jest.Mock).mockReturnValue(
+        new Date("2024-01-15T10:00:00Z")
+      );
 
       const doc: GranolaDoc = {
         id: "doc-1",
@@ -579,7 +575,6 @@ describe("DailyNoteBuilder", () => {
         {
           doc,
           notePath: "Granola/Test Meeting.md",
-          noteDate: new Date("2024-01-15T10:00:00Z"),
         },
       ];
 
