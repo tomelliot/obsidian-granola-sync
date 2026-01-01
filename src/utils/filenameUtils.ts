@@ -83,16 +83,16 @@ export function validatePattern(pattern: string): {
 /**
  * Resolves a filename pattern by substituting variables with actual values.
  *
+ * @param doc - The Granola document
  * @param pattern - The filename pattern (e.g., "{title}", "{date}-{title}")
- * @param title - The document title
- * @param noteDate - The date of the note
  * @returns The resolved filename (without .md extension)
  */
 export function resolveFilenamePattern(
-  pattern: string,
-  title: string,
-  noteDate: Date
+  doc: GranolaDoc,
+  pattern: string
 ): string {
+  const title = getTitleOrDefault(doc);
+  const noteDate = getNoteDate(doc);
   const sanitizedTitle = sanitizeFilename(title);
   const year = noteDate.getFullYear().toString();
   const month = (noteDate.getMonth() + 1).toString().padStart(2, "0");
@@ -124,9 +124,7 @@ export function resolveFilenamePattern(
  * @returns The resolved filename with .md extension
  */
 export function resolveDocFilename(doc: GranolaDoc, pattern: string): string {
-  const title = getTitleOrDefault(doc);
-  const noteDate = getNoteDate(doc);
-  return resolveFilenamePattern(pattern, title, noteDate) + ".md";
+  return resolveFilenamePattern(doc, pattern) + ".md";
 }
 
 /**

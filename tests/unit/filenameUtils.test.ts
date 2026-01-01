@@ -130,63 +130,103 @@ describe("validatePattern", () => {
 });
 
 describe("resolveFilenamePattern", () => {
-  const testDate = new Date("2024-03-15T14:30:45Z");
-
   it("should resolve {title} variable", () => {
-    const result = resolveFilenamePattern("{title}", "Test Meeting", testDate);
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test Meeting",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{title}");
     expect(result).toBe("Test Meeting");
   });
 
   it("should resolve {date} variable", () => {
-    const result = resolveFilenamePattern("{date}", "Test", testDate);
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{date}");
     expect(result).toBe("2024-03-15");
   });
 
   it("should resolve {time} variable", () => {
-    const result = resolveFilenamePattern("{time}", "Test", testDate);
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{time}");
     expect(result).toBe("14-30-45");
   });
 
   it("should resolve {year} variable", () => {
-    const result = resolveFilenamePattern("{year}", "Test", testDate);
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{year}");
     expect(result).toBe("2024");
   });
 
   it("should resolve {month} variable", () => {
-    const result = resolveFilenamePattern("{month}", "Test", testDate);
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{month}");
     expect(result).toBe("03");
   });
 
   it("should resolve {day} variable", () => {
-    const result = resolveFilenamePattern("{day}", "Test", testDate);
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{day}");
     expect(result).toBe("15");
   });
 
   it("should resolve {quarter} variable", () => {
-    const result = resolveFilenamePattern("{quarter}", "Test", testDate);
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{quarter}");
     expect(result).toBe("1");
   });
 
   it("should resolve multiple variables", () => {
-    const result = resolveFilenamePattern(
-      "{date}-{title}",
-      "Test Meeting",
-      testDate
-    );
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test Meeting",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{date}-{title}");
     expect(result).toBe("2024-03-15-Test Meeting");
   });
 
   it("should sanitize title in pattern", () => {
-    const result = resolveFilenamePattern(
-      "{title}",
-      "Test: Meeting/Notes",
-      testDate
-    );
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test: Meeting/Notes",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "{title}");
     expect(result).toBe("Test_ Meeting_Notes");
   });
 
   it("should handle pattern with no variables", () => {
-    const result = resolveFilenamePattern("static-name", "Test", testDate);
+    const doc: GranolaDoc = {
+      id: "doc-123",
+      title: "Test",
+      created_at: "2024-03-15T14:30:45Z",
+    };
+    const result = resolveFilenamePattern(doc, "static-name");
     expect(result).toBe("static-name");
   });
 });
@@ -255,7 +295,13 @@ describe("resolveSubfolderPattern", () => {
 
   it("should return empty string for invalid pattern type", () => {
     const result = resolveSubfolderPattern(
-      "invalid" as any,
+      "invalid" as
+        | "none"
+        | "day"
+        | "month"
+        | "year-month"
+        | "year-quarter"
+        | "custom",
       new Date("2024-03-15")
     );
     expect(result).toBe("");
@@ -288,6 +334,7 @@ describe("resolveDocFilename", () => {
   it("should use default title when doc has no title", () => {
     const doc: GranolaDoc = {
       id: "doc-123",
+      title: null,
       created_at: "2024-03-15T14:30:45Z",
     };
 

@@ -90,9 +90,10 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     transcriptContent: string
   ): { filename: string; content: string } {
-    const pattern =
-      this.settings.transcriptFilenamePattern || "{title}-transcript";
-    const filename = resolveDocFilename(doc, pattern);
+    const filename = resolveDocFilename(
+      doc,
+      this.settings.transcriptFilenamePattern
+    );
 
     return { filename, content: transcriptContent };
   }

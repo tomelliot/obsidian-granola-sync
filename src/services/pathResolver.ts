@@ -6,6 +6,8 @@ import {
   resolveSubfolderPattern,
 } from "../utils/filenameUtils";
 import { TranscriptSettings, NoteSettings } from "../settings";
+import { GranolaDoc } from "./granolaApi";
+import { getNoteDate } from "../utils/dateUtils";
 
 /**
  * Resolves file paths for notes and transcripts based on plugin settings
@@ -86,18 +88,14 @@ export class PathResolver {
   /**
    * Computes the full path for a note file based on settings.
    *
-   * @param title - The title of the note
-   * @param noteDate - The date of the note
+   * @param doc - The Granola document
    * @returns The full file path for the note
    */
-  computeNotePath(title: string, noteDate: Date): string {
+  computeNotePath(doc: GranolaDoc): string {
+    const noteDate = getNoteDate(doc);
     const folderPath = this.computeNoteFolderPath(noteDate);
     const filename =
-      resolveFilenamePattern(
-        this.settings.filenamePattern,
-        title,
-        noteDate
-      ) + ".md";
+      resolveFilenamePattern(doc, this.settings.filenamePattern) + ".md";
     return normalizePath(`${folderPath}/${filename}`);
   }
 
@@ -158,11 +156,11 @@ export class PathResolver {
   /**
    * Computes the full path for a transcript file based on settings.
    *
-   * @param title - The title of the note/transcript
-   * @param noteDate - The date of the note
+   * @param doc - The Granola document
    * @returns The full file path for the transcript
    */
-  computeTranscriptPath(title: string, noteDate: Date): string {
+  computeTranscriptPath(doc: GranolaDoc): string {
+    const noteDate = getNoteDate(doc);
     const folderPath = this.computeTranscriptFolderPath(noteDate);
 
     let filenamePattern: string;
@@ -177,8 +175,7 @@ export class PathResolver {
       filenamePattern = "{title}-transcript";
     }
 
-    const filename =
-      resolveFilenamePattern(filenamePattern, title, noteDate) + ".md";
+    const filename = resolveFilenamePattern(doc, filenamePattern) + ".md";
     return normalizePath(`${folderPath}/${filename}`);
   }
 }
