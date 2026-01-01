@@ -58,9 +58,6 @@ export default class GranolaSync extends Plugin {
     this.documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: this.settings.syncTranscripts,
-        filenamePattern: this.settings.filenamePattern,
-        transcriptFilenamePattern:
-          this.settings.transcriptFilenamePattern || "{title}-transcript",
       },
       this.pathResolver
     );

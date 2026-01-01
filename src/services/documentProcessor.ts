@@ -9,8 +9,6 @@ import { formatAttendeesAsYaml } from "../utils/yamlUtils";
 
 export interface DocumentProcessorSettings {
   syncTranscripts: boolean;
-  filenamePattern: string;
-  transcriptFilenamePattern: string;
 }
 
 /**
@@ -77,7 +75,8 @@ export class DocumentProcessor {
     // Add the actual note content
     finalMarkdown += markdownContent;
 
-    const filename = resolveFilenamePattern(doc, this.settings.filenamePattern);
+    const filenamePattern = this.pathResolver.getNoteFilenamePattern();
+    const filename = resolveFilenamePattern(doc, filenamePattern);
 
     return { filename, content: finalMarkdown };
   }
@@ -93,10 +92,9 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     transcriptContent: string
   ): { filename: string; content: string } {
-    const filename = resolveFilenamePattern(
-      doc,
-      this.settings.transcriptFilenamePattern
-    );
+    const filenamePattern =
+      this.pathResolver.computeTranscriptFilenamePattern();
+    const filename = resolveFilenamePattern(doc, filenamePattern);
 
     return { filename, content: transcriptContent };
   }
@@ -156,7 +154,8 @@ export class DocumentProcessor {
     finalMarkdown += "## Transcript\n\n";
     finalMarkdown += transcriptContent;
 
-    const filename = resolveFilenamePattern(doc, this.settings.filenamePattern);
+    const filenamePattern = this.pathResolver.getNoteFilenamePattern();
+    const filename = resolveFilenamePattern(doc, filenamePattern);
 
     return { filename, content: finalMarkdown };
   }

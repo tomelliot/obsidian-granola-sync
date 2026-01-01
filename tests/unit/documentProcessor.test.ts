@@ -1,7 +1,6 @@
 import { DocumentProcessor } from "../../src/services/documentProcessor";
 import { GranolaDoc } from "../../src/services/granolaApi";
 import { PathResolver } from "../../src/services/pathResolver";
-import { TranscriptDestination } from "../../src/settings";
 
 // Mock convertProsemirrorToMarkdown: While this is a pure function, we mock it to
 // isolate DocumentProcessor's logic (frontmatter generation, formatting) from
@@ -35,21 +34,33 @@ describe("DocumentProcessor", () => {
       new Date("2024-01-15T00:00:00.000Z")
     );
 
-    // Use real PathResolver instance but spy on computeTranscriptPath method
-    // to control its return value for testing transcript path scenarios.
+    // Use real PathResolver instance but spy on methods to control their return values
     mockPathResolver = new PathResolver({
-      transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
-      granolaTranscriptsFolder: "Transcripts",
+      syncNotes: true,
+      saveAsIndividualFiles: true,
+      baseFolderType: "custom",
+      customBaseFolder: "Granola",
+      subfolderPattern: "none",
+      filenamePattern: "{title}",
+      syncTranscripts: true,
+      transcriptHandling: "custom-location",
+      customTranscriptBaseFolder: "Transcripts",
+      transcriptSubfolderPattern: "none",
+      transcriptFilenamePattern: "{title}-transcript",
     });
     jest
       .spyOn(mockPathResolver, "computeTranscriptPath")
       .mockReturnValue("Transcripts/Test Note-transcript.md");
+    jest
+      .spyOn(mockPathResolver, "computeTranscriptFilenamePattern")
+      .mockReturnValue("{title}-transcript");
+    jest
+      .spyOn(mockPathResolver, "getNoteFilenamePattern")
+      .mockReturnValue("{title}");
 
     documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: false,
-        filenamePattern: "{title}",
-        transcriptFilenamePattern: "{title}-transcript",
       },
       mockPathResolver
     );
@@ -128,8 +139,6 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          filenamePattern: "{title}",
-          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -161,8 +170,6 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          filenamePattern: "{title}",
-          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -208,8 +215,6 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          filenamePattern: "{title}",
-          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -240,8 +245,6 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          filenamePattern: "{title}",
-          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -314,12 +317,14 @@ describe("DocumentProcessor", () => {
       );
     });
 
-    it("should use filenamePattern setting for filename generation", () => {
+    it("should use PathResolver's getNoteFilenamePattern for filename generation", () => {
+      jest
+        .spyOn(mockPathResolver, "getNoteFilenamePattern")
+        .mockReturnValue("{date}-{title}");
+
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: false,
-          filenamePattern: "{date}-{title}",
-          transcriptFilenamePattern: "{title}-transcript",
         },
         mockPathResolver
       );
@@ -340,6 +345,7 @@ describe("DocumentProcessor", () => {
 
       // resolveFilenamePattern resolves {date} with "2024-01-15" and {title} with "Test Note"
       expect(result.filename).toBe("2024-01-15-Test Note.md");
+      expect(mockPathResolver.getNoteFilenamePattern).toHaveBeenCalled();
     });
   });
 
@@ -376,12 +382,14 @@ describe("DocumentProcessor", () => {
       );
     });
 
-    it("should use transcriptFilenamePattern setting for filename generation", () => {
+    it("should use PathResolver's computeTranscriptFilenamePattern for filename generation", () => {
+      jest
+        .spyOn(mockPathResolver, "computeTranscriptFilenamePattern")
+        .mockReturnValue("{date}-{title}-transcript");
+
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
-          filenamePattern: "{title}",
-          transcriptFilenamePattern: "{date}-{title}-transcript",
         },
         mockPathResolver
       );
@@ -399,6 +407,9 @@ describe("DocumentProcessor", () => {
       );
 
       expect(result.filename).toBe("2024-01-15-Test Note-transcript.md");
+      expect(
+        mockPathResolver.computeTranscriptFilenamePattern
+      ).toHaveBeenCalled();
     });
   });
 

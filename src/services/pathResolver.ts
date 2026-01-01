@@ -86,6 +86,16 @@ export class PathResolver {
   }
 
   /**
+   * Gets the filename pattern for notes.
+   * This is the single source of truth for note filename pattern logic.
+   *
+   * @returns The filename pattern string for notes
+   */
+  getNoteFilenamePattern(): string {
+    return this.settings.filenamePattern;
+  }
+
+  /**
    * Computes the full path for a note file based on settings.
    *
    * @param doc - The Granola document
@@ -94,7 +104,7 @@ export class PathResolver {
   computeNotePath(doc: GranolaDoc): string {
     const noteDate = getNoteDate(doc);
     const folderPath = this.computeNoteFolderPath(noteDate);
-    const filename = resolveFilenamePattern(doc, this.settings.filenamePattern);
+    const filename = resolveFilenamePattern(doc, this.getNoteFilenamePattern());
     return normalizePath(`${folderPath}/${filename}`);
   }
 
@@ -153,6 +163,24 @@ export class PathResolver {
   }
 
   /**
+   * Computes the filename pattern for a transcript based on settings.
+   * This is the single source of truth for transcript filename pattern logic.
+   *
+   * @returns The filename pattern string for transcripts
+   */
+  computeTranscriptFilenamePattern(): string {
+    if (this.settings.transcriptHandling === "same-location") {
+      // Use note filename pattern with "-transcript" suffix
+      return this.settings.filenamePattern + "-transcript";
+    } else if (this.settings.transcriptHandling === "custom-location") {
+      return this.settings.transcriptFilenamePattern || "{title}-transcript";
+    } else {
+      // Combined mode
+      return "{title}-transcript";
+    }
+  }
+
+  /**
    * Computes the full path for a transcript file based on settings.
    *
    * @param doc - The Granola document
@@ -161,19 +189,7 @@ export class PathResolver {
   computeTranscriptPath(doc: GranolaDoc): string {
     const noteDate = getNoteDate(doc);
     const folderPath = this.computeTranscriptFolderPath(noteDate);
-
-    let filenamePattern: string;
-    if (this.settings.transcriptHandling === "same-location") {
-      // Use note filename pattern with "-transcript" suffix
-      filenamePattern = this.settings.filenamePattern + "-transcript";
-    } else if (this.settings.transcriptHandling === "custom-location") {
-      filenamePattern =
-        this.settings.transcriptFilenamePattern || "{title}-transcript";
-    } else {
-      // Combined mode
-      filenamePattern = "{title}-transcript";
-    }
-
+    const filenamePattern = this.computeTranscriptFilenamePattern();
     const filename = resolveFilenamePattern(doc, filenamePattern);
     return normalizePath(`${folderPath}/${filename}`);
   }
