@@ -94,8 +94,7 @@ export class PathResolver {
   computeNotePath(doc: GranolaDoc): string {
     const noteDate = getNoteDate(doc);
     const folderPath = this.computeNoteFolderPath(noteDate);
-    const filename =
-      resolveFilenamePattern(doc, this.settings.filenamePattern) + ".md";
+    const filename = resolveFilenamePattern(doc, this.settings.filenamePattern);
     return normalizePath(`${folderPath}/${filename}`);
   }
 
@@ -175,7 +174,7 @@ export class PathResolver {
       filenamePattern = "{title}-transcript";
     }
 
-    const filename = resolveFilenamePattern(doc, filenamePattern) + ".md";
+    const filename = resolveFilenamePattern(doc, filenamePattern);
     return normalizePath(`${folderPath}/${filename}`);
   }
 }

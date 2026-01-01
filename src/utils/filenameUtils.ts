@@ -85,7 +85,7 @@ export function validatePattern(pattern: string): {
  *
  * @param doc - The Granola document
  * @param pattern - The filename pattern (e.g., "{title}", "{date}-{title}")
- * @returns The resolved filename (without .md extension)
+ * @returns The resolved filename with .md extension
  */
 export function resolveFilenamePattern(
   doc: GranolaDoc,
@@ -112,19 +112,7 @@ export function resolveFilenamePattern(
     .replace(/\{quarter\}/g, quarter.toString());
 
   // Sanitize the resolved pattern to remove any invalid characters
-  return sanitizeFilename(resolved);
-}
-
-/**
- * Resolves a filename pattern for a Granola document.
- * Convenience function that extracts title and date from doc.
- *
- * @param doc - The Granola document
- * @param pattern - The filename pattern (e.g., "{title}", "{date}-{title}")
- * @returns The resolved filename with .md extension
- */
-export function resolveDocFilename(doc: GranolaDoc, pattern: string): string {
-  return resolveFilenamePattern(doc, pattern) + ".md";
+  return sanitizeFilename(resolved) + ".md";
 }
 
 /**

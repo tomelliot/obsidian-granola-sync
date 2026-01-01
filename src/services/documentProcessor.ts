@@ -1,6 +1,9 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
-import { getTitleOrDefault, resolveDocFilename } from "../utils/filenameUtils";
+import {
+  getTitleOrDefault,
+  resolveFilenamePattern,
+} from "../utils/filenameUtils";
 import { PathResolver } from "./pathResolver";
 import { formatAttendeesAsYaml } from "../utils/yamlUtils";
 
@@ -74,7 +77,7 @@ export class DocumentProcessor {
     // Add the actual note content
     finalMarkdown += markdownContent;
 
-    const filename = resolveDocFilename(doc, this.settings.filenamePattern);
+    const filename = resolveFilenamePattern(doc, this.settings.filenamePattern);
 
     return { filename, content: finalMarkdown };
   }
@@ -90,7 +93,7 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     transcriptContent: string
   ): { filename: string; content: string } {
-    const filename = resolveDocFilename(
+    const filename = resolveFilenamePattern(
       doc,
       this.settings.transcriptFilenamePattern
     );
@@ -153,7 +156,7 @@ export class DocumentProcessor {
     finalMarkdown += "## Transcript\n\n";
     finalMarkdown += transcriptContent;
 
-    const filename = resolveDocFilename(doc, this.settings.filenamePattern);
+    const filename = resolveFilenamePattern(doc, this.settings.filenamePattern);
 
     return { filename, content: finalMarkdown };
   }

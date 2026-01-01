@@ -4,7 +4,6 @@ import {
   validatePattern,
   resolveFilenamePattern,
   resolveSubfolderPattern,
-  resolveDocFilename,
 } from "../../src/utils/filenameUtils";
 import { GranolaDoc } from "../../src/services/granolaApi";
 
@@ -137,7 +136,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{title}");
-    expect(result).toBe("Test Meeting");
+    expect(result).toBe("Test Meeting.md");
   });
 
   it("should resolve {date} variable", () => {
@@ -147,7 +146,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{date}");
-    expect(result).toBe("2024-03-15");
+    expect(result).toBe("2024-03-15.md");
   });
 
   it("should resolve {time} variable", () => {
@@ -157,7 +156,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{time}");
-    expect(result).toBe("14-30-45");
+    expect(result).toBe("14-30-45.md");
   });
 
   it("should resolve {year} variable", () => {
@@ -167,7 +166,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{year}");
-    expect(result).toBe("2024");
+    expect(result).toBe("2024.md");
   });
 
   it("should resolve {month} variable", () => {
@@ -177,7 +176,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{month}");
-    expect(result).toBe("03");
+    expect(result).toBe("03.md");
   });
 
   it("should resolve {day} variable", () => {
@@ -187,7 +186,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{day}");
-    expect(result).toBe("15");
+    expect(result).toBe("15.md");
   });
 
   it("should resolve {quarter} variable", () => {
@@ -197,7 +196,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{quarter}");
-    expect(result).toBe("1");
+    expect(result).toBe("1.md");
   });
 
   it("should resolve multiple variables", () => {
@@ -207,7 +206,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{date}-{title}");
-    expect(result).toBe("2024-03-15-Test Meeting");
+    expect(result).toBe("2024-03-15-Test Meeting.md");
   });
 
   it("should sanitize title in pattern", () => {
@@ -217,7 +216,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "{title}");
-    expect(result).toBe("Test_ Meeting_Notes");
+    expect(result).toBe("Test_ Meeting_Notes.md");
   });
 
   it("should handle pattern with no variables", () => {
@@ -227,7 +226,7 @@ describe("resolveFilenamePattern", () => {
       created_at: "2024-03-15T14:30:45Z",
     };
     const result = resolveFilenamePattern(doc, "static-name");
-    expect(result).toBe("static-name");
+    expect(result).toBe("static-name.md");
   });
 });
 
@@ -305,52 +304,5 @@ describe("resolveSubfolderPattern", () => {
       new Date("2024-03-15")
     );
     expect(result).toBe("");
-  });
-});
-
-describe("resolveDocFilename", () => {
-  it("should resolve filename from doc with title pattern", () => {
-    const doc: GranolaDoc = {
-      id: "doc-123",
-      title: "Test Meeting",
-      created_at: "2024-03-15T14:30:45Z",
-    };
-
-    const result = resolveDocFilename(doc, "{title}");
-    expect(result).toBe("Test Meeting.md");
-  });
-
-  it("should resolve filename from doc with date-title pattern", () => {
-    const doc: GranolaDoc = {
-      id: "doc-123",
-      title: "Test Meeting",
-      created_at: "2024-03-15T14:30:45Z",
-    };
-
-    const result = resolveDocFilename(doc, "{date}-{title}");
-    expect(result).toBe("2024-03-15-Test Meeting.md");
-  });
-
-  it("should use default title when doc has no title", () => {
-    const doc: GranolaDoc = {
-      id: "doc-123",
-      title: null,
-      created_at: "2024-03-15T14:30:45Z",
-    };
-
-    const result = resolveDocFilename(doc, "{title}");
-    expect(result).toContain("Untitled Granola Note");
-    expect(result.endsWith(".md")).toBe(true);
-  });
-
-  it("should handle transcript filename pattern", () => {
-    const doc: GranolaDoc = {
-      id: "doc-123",
-      title: "Test Meeting",
-      created_at: "2024-03-15T14:30:45Z",
-    };
-
-    const result = resolveDocFilename(doc, "{title}-transcript");
-    expect(result).toBe("Test Meeting-transcript.md");
   });
 });

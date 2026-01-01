@@ -5,15 +5,15 @@ import { TranscriptDestination } from "../../src/settings";
 
 // Mock the dependencies
 jest.mock("../../src/services/prosemirrorMarkdown");
-jest.mock("../../src/utils/filenameUtils");
-jest.mock("../../src/utils/dateUtils");
+jest.mock("../../src/utils/dateUtils", () => {
+  const actual = jest.requireActual("../../src/utils/dateUtils");
+  return {
+    ...actual,
+    getNoteDate: jest.fn(),
+  };
+});
 
 import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMarkdown";
-import {
-  sanitizeFilename,
-  getTitleOrDefault,
-  resolveDocFilename,
-} from "../../src/utils/filenameUtils";
 import { getNoteDate } from "../../src/utils/dateUtils";
 
 describe("DocumentProcessor", () => {
@@ -29,26 +29,8 @@ describe("DocumentProcessor", () => {
     (convertProsemirrorToMarkdown as jest.Mock).mockReturnValue(
       "# Mock Content\n\nThis is mock markdown content."
     );
-    (sanitizeFilename as jest.Mock).mockImplementation((title: string) =>
-      title.replace(/[^a-zA-Z0-9\s\-_]/g, "").trim()
-    );
-    (getTitleOrDefault as jest.Mock).mockImplementation(
-      (doc: GranolaDoc) =>
-        doc.title || "Untitled Granola Note at 2024-01-15 00-00-00"
-    );
     (getNoteDate as jest.Mock).mockReturnValue(
       new Date("2024-01-15T00:00:00.000Z")
-    );
-    // Mock resolveDocFilename to return pattern-based filenames
-    (resolveDocFilename as jest.Mock).mockImplementation(
-      (doc: GranolaDoc, pattern: string) => {
-        const title = doc.title || "Untitled Granola Note at 2024-01-15 00-00-00";
-        // Simple mock: replace {title} with title, {date} with fixed date
-        const resolved = pattern
-          .replace("{title}", title.replace(/[^a-zA-Z0-9\s\-_]/g, "").trim())
-          .replace("{date}", "2024-01-15");
-        return resolved + ".md";
-      }
     );
 
     mockPathResolver = new PathResolver({
@@ -353,9 +335,8 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      // resolveDocFilename mock replaces {date} with "2024-01-15" and {title} with "Test Note"
+      // resolveFilenamePattern resolves {date} with "2024-01-15" and {title} with "Test Note"
       expect(result.filename).toBe("2024-01-15-Test Note.md");
-      expect(resolveDocFilename).toHaveBeenCalledWith(doc, "{date}-{title}");
     });
   });
 
@@ -415,10 +396,6 @@ describe("DocumentProcessor", () => {
       );
 
       expect(result.filename).toBe("2024-01-15-Test Note-transcript.md");
-      expect(resolveDocFilename).toHaveBeenCalledWith(
-        doc,
-        "{date}-{title}-transcript"
-      );
     });
   });
 
