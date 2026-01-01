@@ -393,12 +393,7 @@ export default class GranolaSync extends Plugin {
           this.settings.syncTranscripts &&
           this.settings.transcriptHandling !== "combined"
         ) {
-          const title = getTitleOrDefault(doc);
-          const noteDate = getNoteDate(doc);
-          transcriptPath = this.pathResolver.computeTranscriptPath(
-            title,
-            noteDate
-          );
+          transcriptPath = this.pathResolver.computeTranscriptPath(doc);
         }
 
         if (
@@ -479,10 +474,9 @@ export default class GranolaSync extends Plugin {
         // Always add note link when notes are being synced
         let notePath: string | null = null;
         if (this.settings.syncNotes) {
-          const noteDate = getNoteDate(doc);
-
           if (!this.settings.saveAsIndividualFiles) {
             // For daily notes, link to the daily note file with a heading anchor
+            const noteDate = getNoteDate(doc);
             const noteMoment = moment(noteDate);
             const dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
             if (dailyNoteFile) {
@@ -491,7 +485,7 @@ export default class GranolaSync extends Plugin {
             }
           } else {
             // For individual files, use the resolved file path
-            notePath = this.pathResolver.computeNotePath(title, noteDate);
+            notePath = this.pathResolver.computeNotePath(doc);
           }
         }
 

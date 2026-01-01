@@ -1,5 +1,6 @@
 import { PathResolver } from "../../src/services/pathResolver";
 import { GranolaSyncSettings, DEFAULT_SETTINGS } from "../../src/settings";
+import { GranolaDoc } from "../../src/services/granolaApi";
 
 // Mock obsidian-daily-notes-interface
 jest.mock("obsidian-daily-notes-interface", () => ({
@@ -40,7 +41,9 @@ describe("PathResolver", () => {
     });
 
     it("should handle dates with nested folder structure", () => {
-      const { getDailyNoteSettings } = require("obsidian-daily-notes-interface");
+      const {
+        getDailyNoteSettings,
+      } = require("obsidian-daily-notes-interface");
       getDailyNoteSettings.mockReturnValue({
         format: "YYYY/MM/DD",
         folder: "journal",
@@ -54,7 +57,9 @@ describe("PathResolver", () => {
     });
 
     it("should handle empty base folder", () => {
-      const { getDailyNoteSettings } = require("obsidian-daily-notes-interface");
+      const {
+        getDailyNoteSettings,
+      } = require("obsidian-daily-notes-interface");
       getDailyNoteSettings.mockReturnValue({
         format: "YYYY-MM-DD",
         folder: "",
@@ -67,7 +72,9 @@ describe("PathResolver", () => {
     });
 
     it("should use default format when none provided", () => {
-      const { getDailyNoteSettings } = require("obsidian-daily-notes-interface");
+      const {
+        getDailyNoteSettings,
+      } = require("obsidian-daily-notes-interface");
       getDailyNoteSettings.mockReturnValue({
         format: undefined,
         folder: "notes",
@@ -95,8 +102,12 @@ describe("PathResolver", () => {
 
   describe("computeTranscriptPath", () => {
     it("should compute path to custom transcripts folder when configured", () => {
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Meeting",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("transcripts/Test Meeting-transcript.md");
     });
@@ -105,8 +116,12 @@ describe("PathResolver", () => {
       settings.transcriptSubfolderPattern = "day";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-03-20");
-      const result = pathResolver.computeTranscriptPath("Project Alpha", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Project Alpha",
+        created_at: "2024-03-20T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("transcripts/2024-03-20/Project Alpha-transcript.md");
     });
@@ -116,22 +131,34 @@ describe("PathResolver", () => {
       settings.subfolderPattern = "month";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-03-20");
-      const result = pathResolver.computeTranscriptPath("Project Alpha", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Project Alpha",
+        created_at: "2024-03-20T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("granola/2024-03/Project Alpha-transcript.md");
     });
 
     it("should sanitize title in transcript filename", () => {
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeTranscriptPath("Meeting: Q1 Planning", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Meeting: Q1 Planning",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("transcripts/Meeting_ Q1 Planning-transcript.md");
     });
 
     it("should handle titles with special characters", () => {
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeTranscriptPath("Test/File<Name>", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test/File<Name>",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("transcripts/Test_File_Name_-transcript.md");
     });
@@ -140,8 +167,12 @@ describe("PathResolver", () => {
       settings.transcriptHandling = "combined";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Meeting",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("/Test Meeting-transcript.md");
     });
@@ -151,8 +182,12 @@ describe("PathResolver", () => {
       settings.subfolderPattern = "none";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Meeting",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("granola/Test Meeting-transcript.md");
     });
@@ -162,8 +197,12 @@ describe("PathResolver", () => {
       settings.transcriptSubfolderPattern = "none";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Meeting",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("transcripts/Test Meeting-transcript.md");
     });
@@ -173,8 +212,12 @@ describe("PathResolver", () => {
       settings.subfolderPattern = "day";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-03-15");
-      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Meeting",
+        created_at: "2024-03-15T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("granola/2024-03-15/Test Meeting-transcript.md");
     });
@@ -184,8 +227,12 @@ describe("PathResolver", () => {
       settings.transcriptSubfolderPattern = "month";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-03-15");
-      const result = pathResolver.computeTranscriptPath("Test Meeting", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Meeting",
+        created_at: "2024-03-15T10:00:00Z",
+      };
+      const result = pathResolver.computeTranscriptPath(doc);
 
       expect(result).toBe("transcripts/2024-03/Test Meeting-transcript.md");
     });
@@ -205,8 +252,12 @@ describe("PathResolver", () => {
 
   describe("computeNotePath", () => {
     it("should compute path to custom folder when configured", () => {
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeNotePath("Test Meeting", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Meeting",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeNotePath(doc);
 
       expect(result).toBe("granola/Test Meeting.md");
     });
@@ -215,8 +266,12 @@ describe("PathResolver", () => {
       settings.subfolderPattern = "day";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-03-20");
-      const result = pathResolver.computeNotePath("Project Alpha", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Project Alpha",
+        created_at: "2024-03-20T10:00:00Z",
+      };
+      const result = pathResolver.computeNotePath(doc);
 
       expect(result).toBe("granola/2024-03-20/Project Alpha.md");
     });
@@ -225,14 +280,20 @@ describe("PathResolver", () => {
       settings.subfolderPattern = "year-month";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-03-20");
-      const result = pathResolver.computeNotePath("Project Alpha", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Project Alpha",
+        created_at: "2024-03-20T10:00:00Z",
+      };
+      const result = pathResolver.computeNotePath(doc);
 
       expect(result).toBe("granola/2024/03/Project Alpha.md");
     });
 
     it("should use daily notes folder when configured", () => {
-      const { getDailyNoteSettings } = require("obsidian-daily-notes-interface");
+      const {
+        getDailyNoteSettings,
+      } = require("obsidian-daily-notes-interface");
       getDailyNoteSettings.mockReturnValue({
         format: "YYYY/MM/DD",
         folder: "journal",
@@ -241,22 +302,34 @@ describe("PathResolver", () => {
       settings.baseFolderType = "daily-notes";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-03-20");
-      const result = pathResolver.computeNotePath("Project Alpha", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Project Alpha",
+        created_at: "2024-03-20T10:00:00Z",
+      };
+      const result = pathResolver.computeNotePath(doc);
 
       expect(result).toBe("journal/2024/03/Project Alpha.md");
     });
 
     it("should sanitize title in note filename", () => {
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeNotePath("Meeting: Q1 Planning", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Meeting: Q1 Planning",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeNotePath(doc);
 
       expect(result).toBe("granola/Meeting_ Q1 Planning.md");
     });
 
     it("should handle titles with special characters", () => {
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeNotePath("Test/File<Name>", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test/File<Name>",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeNotePath(doc);
 
       expect(result).toBe("granola/Test_File_Name_.md");
     });
@@ -265,8 +338,12 @@ describe("PathResolver", () => {
       settings.filenamePattern = "{date}-{title}";
       pathResolver = new PathResolver(settings);
 
-      const noteDate = new Date("2024-01-15");
-      const result = pathResolver.computeNotePath("Test Meeting", noteDate);
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Meeting",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const result = pathResolver.computeNotePath(doc);
 
       expect(result).toBe("granola/2024-01-15-Test Meeting.md");
     });

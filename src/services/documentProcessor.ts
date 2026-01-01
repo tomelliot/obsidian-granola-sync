@@ -1,9 +1,15 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
-import { sanitizeFilename, getTitleOrDefault } from "../utils/filenameUtils";
+import {
+  getTitleOrDefault,
+  resolveFilenamePattern,
+} from "../utils/filenameUtils";
 import { PathResolver } from "./pathResolver";
-import { TranscriptSettings } from "../settings";
 import { formatAttendeesAsYaml } from "../utils/yamlUtils";
+
+export interface DocumentProcessorSettings {
+  syncTranscripts: boolean;
+}
 
 /**
  * Service for processing Granola documents into Obsidian-ready markdown.
@@ -11,7 +17,7 @@ import { formatAttendeesAsYaml } from "../utils/yamlUtils";
  */
 export class DocumentProcessor {
   constructor(
-    private settings: Pick<TranscriptSettings, "syncTranscripts">,
+    private settings: DocumentProcessorSettings,
     private pathResolver: PathResolver
   ) {}
 
@@ -69,7 +75,8 @@ export class DocumentProcessor {
     // Add the actual note content
     finalMarkdown += markdownContent;
 
-    const filename = sanitizeFilename(title) + ".md";
+    const filenamePattern = this.pathResolver.getNoteFilenamePattern();
+    const filename = resolveFilenamePattern(doc, filenamePattern);
 
     return { filename, content: finalMarkdown };
   }
@@ -85,8 +92,9 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     transcriptContent: string
   ): { filename: string; content: string } {
-    const title = getTitleOrDefault(doc);
-    const filename = sanitizeFilename(title) + "-transcript.md";
+    const filenamePattern =
+      this.pathResolver.computeTranscriptFilenamePattern();
+    const filename = resolveFilenamePattern(doc, filenamePattern);
 
     return { filename, content: transcriptContent };
   }
@@ -146,7 +154,8 @@ export class DocumentProcessor {
     finalMarkdown += "## Transcript\n\n";
     finalMarkdown += transcriptContent;
 
-    const filename = sanitizeFilename(title) + ".md";
+    const filenamePattern = this.pathResolver.getNoteFilenamePattern();
+    const filename = resolveFilenamePattern(doc, filenamePattern);
 
     return { filename, content: finalMarkdown };
   }

@@ -410,12 +410,7 @@ export class FileSyncService {
       return false;
     }
 
-    const filePath = this.resolveFilePath(
-      filename,
-      noteDate,
-      doc.id,
-      false
-    );
+    const filePath = this.resolveFilePath(filename, noteDate, doc.id, false);
     if (!filePath) {
       return false;
     }

@@ -1,18 +1,24 @@
 import { DocumentProcessor } from "../../src/services/documentProcessor";
 import { GranolaDoc } from "../../src/services/granolaApi";
 import { PathResolver } from "../../src/services/pathResolver";
-import { TranscriptDestination } from "../../src/settings";
 
-// Mock the dependencies
+// Mock convertProsemirrorToMarkdown: While this is a pure function, we mock it to
+// isolate DocumentProcessor's logic (frontmatter generation, formatting) from
+// the ProseMirror conversion logic, making tests more maintainable and focused.
 jest.mock("../../src/services/prosemirrorMarkdown");
-jest.mock("../../src/utils/filenameUtils");
-jest.mock("../../src/utils/dateUtils");
+
+// Mock getNoteDate: This function has time-dependent behavior (returns new Date()
+// as fallback), so we mock it to ensure consistent, deterministic test results
+// and avoid brittleness from time-dependent test failures.
+jest.mock("../../src/utils/dateUtils", () => {
+  const actual = jest.requireActual("../../src/utils/dateUtils");
+  return {
+    ...actual,
+    getNoteDate: jest.fn(),
+  };
+});
 
 import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMarkdown";
-import {
-  sanitizeFilename,
-  getTitleOrDefault,
-} from "../../src/utils/filenameUtils";
 import { getNoteDate } from "../../src/utils/dateUtils";
 
 describe("DocumentProcessor", () => {
@@ -20,32 +26,37 @@ describe("DocumentProcessor", () => {
   let mockPathResolver: PathResolver;
 
   beforeEach(() => {
-    // Use fake timers and set a fixed time to ensure consistent date formatting across timezones
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date("2024-01-15T00:00:00.000Z"));
-
     // Setup mocks
     (convertProsemirrorToMarkdown as jest.Mock).mockReturnValue(
       "# Mock Content\n\nThis is mock markdown content."
-    );
-    (sanitizeFilename as jest.Mock).mockImplementation((title: string) =>
-      title.replace(/[^a-zA-Z0-9\s\-_]/g, "").trim()
-    );
-    (getTitleOrDefault as jest.Mock).mockImplementation(
-      (doc: GranolaDoc) =>
-        doc.title || "Untitled Granola Note at 2024-01-15 00-00-00"
     );
     (getNoteDate as jest.Mock).mockReturnValue(
       new Date("2024-01-15T00:00:00.000Z")
     );
 
+    // Use real PathResolver instance but spy on methods to control their return values
     mockPathResolver = new PathResolver({
-      transcriptDestination: TranscriptDestination.GRANOLA_TRANSCRIPTS_FOLDER,
-      granolaTranscriptsFolder: "Transcripts",
+      syncNotes: true,
+      saveAsIndividualFiles: true,
+      baseFolderType: "custom",
+      customBaseFolder: "Granola",
+      subfolderPattern: "none",
+      filenamePattern: "{title}",
+      syncTranscripts: true,
+      transcriptHandling: "custom-location",
+      customTranscriptBaseFolder: "Transcripts",
+      transcriptSubfolderPattern: "none",
+      transcriptFilenamePattern: "{title}-transcript",
     });
     jest
       .spyOn(mockPathResolver, "computeTranscriptPath")
       .mockReturnValue("Transcripts/Test Note-transcript.md");
+    jest
+      .spyOn(mockPathResolver, "computeTranscriptFilenamePattern")
+      .mockReturnValue("{title}-transcript");
+    jest
+      .spyOn(mockPathResolver, "getNoteFilenamePattern")
+      .mockReturnValue("{title}");
 
     documentProcessor = new DocumentProcessor(
       {
@@ -57,7 +68,6 @@ describe("DocumentProcessor", () => {
 
   afterEach(() => {
     jest.clearAllMocks();
-    jest.useRealTimers();
   });
 
   describe("prepareNote", () => {
@@ -306,6 +316,37 @@ describe("DocumentProcessor", () => {
         "Document has no valid content to parse"
       );
     });
+
+    it("should use PathResolver's getNoteFilenamePattern for filename generation", () => {
+      jest
+        .spyOn(mockPathResolver, "getNoteFilenamePattern")
+        .mockReturnValue("{date}-{title}");
+
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: false,
+        },
+        mockPathResolver
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      // resolveFilenamePattern resolves {date} with "2024-01-15" and {title} with "Test Note"
+      expect(result.filename).toBe("2024-01-15-Test Note.md");
+      expect(mockPathResolver.getNoteFilenamePattern).toHaveBeenCalled();
+    });
   });
 
   describe("prepareTranscript", () => {
@@ -339,6 +380,36 @@ describe("DocumentProcessor", () => {
       expect(result.filename).toBe(
         "Untitled Granola Note at 2024-01-15 00-00-00-transcript.md"
       );
+    });
+
+    it("should use PathResolver's computeTranscriptFilenamePattern for filename generation", () => {
+      jest
+        .spyOn(mockPathResolver, "computeTranscriptFilenamePattern")
+        .mockReturnValue("{date}-{title}-transcript");
+
+      documentProcessor = new DocumentProcessor(
+        {
+          syncTranscripts: true,
+        },
+        mockPathResolver
+      );
+
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+      };
+      const transcriptContent = "Speaker 1: Hello";
+
+      const result = documentProcessor.prepareTranscript(
+        doc,
+        transcriptContent
+      );
+
+      expect(result.filename).toBe("2024-01-15-Test Note-transcript.md");
+      expect(
+        mockPathResolver.computeTranscriptFilenamePattern
+      ).toHaveBeenCalled();
     });
   });
 

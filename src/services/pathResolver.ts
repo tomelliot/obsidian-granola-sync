@@ -6,6 +6,8 @@ import {
   resolveSubfolderPattern,
 } from "../utils/filenameUtils";
 import { TranscriptSettings, NoteSettings } from "../settings";
+import { GranolaDoc } from "./granolaApi";
+import { getNoteDate } from "../utils/dateUtils";
 
 /**
  * Resolves file paths for notes and transcripts based on plugin settings
@@ -84,20 +86,25 @@ export class PathResolver {
   }
 
   /**
+   * Gets the filename pattern for notes.
+   * This is the single source of truth for note filename pattern logic.
+   *
+   * @returns The filename pattern string for notes
+   */
+  getNoteFilenamePattern(): string {
+    return this.settings.filenamePattern;
+  }
+
+  /**
    * Computes the full path for a note file based on settings.
    *
-   * @param title - The title of the note
-   * @param noteDate - The date of the note
+   * @param doc - The Granola document
    * @returns The full file path for the note
    */
-  computeNotePath(title: string, noteDate: Date): string {
+  computeNotePath(doc: GranolaDoc): string {
+    const noteDate = getNoteDate(doc);
     const folderPath = this.computeNoteFolderPath(noteDate);
-    const filename =
-      resolveFilenamePattern(
-        this.settings.filenamePattern,
-        title,
-        noteDate
-      ) + ".md";
+    const filename = resolveFilenamePattern(doc, this.getNoteFilenamePattern());
     return normalizePath(`${folderPath}/${filename}`);
   }
 
@@ -156,29 +163,34 @@ export class PathResolver {
   }
 
   /**
-   * Computes the full path for a transcript file based on settings.
+   * Computes the filename pattern for a transcript based on settings.
+   * This is the single source of truth for transcript filename pattern logic.
    *
-   * @param title - The title of the note/transcript
-   * @param noteDate - The date of the note
-   * @returns The full file path for the transcript
+   * @returns The filename pattern string for transcripts
    */
-  computeTranscriptPath(title: string, noteDate: Date): string {
-    const folderPath = this.computeTranscriptFolderPath(noteDate);
-
-    let filenamePattern: string;
+  computeTranscriptFilenamePattern(): string {
     if (this.settings.transcriptHandling === "same-location") {
       // Use note filename pattern with "-transcript" suffix
-      filenamePattern = this.settings.filenamePattern + "-transcript";
+      return this.settings.filenamePattern + "-transcript";
     } else if (this.settings.transcriptHandling === "custom-location") {
-      filenamePattern =
-        this.settings.transcriptFilenamePattern || "{title}-transcript";
+      return this.settings.transcriptFilenamePattern || "{title}-transcript";
     } else {
       // Combined mode
-      filenamePattern = "{title}-transcript";
+      return "{title}-transcript";
     }
+  }
 
-    const filename =
-      resolveFilenamePattern(filenamePattern, title, noteDate) + ".md";
+  /**
+   * Computes the full path for a transcript file based on settings.
+   *
+   * @param doc - The Granola document
+   * @returns The full file path for the transcript
+   */
+  computeTranscriptPath(doc: GranolaDoc): string {
+    const noteDate = getNoteDate(doc);
+    const folderPath = this.computeTranscriptFolderPath(noteDate);
+    const filenamePattern = this.computeTranscriptFilenamePattern();
+    const filename = resolveFilenamePattern(doc, filenamePattern);
     return normalizePath(`${folderPath}/${filename}`);
   }
 }

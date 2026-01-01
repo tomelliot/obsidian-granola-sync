@@ -83,15 +83,6 @@ The `granola_id` is consistent across both note and transcript files for the sam
 
 The `transcript` field is added when notes are saved as individual files and transcripts are synced. The `note` field is always added to transcripts when notes are being synced - for individual note files, it links to the file path; for daily notes, it links to the daily note file with a heading anchor (e.g., `[[2024-01-15#Meeting Title]]`).
 
-### Legacy Format Migration
-
-If you have existing files from a previous version, the plugin will automatically migrate them on load:
-- Remove `-transcript` suffix from `granola_id` in transcript files
-- Add `type` field to all files
-- Add timestamps to transcript files (when available)
-
-This migration runs silently in the background and only affects files that need updating.
-
 ## Documentation
 
 For detailed information about how the sync process works, see [Sync Process Documentation](docs/sync-process.md). This document explains the credentials loading, document fetching, note syncing, transcript syncing, frontmatter structure, file deduplication, and error handling mechanisms.
