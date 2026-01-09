@@ -6,7 +6,7 @@ import {
 } from "obsidian-daily-notes-interface";
 import moment from "moment";
 import { GranolaDoc } from "./granolaApi";
-import { getNoteDate } from "../utils/dateUtils";
+import { getNoteDate, computeDailyNoteFilePath } from "../utils/dateUtils";
 import { DocumentProcessor } from "./documentProcessor";
 import { updateSection } from "../utils/textUtils";
 import { log } from "../utils/logger";
@@ -68,13 +68,38 @@ export class DailyNoteBuilder {
    */
   async getOrCreateDailyNote(dateKey: string): Promise<TFile> {
     const noteMoment = moment(dateKey, "YYYY-MM-DD");
-    let dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
 
-    if (!dailyNoteFile) {
-      dailyNoteFile = await createDailyNote(noteMoment);
+    // First try the library's method
+    const dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
+    if (dailyNoteFile) {
+      return dailyNoteFile;
     }
 
-    return dailyNoteFile;
+    // Fallback: compute the path directly and check if file exists.
+    // This handles cases where getAllDailyNotes() doesn't find files
+    // with complex subfolder-based date formats (e.g., YYYY/MM-MMMM/DD-dddd/_note)
+    const fullPath = computeDailyNoteFilePath(noteMoment.toDate());
+
+    const existingFile = this.app.vault.getAbstractFileByPath(fullPath);
+    if (existingFile instanceof TFile) {
+      log.info(
+        `Daily note found via direct path lookup (library missed it): ${fullPath}`
+      );
+      return existingFile;
+    }
+
+    // File doesn't exist, create it
+    try {
+      const newDailyNote = await createDailyNote(noteMoment);
+      log.debug(`Created new daily note: ${newDailyNote.path}`);
+      return newDailyNote;
+    } catch (error) {
+      log.error(
+        `Failed to create daily note for ${dateKey} at path ${fullPath}:`,
+        error
+      );
+      throw error;
+    }
   }
 
   /**
