@@ -7,7 +7,7 @@ import {
 } from "../utils/filenameUtils";
 import { TranscriptSettings, NoteSettings } from "../settings";
 import { GranolaDoc } from "./granolaApi";
-import { getNoteDate } from "../utils/dateUtils";
+import { getNoteDate, computeDailyNoteFilePath as computeDailyNotePath } from "../utils/dateUtils";
 
 /**
  * Resolves file paths for notes and transcripts based on plugin settings
@@ -15,6 +15,18 @@ import { getNoteDate } from "../utils/dateUtils";
  */
 export class PathResolver {
   constructor(private settings: NoteSettings & TranscriptSettings) {}
+
+  /**
+   * Computes the full file path for a daily note based on its date.
+   * Uses the daily notes plugin settings to determine the structure.
+   * Delegates to the shared utility function in dateUtils.
+   *
+   * @param noteDate - The date of the note
+   * @returns The full file path for the daily note (including .md extension)
+   */
+  computeDailyNoteFilePath(noteDate: Date): string {
+    return computeDailyNotePath(noteDate);
+  }
 
   /**
    * Computes the folder path for a daily note based on its date.

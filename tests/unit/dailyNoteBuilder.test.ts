@@ -13,7 +13,7 @@ jest.mock("../../src/utils/dateUtils");
 jest.mock("../../src/utils/textUtils");
 jest.mock("obsidian-daily-notes-interface");
 
-import { getNoteDate } from "../../src/utils/dateUtils";
+import { getNoteDate, computeDailyNoteFilePath } from "../../src/utils/dateUtils";
 import { updateSection } from "../../src/utils/textUtils";
 import { getEditorForFile } from "../../src/utils/fileUtils";
 import {
@@ -146,7 +146,7 @@ describe("DailyNoteBuilder", () => {
   });
 
   describe("getOrCreateDailyNote", () => {
-    it("should return existing daily note if found", async () => {
+    it("should return existing daily note if found by library", async () => {
       const mockFile = { path: "2024-01-15.md" } as TFile;
       (getDailyNote as jest.Mock).mockReturnValue(mockFile);
       (getAllDailyNotes as jest.Mock).mockReturnValue({});
@@ -155,18 +155,123 @@ describe("DailyNoteBuilder", () => {
 
       expect(result).toBe(mockFile);
       expect(createDailyNote).not.toHaveBeenCalled();
+      // Fallback should not be triggered when library finds the file
+      expect(computeDailyNoteFilePath).not.toHaveBeenCalled();
     });
 
-    it("should create daily note if not found", async () => {
-      const mockFile = { path: "2024-01-15.md" } as TFile;
+    it("should create daily note if not found by library or fallback", async () => {
+      const mockFile = { path: "daily/2024-01-15.md" } as TFile;
       (getDailyNote as jest.Mock).mockReturnValue(null);
       (getAllDailyNotes as jest.Mock).mockReturnValue({});
+      (computeDailyNoteFilePath as jest.Mock).mockReturnValue("daily/2024-01-15.md");
       (createDailyNote as jest.Mock).mockResolvedValue(mockFile);
+
+      // Mock vault to return null (file doesn't exist)
+      mockApp.vault = {
+        getAbstractFileByPath: jest.fn().mockReturnValue(null),
+      } as any;
 
       const result = await dailyNoteBuilder.getOrCreateDailyNote("2024-01-15");
 
       expect(result).toBe(mockFile);
       expect(createDailyNote).toHaveBeenCalled();
+    });
+
+    it("should find existing file via direct path when library fails - simple format", async () => {
+      // Use TFile constructor so instanceof check works
+      const mockFile = new TFile("daily/2024-01-15.md");
+
+      // Library returns null (file not found via getAllDailyNotes)
+      (getDailyNote as jest.Mock).mockReturnValue(null);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+
+      // Fallback path computation
+      (computeDailyNoteFilePath as jest.Mock).mockReturnValueOnce("daily/2024-01-15.md");
+
+      // Mock vault to find the file directly
+      mockApp.vault = {
+        getAbstractFileByPath: jest.fn().mockReturnValue(mockFile),
+      } as any;
+
+      // Create a new instance to pick up the fresh vault mock
+      const builder = new DailyNoteBuilder(mockApp, mockDocumentProcessor);
+      const result = await builder.getOrCreateDailyNote("2024-01-15");
+
+      expect(result).toBe(mockFile);
+      expect(mockApp.vault.getAbstractFileByPath).toHaveBeenCalledWith("daily/2024-01-15.md");
+      expect(createDailyNote).not.toHaveBeenCalled();
+    });
+
+    it("should find existing file via direct path when library fails - complex subfolder format", async () => {
+      // Use TFile constructor so instanceof check works
+      const mockFile = new TFile("daily/2024/01-January/15-Monday/_note.md");
+
+      (getDailyNote as jest.Mock).mockReturnValue(null);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+
+      // Fallback returns complex subfolder path
+      (computeDailyNoteFilePath as jest.Mock).mockReturnValueOnce(
+        "daily/2024/01-January/15-Monday/_note.md"
+      );
+
+      mockApp.vault = {
+        getAbstractFileByPath: jest.fn().mockReturnValue(mockFile),
+      } as any;
+
+      // Create a new instance to pick up the fresh vault mock
+      const builder = new DailyNoteBuilder(mockApp, mockDocumentProcessor);
+      const result = await builder.getOrCreateDailyNote("2024-01-15");
+
+      expect(result).toBe(mockFile);
+      expect(mockApp.vault.getAbstractFileByPath).toHaveBeenCalledWith(
+        "daily/2024/01-January/15-Monday/_note.md"
+      );
+      expect(createDailyNote).not.toHaveBeenCalled();
+    });
+
+    it("should ignore non-TFile results from getAbstractFileByPath", async () => {
+      const mockFolder = { path: "daily/2024-01-15", children: [] }; // TFolder, not TFile
+      const mockNewFile = { path: "daily/2024-01-15.md" } as TFile;
+
+      (getDailyNote as jest.Mock).mockReturnValue(null);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+      (computeDailyNoteFilePath as jest.Mock).mockReturnValue("daily/2024-01-15.md");
+      (createDailyNote as jest.Mock).mockResolvedValue(mockNewFile);
+
+      // Returns a folder, not a file
+      mockApp.vault = {
+        getAbstractFileByPath: jest.fn().mockReturnValue(mockFolder),
+      } as any;
+
+      const result = await dailyNoteBuilder.getOrCreateDailyNote("2024-01-15");
+
+      // Should create because the path pointed to a folder, not a file
+      expect(createDailyNote).toHaveBeenCalled();
+      expect(result).toBe(mockNewFile);
+    });
+
+    it("should throw and log error when createDailyNote fails", async () => {
+      const error = new Error("Failed to create daily note");
+
+      (getDailyNote as jest.Mock).mockReturnValue(null);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+      (computeDailyNoteFilePath as jest.Mock).mockReturnValue("daily/2024-01-15.md");
+      (createDailyNote as jest.Mock).mockRejectedValue(error);
+
+      mockApp.vault = {
+        getAbstractFileByPath: jest.fn().mockReturnValue(null),
+      } as any;
+
+      const consoleErrorSpy = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      await expect(
+        dailyNoteBuilder.getOrCreateDailyNote("2024-01-15")
+      ).rejects.toThrow("Failed to create daily note");
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
     });
   });
 
