@@ -18,8 +18,8 @@ importers:
         specifier: latest
         version: 1.10.3(@codemirror/state@6.5.0)(@codemirror/view@6.38.6)
       obsidian-daily-notes-interface:
-        specifier: ^0.9.4
-        version: 0.9.4(@codemirror/state@6.5.0)(@codemirror/view@6.38.6)
+        specifier: github:czottmann/obsidian-daily-notes-interface
+        version: https://codeload.github.com/czottmann/obsidian-daily-notes-interface/tar.gz/a25029772175d6e95e2ebea0edad0774cc96ebef
       valibot:
         specifier: ^1.1.0
         version: 1.1.0(typescript@5.2.2)
@@ -1742,19 +1742,13 @@ packages:
   nwsapi@2.2.22:
     resolution: {integrity: sha512-ujSMe1OWVn55euT1ihwCI1ZcAaAU3nxUiDwfDQldc51ZXaB9m2AyOn6/jh1BLe2t/G8xd6uKG1UBF2aZJeg2SQ==}
 
-  obsidian-daily-notes-interface@0.9.4:
-    resolution: {integrity: sha512-PILoRtZUB5wEeGnDQAPMlkVlXwDYoxkLR8Wl4STU2zLNwhcq9kKvQexiXi7sfjGlpTnL+LeAOfEVWyeVndneKg==}
-    hasBin: true
+  obsidian-daily-notes-interface@https://codeload.github.com/czottmann/obsidian-daily-notes-interface/tar.gz/a25029772175d6e95e2ebea0edad0774cc96ebef:
+    resolution: {tarball: https://codeload.github.com/czottmann/obsidian-daily-notes-interface/tar.gz/a25029772175d6e95e2ebea0edad0774cc96ebef}
+    version: 0.9.4
+    engines: {node: '>=20.0.0'}
 
   obsidian@1.10.3:
     resolution: {integrity: sha512-VP+ZSxNMG7y6Z+sU9WqLvJAskCfkFrTz2kFHWmmzis+C+4+ELjk/sazwcTHrHXNZlgCeo8YOlM6SOrAFCynNew==}
-    peerDependencies:
-      '@codemirror/state': 6.5.0
-      '@codemirror/view': 6.38.6
-
-  obsidian@https://codeload.github.com/obsidianmd/obsidian-api/tar.gz/53cf3bd402cec654bcf1d963b43cb01d05a6efdf:
-    resolution: {tarball: https://codeload.github.com/obsidianmd/obsidian-api/tar.gz/53cf3bd402cec654bcf1d963b43cb01d05a6efdf}
-    version: 1.10.3
     peerDependencies:
       '@codemirror/state': 6.5.0
       '@codemirror/view': 6.38.6
@@ -2045,9 +2039,6 @@ packages:
         optional: true
       jest-util:
         optional: true
-
-  tslib@2.1.0:
-    resolution: {integrity: sha512-hcVC3wYEziELGGmEEXue7D75zbwIIVUMWAVbHItGPx0ziyXxrOMQx4rQEVEV45Ut/1IotuEvwqPopzIOkDMf0A==}
 
   tslib@2.4.1:
     resolution: {integrity: sha512-tGyy4dAjRIEwI7BzsB0lynWgOpfqjUdq91XXAlIWD2OwKBH7oCl/GZG/HT4BOHrTlPMOASlMQ7veyTqpmRcrNA==}
@@ -4170,22 +4161,9 @@ snapshots:
 
   nwsapi@2.2.22: {}
 
-  obsidian-daily-notes-interface@0.9.4(@codemirror/state@6.5.0)(@codemirror/view@6.38.6):
-    dependencies:
-      obsidian: https://codeload.github.com/obsidianmd/obsidian-api/tar.gz/53cf3bd402cec654bcf1d963b43cb01d05a6efdf(@codemirror/state@6.5.0)(@codemirror/view@6.38.6)
-      tslib: 2.1.0
-    transitivePeerDependencies:
-      - '@codemirror/state'
-      - '@codemirror/view'
+  obsidian-daily-notes-interface@https://codeload.github.com/czottmann/obsidian-daily-notes-interface/tar.gz/a25029772175d6e95e2ebea0edad0774cc96ebef: {}
 
   obsidian@1.10.3(@codemirror/state@6.5.0)(@codemirror/view@6.38.6):
-    dependencies:
-      '@codemirror/state': 6.5.0
-      '@codemirror/view': 6.38.6
-      '@types/codemirror': 5.60.8
-      moment: 2.29.4
-
-  obsidian@https://codeload.github.com/obsidianmd/obsidian-api/tar.gz/53cf3bd402cec654bcf1d963b43cb01d05a6efdf(@codemirror/state@6.5.0)(@codemirror/view@6.38.6):
     dependencies:
       '@codemirror/state': 6.5.0
       '@codemirror/view': 6.38.6
@@ -4434,8 +4412,6 @@ snapshots:
       babel-jest: 29.7.0(@babel/core@7.28.5)
       esbuild: 0.20.1
       jest-util: 29.7.0
-
-  tslib@2.1.0: {}
 
   tslib@2.4.1: {}
 
