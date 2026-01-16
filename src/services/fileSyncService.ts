@@ -28,6 +28,9 @@ export class FileSyncService {
   async buildCache(): Promise<void> {
     this.granolaIdCache.clear();
     const files = this.app.vault.getMarkdownFiles();
+    let cachedCount = 0;
+    let missingGranolaIdCount = 0;
+    let cacheReadErrors = 0;
 
     for (const file of files) {
       try {
@@ -37,11 +40,22 @@ export class FileSyncService {
           const type = cache.frontmatter.type || "note"; // Default for backward compatibility
           const cacheKey = `${granolaId}-${type}`;
           this.granolaIdCache.set(cacheKey, file);
+          cachedCount++;
+        } else if (cache?.frontmatter) {
+          missingGranolaIdCount++;
         }
       } catch (e) {
+        cacheReadErrors++;
         log.error(`Error reading frontmatter for ${file.path}:`, e);
       }
     }
+
+    log.debug("Granola ID cache built", {
+      totalMarkdownFiles: files.length,
+      cachedCount,
+      missingGranolaIdCount,
+      cacheReadErrors,
+    });
   }
 
   /**
@@ -128,6 +142,11 @@ export class FileSyncService {
     if (granolaId) {
       const cacheKey = `${granolaId}-${type}`;
       this.granolaIdCache.set(cacheKey, file);
+      log.debug("Granola ID cache updated", {
+        granolaId,
+        type,
+        filePath: file.path,
+      });
     }
   }
 
@@ -173,6 +192,13 @@ export class FileSyncService {
   ): Promise<boolean> {
     const normalizedPath = normalizePath(filePath);
     const existingFile = this.findByGranolaId(granolaId, type);
+    log.debug("Saving file", {
+      granolaId,
+      type,
+      normalizedPath,
+      existingPath: existingFile?.path,
+      forceOverwrite,
+    });
 
     try {
       if (!existingFile) {
@@ -239,6 +265,11 @@ export class FileSyncService {
 
     // Skip update if content unchanged and not forcing overwrite
     if (!forceOverwrite && existingContent === content) {
+      log.debug("Skipping file update (content unchanged)", {
+        granolaId,
+        type,
+        filePath: existingFile.path,
+      });
       this.updateCache(granolaId, existingFile, type);
       return false;
     }
@@ -247,6 +278,12 @@ export class FileSyncService {
 
     // Handle path change (e.g., title changed)
     if (existingFile.path !== normalizedPath) {
+      log.debug("File path changed; attempting rename", {
+        granolaId,
+        type,
+        fromPath: existingFile.path,
+        toPath: normalizedPath,
+      });
       await this.attemptRename(existingFile, normalizedPath, granolaId, type);
     }
 
@@ -264,8 +301,15 @@ export class FileSyncService {
     type: "note" | "transcript" | "combined"
   ): Promise<void> {
     try {
+      const previousPath = file.path;
       await this.app.vault.rename(file, newPath);
       this.updateCache(granolaId, file, type);
+      log.debug("File renamed", {
+        granolaId,
+        type,
+        fromPath: previousPath,
+        toPath: newPath,
+      });
     } catch (renameError) {
       // If rename fails (e.g., file already exists at new path), just update content
       log.warn(
@@ -304,10 +348,29 @@ export class FileSyncService {
     if (!this.findByGranolaId(granolaId, type)) {
       const existingFile = this.app.vault.getAbstractFileByPath(filePath);
       if (existingFile instanceof TFile) {
+        const existingCache = this.app.metadataCache.getFileCache(existingFile);
+        const existingGranolaId = existingCache?.frontmatter?.granola_id;
+        const existingType = existingCache?.frontmatter?.type || "unknown";
+        log.debug("Filename collision detected", {
+          granolaId,
+          type,
+          requestedPath: filePath,
+          existingPath: existingFile.path,
+          existingGranolaId,
+          existingType,
+          cacheHasGranolaId: Boolean(existingGranolaId),
+          noteDate: noteDate.toISOString(),
+        });
         const filenameWithoutExtension = resolvedFilename.replace(/\.md$/, "");
         const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
         resolvedFilename = `${filenameWithoutExtension}-${dateSuffix}.md`;
         filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
+        log.debug("Resolved filename with date suffix", {
+          granolaId,
+          type,
+          resolvedFilename,
+          resolvedPath: filePath,
+        });
       }
     }
 
