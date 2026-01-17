@@ -89,12 +89,20 @@ export class FileSyncService {
   ): boolean {
     // If no remote timestamp, assume we should update
     if (!remoteUpdatedAt) {
+      log.debug("Remote timestamp missing; treating as newer", {
+        granolaId,
+        type,
+      });
       return true;
     }
 
     const localFile = this.findByGranolaId(granolaId, type);
     if (!localFile) {
       // File doesn't exist locally, so remote is "newer"
+      log.debug("Local file missing; treating remote as newer", {
+        granolaId,
+        type,
+      });
       return true;
     }
 
@@ -104,6 +112,11 @@ export class FileSyncService {
 
       if (!localUpdated) {
         // Local file has no timestamp, assume we should update
+        log.debug("Local updated timestamp missing; treating remote as newer", {
+          granolaId,
+          type,
+          localPath: localFile.path,
+        });
         return true;
       }
 
@@ -119,7 +132,16 @@ export class FileSyncService {
         return true;
       }
 
-      return remoteDate > localDate;
+      const isNewer = remoteDate > localDate;
+      log.debug("Timestamp comparison result", {
+        granolaId,
+        type,
+        localPath: localFile.path,
+        remoteUpdatedAt,
+        localUpdated,
+        isNewer,
+      });
+      return isNewer;
     } catch (e) {
       log.error(`Error comparing timestamps for ${granolaId}:`, e);
       // On error, assume we should update
@@ -274,6 +296,12 @@ export class FileSyncService {
       return false;
     }
 
+    log.debug("Writing file update", {
+      granolaId,
+      type,
+      filePath: existingFile.path,
+      overwriteReason: forceOverwrite ? "forceOverwrite" : "contentChanged",
+    });
     await this.app.vault.modify(existingFile, content);
 
     // Handle path change (e.g., title changed)
