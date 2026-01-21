@@ -430,7 +430,8 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           new Setting(containerEl)
             .setName("Daily note link heading")
             .setDesc(
-              'The markdown heading for the meeting links section in daily notes. Include heading markers (e.g., "## Meetings").'
+              'The markdown heading for the meeting links section in daily notes. Include heading markers (e.g., "## Meetings").\n\n' +
+              '**Important:** The plugin replaces the entire section from this heading until the next heading at the same or higher level. Any content you manually add under this heading will be overwritten during sync. To preserve your content, place it under a new heading.'
             )
             .addText((text) =>
               text
