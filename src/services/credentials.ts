@@ -1,11 +1,8 @@
 import { requestUrl, Platform } from "obsidian";
-import http from "http";
 import fs from "fs";
 import path from "path";
 import os from "os";
 import { log } from "../utils/logger";
-
-let server: http.Server | null = null;
 
 interface WorkosTokens {
   access_token: string;
@@ -51,60 +48,6 @@ function getTokenFilePath(): string {
 }
 
 const filePath = getTokenFilePath();
-
-export async function startCredentialsServer(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // Graceful shutdown on process exit
-    process.on("SIGINT", stopCredentialsServer);
-    process.on("SIGTERM", stopCredentialsServer);
-    process.on("exit", stopCredentialsServer);
-
-    server = http.createServer((req, res) => {
-      if (req.url === "/supabase.json" || req.url === "/") {
-        fs.readFile(filePath, (err, data) => {
-          if (err) {
-            const errorMessage = `Failed to read credentials file at ${filePath}: ${err.message}`;
-            log.error("startCredentialsServer", errorMessage);
-            res.writeHead(404, { "Content-Type": "text/plain" });
-            res.end(errorMessage);
-          } else {
-            log.debug(
-              "Credentials server: Successfully served credentials file"
-            );
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(data);
-          }
-        });
-      } else {
-        const message = `Unsupported credentials server route: ${
-          req.url ?? "unknown"
-        }`;
-        log.error("startCredentialsServer", message);
-        res.writeHead(400, { "Content-Type": "text/plain" });
-        res.end(message);
-      }
-    });
-
-    server.on("error", (err) => {
-      log.error("Server startup error:", err);
-      reject(err);
-    });
-
-    server.listen(2590, "127.0.0.1", () => {
-      log.debug("Credentials server: Started");
-      resolve();
-    });
-  });
-}
-
-export function stopCredentialsServer() {
-  if (server) {
-    server.close(() => {
-      server = null;
-      log.debug("Credentials server: Stopped");
-    });
-  }
-}
 
 /**
  * Checks if the access token has expired.
@@ -180,32 +123,28 @@ export async function loadCredentials(): Promise<{
   let tokenLoadError: string | null = null;
 
   try {
-    // Wait for the server to be ready before making the request
-    await startCredentialsServer();
+    // Read credentials file directly from filesystem
+    const fileContents = await fs.promises.readFile(filePath, "utf-8");
+    log.debug("Successfully read credentials file");
 
-    // Add a small delay to ensure the server is fully ready
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  } catch (serverError) {
-    const errorMessage =
-      serverError instanceof Error ? serverError.message : String(serverError);
-    tokenLoadError = `Failed to start credentials server: ${errorMessage}`;
-    log.error("Server startup error:", serverError);
-    return { accessToken, error: tokenLoadError };
-  }
-
-  try {
-    const response = await requestUrl({
-      url: "http://127.0.0.1:2590/",
-      method: "GET",
-      throw: true,
-    });
-    log.debug("Credentials server: Received successful response");
     try {
-      const tokenData: TokenData =
-        typeof response.json === "string"
-          ? JSON.parse(response.json)
-          : response.json;
+      const tokenData: TokenData = JSON.parse(fileContents);
+      
+      // Validate that workos_tokens field exists
+      if (!tokenData.workos_tokens || typeof tokenData.workos_tokens !== "string") {
+        tokenLoadError = `Missing or invalid 'workos_tokens' field in credentials file at ${filePath}. Please ensure the file contains a valid 'workos_tokens' string.`;
+        log.error("Invalid credentials file structure:", tokenLoadError);
+        return { accessToken, error: tokenLoadError };
+      }
+
       let workosTokens: WorkosTokens = JSON.parse(tokenData.workos_tokens);
+
+      // Validate required fields in workosTokens
+      if (!workosTokens.access_token) {
+        tokenLoadError = `Missing 'access_token' field in credentials file at ${filePath}. The token may have expired.`;
+        log.error("Missing access token:", tokenLoadError);
+        return { accessToken, error: tokenLoadError };
+      }
 
       // Check if token has expired
       if (isTokenExpired(workosTokens)) {
@@ -225,23 +164,32 @@ export async function loadCredentials(): Promise<{
 
       accessToken = workosTokens.access_token;
       if (!accessToken) {
-        log.debug("Credentials server: No access token found in response");
+        log.debug("No access token found in credentials file");
         tokenLoadError =
           "No access token found in credentials file. The token may have expired.";
       }
     } catch (parseError) {
-      log.error("Failed to parse response:", response);
-      log.error("Response JSON:", response.json);
-      log.error("Token response parse error:", parseError);
-      tokenLoadError =
-        "Invalid JSON format in credentials response. Please ensure the server returns valid JSON.";
+      const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      tokenLoadError = `Invalid JSON format in credentials file at ${filePath}: ${parseErrorMessage}. Please ensure the file contains valid JSON.`;
+      log.error("Failed to parse credentials file:", parseError);
+      return { accessToken, error: tokenLoadError };
     }
   } catch (error) {
-    tokenLoadError =
-      "Failed to load credentials from http://127.0.0.1:2590/. Please check if the credentials server is running.";
-    log.error("Credentials loading error:", error);
-  } finally {
-    stopCredentialsServer();
+    // Handle filesystem errors
+    if (error instanceof Error) {
+      const errorCode = (error as NodeJS.ErrnoException).code;
+      if (errorCode === "ENOENT") {
+        tokenLoadError = `Credentials file not found at ${filePath}. Please ensure the Granola app has created the credentials file.`;
+      } else if (errorCode === "EACCES") {
+        tokenLoadError = `Permission denied reading credentials file at ${filePath}. Please check file permissions.`;
+      } else {
+        tokenLoadError = `Failed to read credentials file at ${filePath}: ${error.message}`;
+      }
+    } else {
+      tokenLoadError = `Failed to read credentials file at ${filePath}: ${String(error)}`;
+    }
+    log.error("Credentials file read error:", error);
   }
+
   return { accessToken, error: tokenLoadError };
 }

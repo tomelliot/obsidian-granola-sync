@@ -18,7 +18,6 @@ import {
 } from "./services/granolaApi";
 import {
   loadCredentials as loadGranolaCredentials,
-  stopCredentialsServer,
 } from "./services/credentials";
 import {
   formatTranscriptBySpeaker,
@@ -95,7 +94,6 @@ export default class GranolaSync extends Plugin {
   }
 
   async onunload() {
-    stopCredentialsServer();
     // Clean up status bar (includes clearing timeout)
     hideStatusBar(this);
   }
