@@ -31,7 +31,7 @@ flowchart TD
 
 ## Credentials Loading
 
-The plugin loads credentials from a local file via a temporary HTTP server. This approach allows secure access to credentials stored in the Granola application's data directory.
+The plugin loads credentials by reading directly from the filesystem. This approach provides secure access to credentials stored in the Granola application's data directory without requiring a temporary HTTP server.
 
 ### Credentials Loading Flow
 
@@ -39,32 +39,41 @@ The plugin loads credentials from a local file via a temporary HTTP server. This
 sequenceDiagram
     participant Plugin
     participant CredentialsService
-    participant HTTPServer
     participant FileSystem
     participant GranolaApp
 
     Plugin->>CredentialsService: loadCredentials()
-    CredentialsService->>HTTPServer: startCredentialsServer()
-    HTTPServer->>HTTPServer: Listen on 127.0.0.1:2590
-    HTTPServer-->>CredentialsService: Server Ready
-
-    CredentialsService->>HTTPServer: GET http://127.0.0.1:2590/
-    HTTPServer->>FileSystem: Read {OS-specific}/supabase.json
-    FileSystem-->>HTTPServer: JSON Content
-    HTTPServer-->>CredentialsService: JSON Response
-
-    CredentialsService->>CredentialsService: Parse workos_tokens.access_token
-    CredentialsService->>HTTPServer: stopCredentialsServer()
-    HTTPServer-->>HTTPServer: Server Closed
-    CredentialsService-->>Plugin: { accessToken, error }
+    CredentialsService->>FileSystem: Read {OS-specific}/supabase.json
+    FileSystem-->>CredentialsService: JSON Content or Error
+    
+    alt File Read Success
+        CredentialsService->>CredentialsService: Parse JSON
+        CredentialsService->>CredentialsService: Extract workos_tokens.access_token
+        CredentialsService->>CredentialsService: Check Token Expiration
+        alt Token Expired
+            CredentialsService->>GranolaApp: Refresh Token via API
+            GranolaApp-->>CredentialsService: New Access Token
+        end
+        CredentialsService-->>Plugin: { accessToken, error: null }
+    else File Read Error
+        CredentialsService->>CredentialsService: Generate Error Message
+        CredentialsService-->>Plugin: { accessToken: null, error }
+    end
 ```
 
 ### Credentials Service Details
 
 - **File Location**: `{OS-specific}/supabase.json`
-- **Server Port**: `2590` (localhost only)
+  - Windows: `%APPDATA%/Granola/supabase.json`
+  - Linux: `~/.config/Granola/supabase.json`
+  - macOS: `~/Library/Application Support/Granola/supabase.json`
 - **Token Path**: `workos_tokens.access_token` within the JSON structure
-- **Server Lifecycle**: Started before each sync, closed immediately after token extraction
+- **Token Refresh**: Automatically refreshes expired tokens using the refresh token
+- **Error Handling**: Provides clear error messages for:
+  - File not found (ENOENT)
+  - Permission errors (EACCES)
+  - Invalid JSON format
+  - Missing required fields
 
 ## Document Fetching
 
@@ -308,7 +317,7 @@ Path computation depends on the destination type:
 
 The sync process orchestrates multiple components:
 
-1. **Credentials Management**: Secure loading via temporary HTTP server
+1. **Credentials Management**: Direct filesystem reading with automatic token refresh
 2. **API Communication**: Fetching documents and transcripts from Granola API
 3. **Deduplication**: Using Granola ID cache to prevent duplicates
 4. **Content Conversion**: ProseMirror to Markdown transformation

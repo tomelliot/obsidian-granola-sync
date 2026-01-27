@@ -24,7 +24,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 
 ## Configuration
 
-> **Note:** Granola credentials are fetched by the plugin using a local web server that temporarily serves your credentials file to the plugin. You can review the implementation of this mechanism in [`src/services/credentials.ts`](src/services/credentials.ts).
+> **Note:** Granola credentials are read directly from the filesystem. The plugin reads the credentials file from the Granola application's data directory. You can review the implementation of this mechanism in [`src/services/credentials.ts`](src/services/credentials.ts).
 
 1. Configure note syncing:
    - Choose whether to sync notes
