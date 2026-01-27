@@ -23,6 +23,25 @@ describe("textUtils helpers", () => {
       expect(getHeadingLevel("No heading here")).toBeNull();
       expect(getHeadingLevel("   ###MissingSpace")).toBeNull();
     });
+
+    it("should return null for empty string", () => {
+      expect(getHeadingLevel("")).toBeNull();
+    });
+
+    it("should return null when heading has no space after #", () => {
+      expect(getHeadingLevel("###")).toBeNull();
+      expect(getHeadingLevel("##")).toBeNull();
+    });
+
+    it("should return null when heading has no text after space", () => {
+      expect(getHeadingLevel("## ")).toBeNull();
+      expect(getHeadingLevel("# ")).toBeNull();
+    });
+
+    it("should handle edge case with single character after space", () => {
+      expect(getHeadingLevel("# A")).toBe(1);
+      expect(getHeadingLevel("## B")).toBe(2);
+    });
   });
 
   describe("toHeading", () => {
@@ -131,6 +150,62 @@ describe("updateProperties & updateSection", () => {
       const processCallback = (mockVault.process as jest.Mock).mock.calls[0][1];
       const modified = processCallback(existingFile);
       // The new content should be in place of old content
+      expect(modified).toContain(sectionContent);
+      expect(modified).not.toContain("Old content");
+    });
+
+
+    it("should update section even when content is unchanged if forceOverwrite is true", async () => {
+      const existingFile = [heading, sectionContent].join("\n");
+      mockVault.read.mockResolvedValueOnce(existingFile);
+
+      await updateSection(mockApp, mockFile, heading, sectionContent, true);
+
+      // Should still process when forceOverwrite is true
+      expect(mockVault.process).toHaveBeenCalled();
+    });
+
+    it("should use editor when file is open", async () => {
+      const existingFile = [heading, "Old content"].join("\n");
+      mockVault.read.mockResolvedValueOnce(existingFile);
+      const mockEditor = {
+        replaceRange: jest.fn(),
+      };
+      (getEditorForFile as jest.Mock).mockReturnValue(mockEditor);
+
+      await updateSection(mockApp, mockFile, heading, sectionContent);
+
+      expect(getEditorForFile).toHaveBeenCalledWith(mockApp, mockFile);
+      expect(mockEditor.replaceRange).toHaveBeenCalled();
+      // Should not use vault.process when editor is available
+      expect(mockVault.process).not.toHaveBeenCalled();
+    });
+
+    it("should append section when heading doesn't exist and editor is available", async () => {
+      const existingFile = "Existing content";
+      mockVault.read.mockResolvedValueOnce(existingFile);
+      const mockEditor = {
+        replaceRange: jest.fn(),
+      };
+      (getEditorForFile as jest.Mock).mockReturnValue(mockEditor);
+
+      await updateSection(mockApp, mockFile, heading, sectionContent);
+
+      expect(mockEditor.replaceRange).toHaveBeenCalledWith(
+        expect.stringContaining(sectionContent),
+        expect.any(Object),
+        expect.any(Object)
+      );
+    });
+
+    it("should handle section at end of file with no next section", async () => {
+      const existingFile = ["# Title", "", heading, "Old content"].join("\n");
+      mockVault.read.mockResolvedValueOnce(existingFile);
+
+      await updateSection(mockApp, mockFile, heading, sectionContent);
+
+      const processCallback = (mockVault.process as jest.Mock).mock.calls[0][1];
+      const modified = processCallback(existingFile);
       expect(modified).toContain(sectionContent);
       expect(modified).not.toContain("Old content");
     });

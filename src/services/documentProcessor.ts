@@ -9,6 +9,7 @@ import { formatAttendeesAsYaml } from "../utils/yamlUtils";
 
 export interface DocumentProcessorSettings {
   syncTranscripts: boolean;
+  includePrivateNotes: boolean;
 }
 
 /**
@@ -71,6 +72,20 @@ export class DocumentProcessor {
     frontmatterLines.push("---", "");
 
     let finalMarkdown = frontmatterLines.join("\n");
+
+    // Add private notes section if enabled and content exists
+    const hasPrivateNotes =
+      this.settings.includePrivateNotes &&
+      doc.notes_markdown &&
+      doc.notes_markdown.trim() !== "";
+
+    if (hasPrivateNotes) {
+      finalMarkdown += "## Private Notes\n\n";
+      finalMarkdown += doc.notes_markdown;
+      finalMarkdown += "\n\n";
+      // Add enhanced notes section heading when private notes are present
+      finalMarkdown += "## Enhanced Notes\n\n";
+    }
 
     // Add the actual note content
     finalMarkdown += markdownContent;
@@ -145,8 +160,23 @@ export class DocumentProcessor {
 
     let finalMarkdown = frontmatterLines.join("\n");
 
-    // Add note content with heading
-    finalMarkdown += "## Note\n\n";
+    // Add private notes section if enabled and content exists
+    const hasPrivateNotes =
+      this.settings.includePrivateNotes &&
+      doc.notes_markdown &&
+      doc.notes_markdown.trim() !== "";
+
+    if (hasPrivateNotes) {
+      finalMarkdown += "## Private Notes\n\n";
+      finalMarkdown += doc.notes_markdown;
+      finalMarkdown += "\n\n";
+      // Add enhanced notes section heading when private notes are present
+      finalMarkdown += "## Enhanced Notes\n\n";
+    } else {
+      // When no private notes, use the original "## Note" heading for combined notes
+      finalMarkdown += "## Note\n\n";
+    }
+
     finalMarkdown += markdownContent;
     finalMarkdown += "\n\n";
 
@@ -186,12 +216,28 @@ export class DocumentProcessor {
     const docId = doc.id || "unknown_id";
     const markdownContent = convertProsemirrorToMarkdown(contentToParse);
 
+    // Build markdown with optional private notes section
+    const hasPrivateNotes =
+      this.settings.includePrivateNotes &&
+      doc.notes_markdown &&
+      doc.notes_markdown.trim() !== "";
+
+    let finalMarkdown = "";
+    if (hasPrivateNotes) {
+      finalMarkdown += "## Private Notes\n\n";
+      finalMarkdown += doc.notes_markdown;
+      finalMarkdown += "\n\n";
+      // Add enhanced notes section heading when private notes are present
+      finalMarkdown += "## Enhanced Notes\n\n";
+    }
+    finalMarkdown += markdownContent;
+
     return {
       title,
       docId,
       createdAt: doc.created_at,
       updatedAt: doc.updated_at,
-      markdown: markdownContent,
+      markdown: finalMarkdown,
     };
   }
 }

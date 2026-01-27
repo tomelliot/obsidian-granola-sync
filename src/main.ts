@@ -48,22 +48,7 @@ export default class GranolaSync extends Plugin {
     await this.loadSettings();
 
     // Initialize services
-    this.pathResolver = new PathResolver(this.settings);
-    this.fileSyncService = new FileSyncService(
-      this.app,
-      this.pathResolver,
-      () => this.settings
-    );
-    this.documentProcessor = new DocumentProcessor(
-      {
-        syncTranscripts: this.settings.syncTranscripts,
-      },
-      this.pathResolver
-    );
-    this.dailyNoteBuilder = new DailyNoteBuilder(
-      this.app,
-      this.documentProcessor
-    );
+    this.initializeServices();
 
     // This adds a simple command that can be triggered anywhere
     this.addCommand({
@@ -118,7 +103,49 @@ export default class GranolaSync extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    this.updateServices();
     this.setupPeriodicSync();
+  }
+
+  /**
+   * Initializes all services with current settings.
+   * Called during plugin load and when settings change.
+   */
+  private initializeServices(): void {
+    // Initialize PathResolver with current settings
+    this.pathResolver = new PathResolver(this.settings);
+
+    // Initialize FileSyncService with PathResolver
+    // FileSyncService uses getter function for settings, so it will automatically
+    // pick up the latest settings values
+    this.fileSyncService = new FileSyncService(
+      this.app,
+      this.pathResolver,
+      () => this.settings
+    );
+
+    // Initialize DocumentProcessor with current settings
+    this.documentProcessor = new DocumentProcessor(
+      {
+        syncTranscripts: this.settings.syncTranscripts,
+        includePrivateNotes: this.settings.includePrivateNotes,
+      },
+      this.pathResolver
+    );
+
+    // Initialize DailyNoteBuilder with DocumentProcessor
+    this.dailyNoteBuilder = new DailyNoteBuilder(
+      this.app,
+      this.documentProcessor
+    );
+  }
+
+  /**
+   * Updates services when settings change during plugin runtime.
+   * Recreates services that depend on settings to ensure they use the latest values.
+   */
+  private updateServices(): void {
+    this.initializeServices();
   }
 
   setupPeriodicSync() {

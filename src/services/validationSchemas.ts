@@ -39,6 +39,7 @@ export const GranolaDocSchema = v.object({
       content: v.nullish(v.union([ProseMirrorDocSchema, v.string()])),
     })
   ),
+  notes_markdown: v.nullish(v.string()),
 });
 
 export const GranolaApiResponseSchema = v.object({

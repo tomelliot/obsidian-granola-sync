@@ -706,4 +706,398 @@ describe("DocumentProcessor", () => {
       );
     });
   });
+
+  describe("private notes functionality", () => {
+    describe("prepareNote with private notes", () => {
+      it("should include private notes section when enabled and content exists", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: false,
+            includePrivateNotes: true,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "This is a private note",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.prepareNote(doc);
+
+        expect(result.content).toContain("## Private Notes\n\n");
+        expect(result.content).toContain("This is a private note");
+        expect(result.content).toContain("## Enhanced Notes\n\n");
+        // Enhanced notes section should come after private notes
+        const privateNotesIndex = result.content.indexOf("## Private Notes");
+        const enhancedNotesIndex = result.content.indexOf("## Enhanced Notes");
+        expect(enhancedNotesIndex).toBeGreaterThan(privateNotesIndex);
+      });
+
+      it("should not include private notes section when disabled", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: false,
+            includePrivateNotes: false,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "This is a private note",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.prepareNote(doc);
+
+        expect(result.content).not.toContain("## Private Notes");
+        expect(result.content).not.toContain("## Enhanced Notes");
+        expect(result.content).not.toContain("This is a private note");
+      });
+
+      it("should not include private notes section when content is empty", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: false,
+            includePrivateNotes: true,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.prepareNote(doc);
+
+        expect(result.content).not.toContain("## Private Notes");
+        expect(result.content).not.toContain("## Enhanced Notes");
+      });
+
+      it("should not include private notes section when content is only whitespace", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: false,
+            includePrivateNotes: true,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "   \n\t  ",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.prepareNote(doc);
+
+        expect(result.content).not.toContain("## Private Notes");
+        expect(result.content).not.toContain("## Enhanced Notes");
+      });
+
+      it("should not include private notes section when notes_markdown is missing", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: false,
+            includePrivateNotes: true,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.prepareNote(doc);
+
+        expect(result.content).not.toContain("## Private Notes");
+        expect(result.content).not.toContain("## Enhanced Notes");
+      });
+    });
+
+    describe("prepareCombinedNote with private notes", () => {
+      it("should include private notes section when enabled and content exists", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: true,
+            includePrivateNotes: true,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "Private note content",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+        const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+        expect(result.content).toContain("## Private Notes\n\n");
+        expect(result.content).toContain("Private note content");
+        expect(result.content).toContain("## Enhanced Notes\n\n");
+        // Enhanced notes should come before transcript
+        const enhancedNotesIndex = result.content.indexOf("## Enhanced Notes");
+        const transcriptIndex = result.content.indexOf("## Transcript");
+        expect(enhancedNotesIndex).toBeLessThan(transcriptIndex);
+      });
+
+      it("should use '## Note' heading when private notes are disabled", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: true,
+            includePrivateNotes: false,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "Private note content",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+        const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+        expect(result.content).not.toContain("## Private Notes");
+        expect(result.content).not.toContain("## Enhanced Notes");
+        expect(result.content).toContain("## Note\n\n");
+      });
+
+      it("should use '## Note' heading when private notes are empty", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: true,
+            includePrivateNotes: true,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+        const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
+
+        expect(result.content).not.toContain("## Private Notes");
+        expect(result.content).not.toContain("## Enhanced Notes");
+        expect(result.content).toContain("## Note\n\n");
+      });
+    });
+
+    describe("extractNoteForDailyNote with private notes", () => {
+      it("should include private notes in markdown when enabled and content exists", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: false,
+            includePrivateNotes: true,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "Private note for daily note",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.extractNoteForDailyNote(doc);
+
+        expect(result).not.toBeNull();
+        expect(result!.markdown).toContain("## Private Notes\n\n");
+        expect(result!.markdown).toContain("Private note for daily note");
+        expect(result!.markdown).toContain("## Enhanced Notes\n\n");
+      });
+
+      it("should not include private notes when disabled", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: false,
+            includePrivateNotes: false,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "Private note",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.extractNoteForDailyNote(doc);
+
+        expect(result).not.toBeNull();
+        expect(result!.markdown).not.toContain("## Private Notes");
+        expect(result!.markdown).not.toContain("## Enhanced Notes");
+        expect(result!.markdown).not.toContain("Private note");
+      });
+
+      it("should not include private notes when content is empty", () => {
+        documentProcessor = new DocumentProcessor(
+          {
+            syncTranscripts: false,
+            includePrivateNotes: true,
+          },
+          mockPathResolver
+        );
+
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          notes_markdown: "",
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.extractNoteForDailyNote(doc);
+
+        expect(result).not.toBeNull();
+        expect(result!.markdown).not.toContain("## Private Notes");
+        expect(result!.markdown).not.toContain("## Enhanced Notes");
+      });
+    });
+
+    describe("attendees edge cases", () => {
+      it("should handle attendees with only email (no name)", () => {
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          people: {
+            attendees: [
+              { email: "alice@example.com" }, // No name
+              { name: "Bob", email: "bob@example.com" },
+            ],
+          },
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.prepareNote(doc);
+
+        expect(result.content).toContain("attendees:");
+        // Should use email when name is missing
+        expect(result.content).toContain("alice@example.com");
+        expect(result.content).toContain("Bob");
+      });
+
+      it("should filter out attendees with neither name nor email", () => {
+        const doc: GranolaDoc = {
+          id: "doc-123",
+          title: "Test Note",
+          created_at: "2024-01-15T10:00:00Z",
+          people: {
+            attendees: [
+              { name: "Alice" },
+              {}, // No name or email - should be filtered
+              { email: "bob@example.com" },
+            ],
+          },
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        };
+
+        const result = documentProcessor.prepareNote(doc);
+
+        expect(result.content).toContain("attendees:");
+        expect(result.content).toContain("Alice");
+        expect(result.content).toContain("bob@example.com");
+        // Should not contain "Unknown" which would be filtered out
+        expect(result.content).not.toContain("Unknown");
+      });
+    });
+  });
 });
