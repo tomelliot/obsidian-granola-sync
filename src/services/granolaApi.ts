@@ -36,6 +36,7 @@ export interface GranolaDoc {
   last_viewed_panel?: {
     content?: ProseMirrorDoc | string | null;
   } | null;
+  notes_markdown?: string;
 }
 
 // Infer TypeScript type from validation schema

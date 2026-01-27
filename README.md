@@ -10,6 +10,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 - Sync Granola notes to your Obsidian vault
 - Sync Granola transcripts to your vault, with flexible destination options
 - Support for syncing to daily notes, a dedicated folder, or a daily note folder structure
+- Optional inclusion of private notes from Granola at the top of synced notes
 - Automatic bidirectional linking between notes and transcripts when using individual files
 - Periodic automatic syncing with customizable interval
 - Granular settings for notes and transcripts
@@ -27,6 +28,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 
 1. Configure note syncing:
    - Choose whether to sync notes
+   - Optionally enable "Include Private Notes" to include your raw private notes at the top of each synced note
    - Select the destination: a specific folder, daily notes, or daily note folder structure
    - Optionally set a section heading for daily notes
 2. Configure transcript syncing:
@@ -82,6 +84,17 @@ The `granola_id` is consistent across both note and transcript files for the sam
 - `note`: Wiki-style link to the note (in transcripts, links to individual files or daily notes with heading anchors)
 
 The `transcript` field is added when notes are saved as individual files and transcripts are synced. The `note` field is always added to transcripts when notes are being synced - for individual note files, it links to the file path; for daily notes, it links to the daily note file with a heading anchor (e.g., `[[2024-01-15#Meeting Title]]`).
+
+## Note Content Structure
+
+When the "Include Private Notes" setting is enabled and a document has private notes content, synced notes will include:
+
+1. **## Private Notes** section - Contains your raw private notes from Granola
+2. **## Enhanced Notes** section - Contains the processed note content from Granola
+
+When private notes are disabled or not present, notes display the content directly without section headings.
+
+For combined notes (notes with transcripts), the structure is: Private Notes → Enhanced Notes → Transcript.
 
 ## Documentation
 

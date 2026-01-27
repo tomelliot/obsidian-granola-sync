@@ -95,6 +95,7 @@ Each `GranolaDoc` contains:
 - `created_at`: Creation timestamp (optional)
 - `updated_at`: Last update timestamp (optional)
 - `last_viewed_panel.content`: ProseMirror document structure (optional)
+- `notes_markdown`: Raw private notes in markdown format (optional)
 
 ### Error Handling
 
@@ -194,7 +195,11 @@ flowchart TD
 
     D --> G[For Each Document]
     G --> H[Convert ProseMirror to Markdown]
-    H --> I[Add Frontmatter]
+    H --> H1{Include Private Notes?}
+    H1 -->|Yes & Has Content| H2[Add Private Notes + Enhanced Notes Sections]
+    H1 -->|No or Empty| H3[Add Note Content Only]
+    H2 --> I[Add Frontmatter]
+    H3 --> I
     I --> J[Save to Disk]
 ```
 
@@ -208,7 +213,11 @@ flowchart TD
     B --> C[Extract Date from document timestamps]
     C --> D[Group by Date YYYY-MM-DD]
     D --> E[Convert ProseMirror to Markdown]
-    E --> F[Add to Daily Notes Map]
+    E --> E1{Include Private Notes?}
+    E1 -->|Yes & Has Content| E2[Add Private Notes Section]
+    E1 -->|No or Empty| E3[Skip Private Notes]
+    E2 --> F[Add to Daily Notes Map]
+    E3 --> F
     F --> G{More Documents?}
     G -->|Yes| B
     G -->|No| H[For Each Date Group]
@@ -228,7 +237,14 @@ flowchart TD
   - Granola ID
   - Created/Updated timestamps
   - Optional transcript link
-  - Note content
+  - Note content (with optional Private Notes and Enhanced Notes sections if enabled)
+
+**Private Notes Support**:
+
+When the "Include Private Notes" setting is enabled and `notes_markdown` has content:
+- Notes include a "## Private Notes" section at the top with the raw private notes
+- Followed by a "## Enhanced Notes" section with the processed note content
+- When disabled or `notes_markdown` is empty, notes display content directly without section headings
 
 ## File Saving and Deduplication
 
