@@ -33,6 +33,8 @@ jobs:
           files: ./coverage/lcov.info
           flags: unittests
           name: codecov-umbrella
+          branch: ${{ github.ref_name }}
+          fail_ci_if_error: true
 
   build:
     needs: test
