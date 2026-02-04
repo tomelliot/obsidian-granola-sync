@@ -65,17 +65,20 @@ function isTokenExpired(workosTokens: WorkosTokens): boolean {
   return currentTime >= expirationTime - bufferTime;
 }
 
+const TOKEN_REFRESH_API_URL = "https://api.granola.ai/v1/refresh-access-token";
+
 /**
  * Refreshes the access token using the refresh token.
  */
 async function refreshAccessToken(
   workosTokens: WorkosTokens
 ): Promise<WorkosTokens> {
-  log.debug("Attempting to refresh access token");
+  log.info(`Attempting to refresh access token via ${TOKEN_REFRESH_API_URL}`);
 
+  let response;
   try {
-    const response = await requestUrl({
-      url: "https://api.granola.ai/v1/refresh-access-token",
+    response = await requestUrl({
+      url: TOKEN_REFRESH_API_URL,
       method: "POST",
       headers: {
         Authorization: `Bearer ${workosTokens.access_token}`,
@@ -88,31 +91,37 @@ async function refreshAccessToken(
         provider: "workos",
       }),
     });
-
-    const refreshResponse = response.json as RefreshTokenResponse;
-
-    // Update the tokens with new values
-    const updatedTokens: WorkosTokens = {
-      ...workosTokens,
-      access_token: refreshResponse.access_token,
-      expires_in: refreshResponse.expires_in,
-      token_type: refreshResponse.token_type,
-      obtained_at: Date.now(),
-      // Keep the same refresh_token if not provided in response
-      refresh_token:
-        refreshResponse.refresh_token ?? workosTokens.refresh_token,
-    };
-
-    log.debug("Successfully refreshed access token");
-    return updatedTokens;
   } catch (error) {
-    log.error("Failed to refresh access token:", error);
+    // Obsidian's requestUrl throws on network errors and non-2xx status codes
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const status = (error as { status?: number }).status;
+    log.error(`Failed to refresh access token from ${TOKEN_REFRESH_API_URL}:`);
+    log.error(`  Status: ${status ?? "unknown"}`);
+    log.error(`  Error: ${errorMessage}`);
+    // Note: We intentionally do not log the token or refresh_token for security
     throw new Error(
-      `Failed to refresh access token: ${
-        error instanceof Error ? error.message : String(error)
-      }`
+      `Failed to refresh access token: ${errorMessage}`
     );
   }
+
+  log.info(`Token refresh API response status: ${response.status}`);
+
+  const refreshResponse = response.json as RefreshTokenResponse;
+
+  // Update the tokens with new values
+  const updatedTokens: WorkosTokens = {
+    ...workosTokens,
+    access_token: refreshResponse.access_token,
+    expires_in: refreshResponse.expires_in,
+    token_type: refreshResponse.token_type,
+    obtained_at: Date.now(),
+    // Keep the same refresh_token if not provided in response
+    refresh_token:
+      refreshResponse.refresh_token ?? workosTokens.refresh_token,
+  };
+
+  log.info("Successfully refreshed access token");
+  return updatedTokens;
 }
 
 export async function loadCredentials(): Promise<{
