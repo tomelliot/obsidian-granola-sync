@@ -124,6 +124,41 @@ async function refreshAccessToken(
   return updatedTokens;
 }
 
+/**
+ * Forces a token refresh regardless of expiration status.
+ * This is useful for debugging/development purposes.
+ * @returns Object containing success status and optional error message
+ */
+export async function forceRefreshToken(): Promise<{
+  success: boolean;
+  error: string | null;
+}> {
+  try {
+    const fileContents = await fs.promises.readFile(filePath, "utf-8");
+    const tokenData: TokenData = JSON.parse(fileContents);
+
+    if (!tokenData.workos_tokens || typeof tokenData.workos_tokens !== "string") {
+      return { success: false, error: "Missing or invalid 'workos_tokens' field in credentials file." };
+    }
+
+    const workosTokens: WorkosTokens = JSON.parse(tokenData.workos_tokens);
+
+    if (!workosTokens.refresh_token) {
+      return { success: false, error: "No refresh token available." };
+    }
+
+    log.info("Forcing token refresh...");
+    await refreshAccessToken(workosTokens);
+    log.info("Token refresh forced successfully.");
+
+    return { success: true, error: null };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    log.error("Failed to force token refresh:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+
 export async function loadCredentials(): Promise<{
   accessToken: string | null;
   error: string | null;

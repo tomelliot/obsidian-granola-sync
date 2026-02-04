@@ -2,7 +2,7 @@
 // Uses console methods with consistent "[Granola Sync]" prefix
 // Debug and info messages are only shown in development mode
 
-const isDevelopment =
+export const isDevelopment =
   !process.env.NODE_ENV || process.env.NODE_ENV === "development";
 
 export const log = {

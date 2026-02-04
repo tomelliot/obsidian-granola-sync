@@ -18,6 +18,7 @@ import {
 } from "./services/granolaApi";
 import {
   loadCredentials as loadGranolaCredentials,
+  forceRefreshToken,
 } from "./services/credentials";
 import {
   formatTranscriptBySpeaker,
@@ -27,7 +28,7 @@ import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
-import { log } from "./utils/logger";
+import { log, isDevelopment } from "./utils/logger";
 import {
   showStatusBar,
   hideStatusBar,
@@ -66,6 +67,23 @@ export default class GranolaSync extends Plugin {
         }
       },
     });
+
+    // Dev-only command: Force token refresh
+    if (isDevelopment) {
+      this.addCommand({
+        id: "force-refresh-token",
+        name: "Force refresh token (Dev)",
+        callback: async () => {
+          new Notice("Granola sync: Forcing token refresh...");
+          const result = await forceRefreshToken();
+          if (result.success) {
+            new Notice("Granola sync: Token refreshed successfully.");
+          } else {
+            new Notice(`Granola sync: Token refresh failed: ${result.error}`, 10000);
+          }
+        },
+      });
+    }
 
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new GranolaSyncSettingTab(this.app, this));
