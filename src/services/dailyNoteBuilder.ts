@@ -33,6 +33,75 @@ export class DailyNoteBuilder {
   constructor(private app: App, private documentProcessor: DocumentProcessor) {}
 
   /**
+   * Extracts existing Granola IDs and their updated_at timestamps from a daily note section.
+   *
+   * @param fileContent - The content of the daily note file
+   * @param sectionHeading - The section heading to look for
+   * @returns Map of Granola IDs to their updated_at timestamps
+   */
+  extractExistingNotes(
+    fileContent: string,
+    sectionHeading: string
+  ): Map<string, string | undefined> {
+    const existingNotes = new Map<string, string | undefined>();
+    const lines = fileContent.split("\n");
+    const headingLevel = lines
+      .find((line) => line.trim() === sectionHeading)
+      ?.match(/^(#{1,6})\s/)?.[1].length;
+
+    if (!headingLevel) {
+      return existingNotes; // Section doesn't exist
+    }
+
+    let inSection = false;
+    let currentGranolaId: string | null = null;
+    let currentUpdatedAt: string | undefined = undefined;
+
+    for (const line of lines) {
+      if (line.trim() === sectionHeading) {
+        inSection = true;
+        continue;
+      }
+
+      if (inSection) {
+        // Check if we've reached the next section at the same or higher level
+        const currentLevel = line.match(/^(#{1,6})\s/)?.[1].length;
+        if (currentLevel && currentLevel <= headingLevel) {
+          // Save the last note if we have one
+          if (currentGranolaId) {
+            existingNotes.set(currentGranolaId, currentUpdatedAt);
+          }
+          break; // End of section
+        }
+
+        // Look for Granola ID pattern
+        const idMatch = line.match(/^\*\*Granola ID:\*\*\s+(.+)$/);
+        if (idMatch) {
+          // Save previous note if exists
+          if (currentGranolaId) {
+            existingNotes.set(currentGranolaId, currentUpdatedAt);
+          }
+          currentGranolaId = idMatch[1].trim();
+          currentUpdatedAt = undefined;
+        }
+
+        // Look for Updated timestamp pattern
+        const updatedMatch = line.match(/^\*\*Updated:\*\*\s+(.+)$/);
+        if (updatedMatch && currentGranolaId) {
+          currentUpdatedAt = updatedMatch[1].trim();
+        }
+      }
+    }
+
+    // Don't forget the last note
+    if (currentGranolaId) {
+      existingNotes.set(currentGranolaId, currentUpdatedAt);
+    }
+
+    return existingNotes;
+  }
+
+  /**
    * Groups documents by their date and extracts note data for each.
    *
    * @param documents - Array of Granola documents to process
@@ -92,10 +161,16 @@ export class DailyNoteBuilder {
       return sectionHeading;
     }
 
+    // Determine the section heading level
+    const sectionLevel =
+      sectionHeading.match(/^(#{1,6})\s/)?.[1].length || 2;
+    const noteHeadingLevel = Math.min(sectionLevel + 1, 6); // One level deeper, max 6
+    const noteHeadingPrefix = "#".repeat(noteHeadingLevel);
+
     let content = sectionHeading;
 
     for (const note of notesForDay) {
-      content += `\n## ${note.title}\n`;
+      content += `\n${noteHeadingPrefix} ${note.title}\n`;
       content += `**Granola ID:** ${note.docId}\n`;
 
       if (note.createdAt) {
