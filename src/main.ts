@@ -335,6 +335,30 @@ export default class GranolaSync extends Plugin {
       const dailyNoteFile = await this.dailyNoteBuilder.getOrCreateDailyNote(
         dateKey
       );
+
+      // Check if all notes for this date are already up-to-date (unless forceOverwrite is true)
+      if (!forceOverwrite) {
+        const fileContent = await this.app.vault.read(dailyNoteFile);
+        const existingNotes = this.dailyNoteBuilder.extractExistingNotes(
+          fileContent,
+          sectionHeadingSetting
+        );
+
+        // Check if all notes are present and up-to-date
+        const allNotesUpToDate = notesForDay.every((note) => {
+          const existingUpdatedAt = existingNotes.get(note.docId);
+          // Note is up-to-date if it exists and has the same or newer updated_at timestamp
+          return existingUpdatedAt !== undefined && existingUpdatedAt === note.updatedAt;
+        });
+
+        if (allNotesUpToDate && existingNotes.size === notesForDay.length) {
+          // All notes are present and up-to-date, skip this date
+          processedCount += notesForDay.length;
+          this.updateSyncStatus("Note", processedCount, documents.length);
+          continue;
+        }
+      }
+
       const sectionContent = this.dailyNoteBuilder.buildDailyNoteSectionContent(
         notesForDay,
         sectionHeadingSetting
@@ -346,7 +370,7 @@ export default class GranolaSync extends Plugin {
         sectionContent,
         forceOverwrite
       );
-      processedCount++;
+      processedCount += notesForDay.length;
       this.updateSyncStatus("Note", processedCount, documents.length);
 
       syncedCount += notesForDay.length;
@@ -400,8 +424,7 @@ export default class GranolaSync extends Plugin {
               isCombinedMode ? "combined" : "note"
             )
           ) {
-            // Still track for daily note linking even if not synced
-            syncedNotes.push({ doc, notePath });
+            // Note is up-to-date, skip syncing (and don't add to syncedNotes for daily note linking)
             continue;
           }
         }

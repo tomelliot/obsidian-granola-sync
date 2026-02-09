@@ -217,6 +217,8 @@ export class DocumentProcessor {
     const markdownContent = convertProsemirrorToMarkdown(contentToParse);
 
     // Build markdown with optional private notes section
+    // Note: These headings (### instead of ##) are designed to be one level deeper
+    // than the note title heading that will be added by buildDailyNoteSectionContent
     const hasPrivateNotes =
       this.settings.includePrivateNotes &&
       doc.notes_markdown &&
@@ -224,11 +226,11 @@ export class DocumentProcessor {
 
     let finalMarkdown = "";
     if (hasPrivateNotes) {
-      finalMarkdown += "## Private Notes\n\n";
+      finalMarkdown += "### Private Notes\n\n";
       finalMarkdown += doc.notes_markdown;
       finalMarkdown += "\n\n";
       // Add enhanced notes section heading when private notes are present
-      finalMarkdown += "## Enhanced Notes\n\n";
+      finalMarkdown += "### Enhanced Notes\n\n";
     }
     finalMarkdown += markdownContent;
 

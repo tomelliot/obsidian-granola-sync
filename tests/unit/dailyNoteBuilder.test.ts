@@ -49,6 +49,131 @@ describe("DailyNoteBuilder", () => {
     jest.clearAllMocks();
   });
 
+  describe("extractExistingNotes", () => {
+    it("should extract Granola IDs and updated_at timestamps from a daily note section", () => {
+      const fileContent = [
+        "# Daily Note",
+        "",
+        "## Granola Notes",
+        "### Morning Standup",
+        "**Granola ID:** doc-123",
+        "**Created:** 2024-01-15T09:00:00Z",
+        "**Updated:** 2024-01-15T09:30:00Z",
+        "",
+        "Content here",
+        "",
+        "### Planning Meeting",
+        "**Granola ID:** doc-456",
+        "**Created:** 2024-01-15T14:00:00Z",
+        "**Updated:** 2024-01-15T14:45:00Z",
+        "",
+        "More content",
+        "",
+        "## Other Section",
+        "Different content",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.extractExistingNotes(
+        fileContent,
+        "## Granola Notes"
+      );
+
+      expect(result.size).toBe(2);
+      expect(result.get("doc-123")).toBe("2024-01-15T09:30:00Z");
+      expect(result.get("doc-456")).toBe("2024-01-15T14:45:00Z");
+    });
+
+    it("should handle notes without Updated timestamps", () => {
+      const fileContent = [
+        "## Granola Notes",
+        "### Test Note",
+        "**Granola ID:** doc-789",
+        "**Created:** 2024-01-15T10:00:00Z",
+        "",
+        "Content",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.extractExistingNotes(
+        fileContent,
+        "## Granola Notes"
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get("doc-789")).toBeUndefined();
+    });
+
+    it("should return empty map when section doesn't exist", () => {
+      const fileContent = [
+        "# Daily Note",
+        "",
+        "Some content without the section",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.extractExistingNotes(
+        fileContent,
+        "## Granola Notes"
+      );
+
+      expect(result.size).toBe(0);
+    });
+
+    it("should stop at next same-level section", () => {
+      const fileContent = [
+        "## Granola Notes",
+        "### First Note",
+        "**Granola ID:** doc-123",
+        "**Updated:** 2024-01-15T09:00:00Z",
+        "",
+        "## Tasks",
+        "### Should Not Be Included",
+        "**Granola ID:** doc-999",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.extractExistingNotes(
+        fileContent,
+        "## Granola Notes"
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get("doc-123")).toBe("2024-01-15T09:00:00Z");
+      expect(result.get("doc-999")).toBeUndefined();
+    });
+
+    it("should handle section with no notes", () => {
+      const fileContent = [
+        "## Granola Notes",
+        "",
+        "## Other Section",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.extractExistingNotes(
+        fileContent,
+        "## Granola Notes"
+      );
+
+      expect(result.size).toBe(0);
+    });
+
+    it("should work with different heading levels", () => {
+      const fileContent = [
+        "# Granola Notes",
+        "## Meeting 1",
+        "**Granola ID:** doc-111",
+        "**Updated:** 2024-01-15T10:00:00Z",
+        "",
+        "# Other Section",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.extractExistingNotes(
+        fileContent,
+        "# Granola Notes"
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get("doc-111")).toBe("2024-01-15T10:00:00Z");
+    });
+  });
+
   describe("buildDailyNotesMap", () => {
     it("should group documents by date", () => {
       const doc1: GranolaDoc = {
@@ -195,7 +320,7 @@ describe("DailyNoteBuilder", () => {
       );
 
       expect(result).toContain("## Granola Notes");
-      expect(result).toContain("## Test Note");
+      expect(result).toContain("### Test Note");
       expect(result).toContain("**Granola ID:** doc-123");
       expect(result).toContain("**Created:** 2024-01-15T10:00:00Z");
       expect(result).toContain("**Updated:** 2024-01-15T12:00:00Z");
@@ -216,7 +341,7 @@ describe("DailyNoteBuilder", () => {
 
       expect(result).not.toContain("**Created:**");
       expect(result).not.toContain("**Updated:**");
-      expect(result).toContain("## Test Note");
+      expect(result).toContain("### Test Note");
       expect(result).toContain("**Granola ID:** doc-123");
     });
 
@@ -242,8 +367,8 @@ describe("DailyNoteBuilder", () => {
         "## Granola Notes"
       );
 
-      expect(result).toContain("## Test Note");
-      expect(result).toContain("## Second Note");
+      expect(result).toContain("### Test Note");
+      expect(result).toContain("### Second Note");
       expect(result).toContain("**Granola ID:** doc-123");
       expect(result).toContain("**Granola ID:** doc-456");
     });
@@ -256,6 +381,36 @@ describe("DailyNoteBuilder", () => {
 
       expect(result.endsWith("\n")).toBe(true);
       expect(result.endsWith("\n\n")).toBe(false);
+    });
+
+    it("should use heading level one deeper than section heading", () => {
+      const result = dailyNoteBuilder.buildDailyNoteSectionContent(
+        [noteData],
+        "## Granola Notes"
+      );
+
+      // Section is ##, note should be ###
+      expect(result).toContain("### Test Note");
+    });
+
+    it("should handle different section heading levels", () => {
+      const result = dailyNoteBuilder.buildDailyNoteSectionContent(
+        [noteData],
+        "# Granola Notes"
+      );
+
+      // Section is #, note should be ##
+      expect(result).toContain("## Test Note");
+    });
+
+    it("should not exceed heading level 6", () => {
+      const result = dailyNoteBuilder.buildDailyNoteSectionContent(
+        [noteData],
+        "###### Granola Notes"
+      );
+
+      // Section is ######, note should still be ###### (max level)
+      expect(result).toContain("###### Test Note");
     });
   });
 

@@ -209,5 +209,57 @@ describe("updateProperties & updateSection", () => {
       expect(modified).toContain(sectionContent);
       expect(modified).not.toContain("Old content");
     });
+
+    it("should correctly detect section boundaries when content contains same-level headings", async () => {
+      // This test verifies the fix for heading level conflict
+      // When section content contains headings at the same level as the section heading,
+      // the boundary detection should still work correctly
+      const existingFile = [
+        "# Daily Note",
+        "",
+        "## Granola Notes",
+        "### First Note",
+        "**Granola ID:** doc-1",
+        "Content 1",
+        "",
+        "### Second Note",
+        "**Granola ID:** doc-2",
+        "Content 2",
+        "",
+        "## Other Section",
+        "Other content",
+      ].join("\n");
+
+      const newSectionContent = [
+        "## Granola Notes",
+        "### Updated Note",
+        "**Granola ID:** doc-3",
+        "Updated content",
+      ].join("\n");
+
+      mockVault.read.mockResolvedValueOnce(existingFile);
+
+      await updateSection(mockApp, mockFile, "## Granola Notes", newSectionContent);
+
+      const processCallback = (mockVault.process as jest.Mock).mock.calls[0][1];
+      const modified = processCallback(existingFile);
+
+      // Verify the section was replaced correctly
+      expect(modified).toContain("## Granola Notes");
+      expect(modified).toContain("### Updated Note");
+      expect(modified).toContain("**Granola ID:** doc-3");
+      expect(modified).toContain("Updated content");
+      
+      // Verify old content was removed
+      expect(modified).not.toContain("First Note");
+      expect(modified).not.toContain("Second Note");
+      expect(modified).not.toContain("doc-1");
+      expect(modified).not.toContain("doc-2");
+      
+      // Verify content outside the section is preserved
+      expect(modified).toContain("# Daily Note");
+      expect(modified).toContain("## Other Section");
+      expect(modified).toContain("Other content");
+    });
   });
 });
