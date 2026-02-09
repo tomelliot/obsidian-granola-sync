@@ -44,7 +44,7 @@ export interface NoteSettings {
   // Only if saveAsIndividualFiles = true:
   // Option to add links to daily notes pointing to individual note files
   linkFromDailyNotes: boolean;
-  dailyNoteLinkHeading?: string; // heading for links section, default "## Meetings"
+  dailyNoteLinkHeading?: string; // heading for links section, default "# Meetings"
 
   // Only if saveAsIndividualFiles = false:
   dailyNoteSectionHeading?: string;
@@ -102,8 +102,8 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   subfolderPattern: "none",
   filenamePattern: "{title}",
   linkFromDailyNotes: false,
-  dailyNoteLinkHeading: "## Meetings",
-  dailyNoteSectionHeading: "## Granola Notes",
+  dailyNoteLinkHeading: "# Meetings",
+  dailyNoteSectionHeading: "# Granola Notes",
   // TranscriptSettings
   syncTranscripts: false,
   transcriptHandling: "custom-location",
@@ -445,14 +445,14 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           new Setting(containerEl)
             .setName("Daily note link heading")
             .setDesc(
-              'The markdown heading for the meeting links section in daily notes. Include heading markers (e.g., "## Meetings").\n\n' +
+              'The markdown heading for the meeting links section in daily notes. Include heading markers (e.g., "# Meetings").\n\n' +
               '**Important:** The plugin replaces the entire section from this heading until the next heading at the same or higher level. Any content you manually add under this heading will be overwritten during sync. To preserve your content, place it under a new heading.'
             )
             .addText((text) =>
               text
-                .setPlaceholder("## Meetings")
+                .setPlaceholder("# Meetings")
                 .setValue(
-                  this.plugin.settings.dailyNoteLinkHeading || "## Meetings"
+                  this.plugin.settings.dailyNoteLinkHeading || "# Meetings"
                 )
                 .onChange(async (value) => {
                   this.plugin.settings.dailyNoteLinkHeading = value;
@@ -465,14 +465,14 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         new Setting(containerEl)
           .setName("Daily note section heading")
           .setDesc(
-            'The markdown heading for the Granola notes section. Include heading markers (e.g., "## Meeting Notes").'
+            'The markdown heading for the Granola notes section. Include heading markers (e.g., "# Meeting Notes").'
           )
           .addText((text) =>
             text
-              .setPlaceholder("## Granola Notes")
+              .setPlaceholder("# Granola Notes")
               .setValue(
                 this.plugin.settings.dailyNoteSectionHeading ||
-                  "## Granola Notes"
+                  "# Granola Notes"
               )
               .onChange(async (value) => {
                 this.plugin.settings.dailyNoteSectionHeading = value;
