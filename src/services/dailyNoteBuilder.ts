@@ -14,8 +14,11 @@ import { log } from "../utils/logger";
 export interface NoteData {
   title: string;
   docId: string;
+  type: string;
   createdAt?: string;
   updatedAt?: string;
+  attendees: string[];
+  transcript?: string;
   markdown: string;
 }
 
@@ -34,6 +37,9 @@ export class DailyNoteBuilder {
 
   /**
    * Extracts existing Granola IDs and their updated_at timestamps from a daily note section.
+   * Note: This method focuses on extracting the minimal info needed for change detection.
+   * It parses Type, Attendees, and Transcript fields if present for completeness,
+   * but only Granola ID and Updated timestamp are used for comparison.
    *
    * @param fileContent - The content of the daily note file
    * @param sectionHeading - The section heading to look for
@@ -90,6 +96,9 @@ export class DailyNoteBuilder {
         if (updatedMatch && currentGranolaId) {
           currentUpdatedAt = updatedMatch[1].trim();
         }
+
+        // We could parse Type, Attendees, and Transcript here if needed for future features
+        // For now, we only need Updated timestamp for change detection
       }
     }
 
@@ -105,10 +114,15 @@ export class DailyNoteBuilder {
    * Groups documents by their date and extracts note data for each.
    *
    * @param documents - Array of Granola documents to process
-   * @returns Map of date keys (YYYY-MM-DD) to arrays of note data
+   * @returns Map of date keys (YYYY-MM-DD) to arrays of note data with their source documents
    */
-  buildDailyNotesMap(documents: GranolaDoc[]): Map<string, NoteData[]> {
-    const dailyNotesMap = new Map<string, NoteData[]>();
+  buildDailyNotesMap(
+    documents: GranolaDoc[]
+  ): Map<string, Array<{ noteData: NoteData; doc: GranolaDoc }>> {
+    const dailyNotesMap = new Map<
+      string,
+      Array<{ noteData: NoteData; doc: GranolaDoc }>
+    >();
 
     for (const doc of documents) {
       const noteData = this.documentProcessor.extractNoteForDailyNote(doc);
@@ -123,7 +137,7 @@ export class DailyNoteBuilder {
         dailyNotesMap.set(mapKey, []);
       }
 
-      dailyNotesMap.get(mapKey)!.push(noteData);
+      dailyNotesMap.get(mapKey)!.push({ noteData, doc });
     }
 
     return dailyNotesMap;
@@ -173,11 +187,23 @@ export class DailyNoteBuilder {
       content += `\n${noteHeadingPrefix} ${note.title}\n`;
       content += `**Granola ID:** ${note.docId}\n`;
 
+      if (note.type) {
+        content += `**Type:** ${note.type}\n`;
+      }
+
       if (note.createdAt) {
         content += `**Created:** ${note.createdAt}\n`;
       }
       if (note.updatedAt) {
         content += `**Updated:** ${note.updatedAt}\n`;
+      }
+
+      if (note.attendees && note.attendees.length > 0) {
+        content += `**Attendees:** ${note.attendees.join(", ")}\n`;
+      }
+
+      if (note.transcript) {
+        content += `**Transcript:** ${note.transcript}\n`;
       }
 
       content += `\n${note.markdown}\n`;

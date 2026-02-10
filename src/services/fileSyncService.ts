@@ -527,13 +527,18 @@ export class FileSyncService {
   }
 
   /**
-   * Appends image embeds for any image attachments on the given document.
+   * Appends image embeds for any image attachments on the given document to the provided content.
    * Images are downloaded and stored under a predictable `attachments/` folder
    * in the vault. Only successfully saved images are embedded.
    *
    * Images are fetched in parallel for performance.
+   *
+   * @param doc - The Granola document with attachments
+   * @param content - The markdown content to append embeds to
+   * @param sourcePath - The file path (used to determine attachment storage location)
+   * @returns The content with image embeds appended
    */
-  private async appendImageEmbedsForAttachments(
+  async appendImageEmbedsForAttachments(
     doc: GranolaDoc,
     content: string,
     sourcePath: string
