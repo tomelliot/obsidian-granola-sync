@@ -1,4 +1,5 @@
 import { App, TFile } from "obsidian";
+import * as obsidian from "obsidian";
 import { FileSyncService } from "../../src/services/fileSyncService";
 import type { GranolaDoc } from "../../src/services/granolaApi";
 import type { DocumentProcessor } from "../../src/services/documentProcessor";
@@ -21,17 +22,24 @@ describe("FileSyncService", () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     jest.spyOn(console, "warn").mockImplementation(() => {});
 
-    // Create a mock app with vault and metadataCache
+    // Create a mock app with vault, including binary APIs, fileManager, and metadataCache
     mockApp = {
       vault: {
         getMarkdownFiles: jest.fn(),
         getAbstractFileByPath: jest.fn(),
         createFolder: jest.fn(),
         create: jest.fn(),
+        createBinary: jest.fn(),
         read: jest.fn(),
         modify: jest.fn(),
         rename: jest.fn(),
+        getConfig: jest.fn().mockReturnValue("attachments"),
       },
+      fileManager: {
+        getAvailablePathForAttachment: jest
+          .fn()
+          .mockImplementation((filename: string) => `attachments/${filename}`),
+      } as any,
       metadataCache: {
         getFileCache: jest.fn(),
       },
@@ -673,8 +681,8 @@ describe("FileSyncService", () => {
         content: "content",
       });
       jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-      const saveToDiskSpy = jest
-        .spyOn(fileSyncService, "saveToDisk")
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile")
         .mockResolvedValue(true);
 
       const result = await fileSyncService.saveNoteToDisk(
@@ -683,13 +691,15 @@ describe("FileSyncService", () => {
       );
 
       expect(result).toBe(true);
-      expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(doc, undefined);
-      expect(saveToDiskSpy).toHaveBeenCalledWith(
-        "note.md",
-        "content",
-        noteDate,
+      expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
+        doc,
+        undefined
+      );
+      expect(saveFileSpy).toHaveBeenCalledWith(
+        expect.stringContaining("note.md"),
+        expect.any(String),
         "doc-1",
-        false,
+        "note",
         false
       );
     });
@@ -718,6 +728,69 @@ describe("FileSyncService", () => {
         doc,
         "Transcripts/note-transcript.md"
       );
+    });
+
+    it("should download image attachments and append embeds at end of note content", async () => {
+      const doc: GranolaDoc = {
+        id: "doc-attachments",
+        title: "Note With Attachments",
+        attachments: [
+          {
+            id: "att-1",
+            url: "https://example.com/image-1",
+            type: "image",
+          },
+        ],
+      };
+
+      const noteDate = new Date("2024-01-02T12:00:00Z");
+      mockDocumentProcessor.prepareNote.mockReturnValue({
+        filename: "note-with-attachments.md",
+        content: "Base content",
+      });
+      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
+
+      const requestUrlSpy = jest
+        .spyOn(obsidian as any, "requestUrl")
+        .mockResolvedValue({
+          arrayBuffer: new ArrayBuffer(8),
+          headers: { "content-type": "image/png" },
+        });
+
+      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
+
+      let savedContent = "";
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile")
+        .mockImplementation(
+          async (
+            _filePath: string,
+            content: string,
+            _granolaId: string,
+            _forceOverwrite: boolean
+          ) => {
+            savedContent = content;
+            return true;
+          }
+        );
+
+      await fileSyncService.saveNoteToDisk(
+        doc,
+        mockDocumentProcessor,
+        false,
+        undefined
+      );
+
+      expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
+        doc,
+        undefined
+      );
+      expect(requestUrlSpy).toHaveBeenCalledTimes(1);
+      expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(1);
+      expect(savedContent).toContain("Base content");
+      expect(savedContent.trim().endsWith("]]")).toBe(true);
+      expect(savedContent).toMatch(/!\[\[\s*attachments\/doc-attachments-att-1\.png\s*\]\]/);
+      expect(saveFileSpy).toHaveBeenCalled();
     });
   });
 
@@ -986,18 +1059,17 @@ describe("FileSyncService", () => {
         content: "content",
       });
       jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-      const saveToDiskSpy = jest
-        .spyOn(fileSyncService, "saveToDisk")
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile")
         .mockResolvedValue(true);
 
       await fileSyncService.saveNoteToDisk(doc, mockDocumentProcessor, true);
 
-      expect(saveToDiskSpy).toHaveBeenCalledWith(
-        "note.md",
-        "content",
-        noteDate,
+      expect(saveFileSpy).toHaveBeenCalledWith(
+        expect.stringContaining("note.md"),
+        expect.any(String),
         "doc-1",
-        false,
+        "note",
         true // forceOverwrite should be passed through
       );
     });
