@@ -433,8 +433,11 @@ describe("DocumentProcessor", () => {
       expect(result).toEqual({
         title: "Test Note",
         docId: "doc-123",
+        type: "note",
         createdAt: "2024-01-15T10:00:00Z",
         updatedAt: "2024-01-15T12:00:00Z",
+        attendees: [],
+        transcript: undefined,
         markdown: "# Mock Content\n\nThis is mock markdown content.",
       });
     });
@@ -467,6 +470,11 @@ describe("DocumentProcessor", () => {
       expect(result).toEqual({
         title: "Minimal Note",
         docId: "doc-456",
+        type: "note",
+        createdAt: undefined,
+        updatedAt: undefined,
+        attendees: [],
+        transcript: undefined,
         markdown: "# Mock Content\n\nThis is mock markdown content.",
       });
     });
