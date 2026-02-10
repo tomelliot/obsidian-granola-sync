@@ -13,6 +13,6 @@ coverage:
     changes: false
     default_rules:
       flag_coverage_not_uploaded_behavior: include
-    patch: true
+    patch: false
     project: true
 slack_app: true
