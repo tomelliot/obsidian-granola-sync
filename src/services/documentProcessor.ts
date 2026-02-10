@@ -287,7 +287,7 @@ export class DocumentProcessor {
         transcript: metadata.transcript,
         markdown: body,
       };
-    } catch (error) {
+    } catch {
       // If buildNoteBody throws an error (no valid content), return null
       return null;
     }
