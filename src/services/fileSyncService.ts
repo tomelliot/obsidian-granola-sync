@@ -1,5 +1,5 @@
-import { App, Notice, TFile, normalizePath } from "obsidian";
-import type { GranolaDoc } from "./granolaApi";
+import { App, Notice, TFile, normalizePath, requestUrl } from "obsidian";
+import type { GranolaAttachment, GranolaDoc } from "./granolaApi";
 import type { DocumentProcessor } from "./documentProcessor";
 import { PathResolver } from "./pathResolver";
 import { GranolaSyncSettings } from "../settings";
@@ -415,8 +415,20 @@ export class FileSyncService {
       return false;
     }
 
+    const contentWithAttachments = await this.appendImageEmbedsForAttachments(
+      doc,
+      content,
+      filePath
+    );
+
     // Save with type "combined"
-    return this.saveFile(filePath, content, doc.id, "combined", forceOverwrite);
+    return this.saveFile(
+      filePath,
+      contentWithAttachments,
+      doc.id,
+      "combined",
+      forceOverwrite
+    );
   }
 
   /**
@@ -438,12 +450,35 @@ export class FileSyncService {
     );
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(
-      filename,
+    const folderPath = this.resolveFolderPath(noteDate, false);
+    if (!folderPath) {
+      return false;
+    }
+
+    if (!(await this.ensureFolder(folderPath))) {
+      new Notice(
+        `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
+        7000
+      );
+      return false;
+    }
+
+    const filePath = this.resolveFilePath(filename, noteDate, doc.id, false);
+    if (!filePath) {
+      return false;
+    }
+
+    const contentWithAttachments = await this.appendImageEmbedsForAttachments(
+      doc,
       content,
-      noteDate,
+      filePath
+    );
+
+    return this.saveFile(
+      filePath,
+      contentWithAttachments,
       doc.id,
-      false,
+      "note",
       forceOverwrite
     );
   }
@@ -489,5 +524,173 @@ export class FileSyncService {
    */
   getCacheSize(): number {
     return this.granolaIdCache.size;
+  }
+
+  /**
+   * Appends image embeds for any image attachments on the given document.
+   * Images are downloaded and stored under a predictable `attachments/` folder
+   * in the vault. Only successfully saved images are embedded.
+   *
+   * Images are fetched in parallel for performance.
+   */
+  private async appendImageEmbedsForAttachments(
+    doc: GranolaDoc,
+    content: string,
+    sourcePath: string
+  ): Promise<string> {
+    const imageAttachments =
+      doc.attachments?.filter(
+        (attachment) =>
+          attachment &&
+          typeof attachment.url === "string" &&
+          attachment.type === "image"
+      ) ?? [];
+
+    if (imageAttachments.length === 0) {
+      return content;
+    }
+
+    const results = await Promise.allSettled(
+      imageAttachments.map((attachment, index) =>
+        this.downloadAndSaveImageAttachment(
+          doc,
+          attachment,
+          sourcePath,
+          index
+        )
+      )
+    );
+
+    const embedLines: string[] = [];
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        embedLines.push(`![[${result.value}]]`);
+      }
+    }
+
+    if (embedLines.length === 0) {
+      return content;
+    }
+
+    const separator = content.endsWith("\n") ? "\n" : "\n\n";
+    return content + separator + embedLines.join("\n") + "\n";
+  }
+
+  /**
+   * Maps a Content-Type header value to a file extension.
+   * Returns null if the content type is missing or unrecognized.
+   */
+  private getExtensionFromContentType(contentType: string | undefined): string | null {
+    if (!contentType) {
+      return null;
+    }
+
+    const mimeType = contentType.split(";")[0].trim().toLowerCase();
+    const mimeToExtension: Record<string, string> = {
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/jpg": "jpg",
+      "image/gif": "gif",
+      "image/webp": "webp",
+      "image/svg+xml": "svg",
+    };
+
+    return mimeToExtension[mimeType] || null;
+  }
+
+  /**
+   * Extracts a file extension from a URL path.
+   * Returns null if no valid extension is found.
+   */
+  private getExtensionFromUrl(url: string): string | null {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const match = pathname.match(/\.([a-z0-9]+)$/i);
+      if (!match) {
+        return null;
+      }
+
+      const extension = match[1].toLowerCase();
+      // Only accept known image extensions
+      const validExtensions = ["png", "jpg", "jpeg", "gif", "webp", "svg"];
+      return validExtensions.includes(extension) ? extension : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Downloads and stores a single image attachment, returning the vault-relative
+   * path to the saved image if successful. If the file already exists, no
+   * network request is made and the existing path is returned.
+   */
+  private async downloadAndSaveImageAttachment(
+    doc: GranolaDoc,
+    attachment: GranolaAttachment,
+    sourcePath: string,
+    index: number
+  ): Promise<string | null> {
+    try {
+      // Download the image first to determine the correct extension from Content-Type
+      const response = await requestUrl({
+        url: attachment.url,
+        method: "GET",
+      });
+
+      // Try to determine extension from Content-Type header first
+      const contentType = response.headers["content-type"];
+      let extension = this.getExtensionFromContentType(contentType);
+
+      // If Content-Type doesn't provide an extension, try the URL
+      if (!extension) {
+        extension = this.getExtensionFromUrl(attachment.url);
+      }
+
+      // If we still can't determine the extension, skip this attachment
+      if (!extension) {
+        log.error(
+          "Cannot determine file extension for image attachment - skipping",
+          {
+            granolaId: doc.id,
+            attachmentId: attachment.id,
+            url: attachment.url,
+            contentType: contentType || "none",
+          }
+        );
+        return null;
+      }
+
+      // Create filename with correct extension
+      const filename = `${doc.id ?? "unknown"}-${
+        attachment.id ?? `attachment-${index}`
+      }.${extension}`;
+
+      const targetPath =
+        (await this.app.fileManager.getAvailablePathForAttachment(
+          filename,
+          sourcePath
+        )) ?? filename;
+      const normalizedPath = normalizePath(targetPath);
+
+      // Check if file already exists at this path
+      const existingFile = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (existingFile instanceof TFile) {
+        return normalizedPath;
+      }
+
+      // Save the downloaded image
+      const buffer = response.arrayBuffer;
+      await this.app.vault.createBinary(normalizedPath, buffer);
+      return normalizedPath;
+    } catch (error) {
+      log.warn("Failed to download or save attachment image", {
+        granolaId: doc.id,
+        attachmentId: attachment.id,
+        error:
+          error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 }

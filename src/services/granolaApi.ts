@@ -21,6 +21,18 @@ export interface ProseMirrorDoc {
 }
 
 // GranolaDoc type (defined explicitly due to recursive nature of ProseMirrorDoc)
+export interface GranolaAttachment {
+  id: string;
+  url: string;
+  type?: string;
+  width?: number;
+  height?: number;
+  // Allow additional metadata fields without forcing callers to model them
+  // explicitly. This keeps the type aligned with the API while remaining
+  // forward-compatible.
+  [key: string]: unknown;
+}
+
 export interface GranolaDoc {
   id: string;
   title: string | null;
@@ -37,6 +49,10 @@ export interface GranolaDoc {
     content?: ProseMirrorDoc | string | null;
   } | null;
   notes_markdown?: string;
+   // Optional attachments array as returned by the Granola API.
+   // Currently used primarily for image attachments which are synced into
+   // the Obsidian vault and embedded at the end of the note.
+  attachments?: GranolaAttachment[];
 }
 
 // Infer TypeScript type from validation schema
