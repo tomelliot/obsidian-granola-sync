@@ -25,6 +25,10 @@ jest.mock("../../src/utils/logger", () => ({
 }));
 
 describe("printValidationIssuePaths", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it("should not print anything when validation succeeds", () => {
     const validData = { docs: [] };
     const result = v.safeParse(GranolaApiResponseSchema, validData);
@@ -33,6 +37,42 @@ describe("printValidationIssuePaths", () => {
 
     // Just verify it doesn't throw
     expect(result.success).toBe(true);
+  });
+
+  it("should print validation errors with path", () => {
+    const invalidData = { docs: [{ id: 123 }] };
+    const result = v.safeParse(GranolaApiResponseSchema, invalidData);
+
+    printValidationIssuePaths(result);
+
+    expect(result.success).toBe(false);
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it("should handle validation errors without path (empty path array)", () => {
+    // Create a schema that will produce an error with empty path
+    const schema = v.object({ docs: v.array(v.any()) });
+    const invalidData = { not_docs: "value" };
+    const result = v.safeParse(schema, invalidData);
+
+    printValidationIssuePaths(result);
+
+    expect(result.success).toBe(false);
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it("should handle path with non-string/non-number keys", () => {
+    // Create a validation error with an object key
+    const schema = v.object({
+      items: v.array(v.object({ id: v.string() })),
+    });
+    const invalidData = { items: [{ id: 123 }] };
+    const result = v.safeParse(schema, invalidData);
+
+    printValidationIssuePaths(result);
+
+    expect(result.success).toBe(false);
+    expect(log.error).toHaveBeenCalled();
   });
 });
 
@@ -211,7 +251,75 @@ describe("fetchAllGranolaDocuments", () => {
     expect(result.length).toBeGreaterThan(0);
   });
 
+  it("should stop when empty page is returned", async () => {
+    const page1 = {
+      docs: Array.from({ length: 100 }, (_, i) => ({
+        id: `doc-${i}`,
+        title: `Note ${i}`,
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      })),
+    };
+    const emptyPage = { docs: [] };
 
+    (requestUrl as jest.Mock)
+      .mockResolvedValueOnce({ json: page1 })
+      .mockResolvedValueOnce({ json: emptyPage });
+
+    const result = await fetchAllGranolaDocuments(mockAccessToken, 100);
+
+    expect(result).toHaveLength(100);
+    expect(requestUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it("should handle pagination when page is full", async () => {
+    const page1 = {
+      docs: Array.from({ length: 100 }, (_, i) => ({
+        id: `doc-${i}`,
+        title: `Note ${i}`,
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      })),
+    };
+    const page2 = {
+      docs: Array.from({ length: 50 }, (_, i) => ({
+        id: `doc-${i + 100}`,
+        title: `Note ${i + 100}`,
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      })),
+    };
+
+    (requestUrl as jest.Mock)
+      .mockResolvedValueOnce({ json: page1 })
+      .mockResolvedValueOnce({ json: page2 });
+
+    const result = await fetchAllGranolaDocuments(mockAccessToken, 100);
+
+    expect(result).toHaveLength(150);
+    expect(requestUrl).toHaveBeenCalledTimes(2);
+    // Verify offset was incremented
+    expect(requestUrl).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: expect.stringContaining('"offset":100'),
+      })
+    );
+  });
+
+  it("should stop when page is not full", async () => {
+    const partialPage = {
+      docs: Array.from({ length: 50 }, (_, i) => ({
+        id: `doc-${i}`,
+        title: `Note ${i}`,
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      })),
+    };
+
+    (requestUrl as jest.Mock).mockResolvedValueOnce({ json: partialPage });
+
+    const result = await fetchAllGranolaDocuments(mockAccessToken, 100);
+
+    expect(result).toHaveLength(50);
+    expect(requestUrl).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("fetchGranolaDocumentsByDaysBack", () => {
@@ -294,6 +402,96 @@ describe("fetchGranolaDocumentsByDaysBack", () => {
     expect(result).toHaveLength(1);
   });
 
+  it("should fetch all documents when daysBack is 0", async () => {
+    const page1 = {
+      docs: Array.from({ length: 50 }, (_, i) => ({
+        id: `doc-${i}`,
+        title: `Note ${i}`,
+        created_at: "2024-01-18T10:00:00Z",
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      })),
+    };
+
+    (requestUrl as jest.Mock).mockResolvedValueOnce({ json: page1 });
+
+    const result = await fetchGranolaDocumentsByDaysBack(mockAccessToken, 0);
+
+    expect(result).toHaveLength(50);
+  });
+
+  it("should stop when empty page is returned", async () => {
+    const page1 = {
+      docs: Array.from({ length: 100 }, (_, i) => ({
+        id: `doc-${i}`,
+        title: `Note ${i}`,
+        created_at: "2024-01-18T10:00:00Z",
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      })),
+    };
+    const emptyPage = { docs: [] };
+
+    (requestUrl as jest.Mock)
+      .mockResolvedValueOnce({ json: page1 })
+      .mockResolvedValueOnce({ json: emptyPage });
+
+    const result = await fetchGranolaDocumentsByDaysBack(mockAccessToken, 7);
+
+    expect(result).toHaveLength(100);
+    expect(requestUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it("should handle pagination when all documents are recent", async () => {
+    const page1 = {
+      docs: Array.from({ length: 100 }, (_, i) => ({
+        id: `doc-${i}`,
+        title: `Note ${i}`,
+        created_at: "2024-01-18T10:00:00Z",
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      })),
+    };
+    const page2 = {
+      docs: Array.from({ length: 50 }, (_, i) => ({
+        id: `doc-${i + 100}`,
+        title: `Note ${i + 100}`,
+        created_at: "2024-01-17T10:00:00Z",
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      })),
+    };
+
+    (requestUrl as jest.Mock)
+      .mockResolvedValueOnce({ json: page1 })
+      .mockResolvedValueOnce({ json: page2 });
+
+    const result = await fetchGranolaDocumentsByDaysBack(mockAccessToken, 7);
+
+    expect(result).toHaveLength(150);
+    expect(requestUrl).toHaveBeenCalledTimes(2);
+    // Verify offset was incremented
+    expect(requestUrl).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: expect.stringContaining('"offset":100'),
+      })
+    );
+  });
+
+  it("should use updated_at when created_at is missing", async () => {
+    const doc = {
+      id: "doc-1",
+      title: "Note",
+      updated_at: "2024-01-18T10:00:00Z",
+      last_viewed_panel: { content: { type: "doc", content: [] } },
+    };
+
+    (requestUrl as jest.Mock).mockResolvedValueOnce({
+      json: { docs: [doc] },
+    });
+
+    const result = await fetchGranolaDocumentsByDaysBack(mockAccessToken, 7);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("doc-1");
+  });
 });
 
 describe("fetchGranolaTranscript", () => {
