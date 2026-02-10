@@ -24,6 +24,16 @@ Example:
 - Obsidian version: 
 - Plugin version: 
 
+### Settings configuration:
+<!--
+Paste your plugin settings here. In Obsidian: open Settings → (Community Plugins) Granola Sync → use the "Export settings as JSON" button to copy your settings to the clipboard, then paste below.
+You may redact any sensitive values before pasting.
+-->
+
+```
+(paste exported JSON here)
+```
+
 ### Current Behavior:
 <!-- A concise description of what you're experiencing. -->
 

@@ -291,7 +291,11 @@ export default class GranolaSync extends Plugin {
     let syncedCount: number;
 
     if (!this.settings.saveAsIndividualFiles) {
-      syncedCount = await this.syncNotesToDailyNotes(documents, forceOverwrite);
+      syncedCount = await this.syncNotesToDailyNotes(
+        documents,
+        forceOverwrite,
+        transcriptDataMap
+      );
     } else {
       const result = await this.syncNotesToIndividualFiles(
         documents,
@@ -321,20 +325,27 @@ export default class GranolaSync extends Plugin {
 
   private async syncNotesToDailyNotes(
     documents: GranolaDoc[],
-    forceOverwrite: boolean = false
+    forceOverwrite: boolean = false,
+    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
   ): Promise<number> {
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
     const sectionHeadingSetting = (
       this.settings.dailyNoteSectionHeading ||
       DEFAULT_SETTINGS.dailyNoteSectionHeading!
     ).trim();
+    const isCombinedMode =
+      this.settings.syncTranscripts &&
+      this.settings.transcriptHandling === "combined";
     let processedCount = 0;
     let syncedCount = 0;
 
-    for (const [dateKey, notesForDay] of dailyNotesMap) {
+    for (const [dateKey, notesWithDocs] of dailyNotesMap) {
       const dailyNoteFile = await this.dailyNoteBuilder.getOrCreateDailyNote(
         dateKey
       );
+
+      // Extract just the note data for comparison
+      const notesForDay = notesWithDocs.map((item) => item.noteData);
 
       // Check if all notes for this date are already up-to-date (unless forceOverwrite is true)
       if (!forceOverwrite) {
@@ -359,8 +370,41 @@ export default class GranolaSync extends Plugin {
         }
       }
 
+      // Process image attachments and transcripts for each note
+      const notesWithImages = await Promise.all(
+        notesWithDocs.map(async ({ noteData, doc }) => {
+          // Append image embeds to the note's markdown
+          let markdownWithImages =
+            await this.fileSyncService.appendImageEmbedsForAttachments(
+              doc,
+              noteData.markdown,
+              dailyNoteFile.path
+            );
+
+          // If combined mode and transcript available, append transcript content
+          if (isCombinedMode && transcriptDataMap) {
+            const transcriptData = transcriptDataMap.get(doc.id || "");
+            if (transcriptData && transcriptData.length > 0) {
+              const transcriptBody = formatTranscriptBody(transcriptData);
+              markdownWithImages += "\n\n### Transcript\n\n" + transcriptBody;
+              // Set transcript link to heading within the same section
+              return {
+                ...noteData,
+                markdown: markdownWithImages,
+                transcript: "[[#Transcript]]",
+              };
+            }
+          }
+
+          return {
+            ...noteData,
+            markdown: markdownWithImages,
+          };
+        })
+      );
+
       const sectionContent = this.dailyNoteBuilder.buildDailyNoteSectionContent(
-        notesForDay,
+        notesWithImages,
         sectionHeadingSetting
       );
 

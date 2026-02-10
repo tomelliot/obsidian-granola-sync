@@ -611,6 +611,9 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       }
     }
 
+    // Advanced Section (Full sync + Export settings)
+    new Setting(containerEl).setName("Advanced").setHeading();
+
     new Setting(containerEl)
       .setName("Full sync")
       .setDesc(
@@ -625,6 +628,26 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             await this.plugin.sync({ mode: "full" });
             new Notice("Granola sync: Full sync complete.");
           })
+      );
+
+    new Setting(containerEl)
+      .setName("Export settings as JSON")
+      .setDesc(
+        "Copy the current plugin settings as formatted JSON to the clipboard."
+      )
+      .addButton((button) =>
+        button.setButtonText("Export").onClick(async () => {
+          try {
+            const json = JSON.stringify(this.plugin.settings, null, 2);
+            await navigator.clipboard.writeText(json);
+            new Notice("Settings copied to clipboard");
+          } catch (err) {
+            new Notice(
+              "Failed to copy settings: " +
+                (err instanceof Error ? err.message : String(err))
+            );
+          }
+        })
       );
   }
 }

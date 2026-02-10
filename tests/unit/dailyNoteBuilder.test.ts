@@ -195,19 +195,25 @@ describe("DailyNoteBuilder", () => {
       const noteData1: NoteData = {
         title: "Note 1",
         docId: "doc-1",
+        type: "note",
         createdAt: "2024-01-15T10:00:00Z",
+        attendees: [],
         markdown: "Content 1",
       };
       const noteData2: NoteData = {
         title: "Note 2",
         docId: "doc-2",
+        type: "note",
         createdAt: "2024-01-15T11:00:00Z",
+        attendees: [],
         markdown: "Content 2",
       };
       const noteData3: NoteData = {
         title: "Note 3",
         docId: "doc-3",
+        type: "note",
         createdAt: "2024-01-16T10:00:00Z",
+        attendees: [],
         markdown: "Content 3",
       };
 
@@ -224,8 +230,11 @@ describe("DailyNoteBuilder", () => {
       const result = dailyNoteBuilder.buildDailyNotesMap([doc1, doc2, doc3]);
 
       expect(result.size).toBe(2);
-      expect(result.get("2024-01-15")).toEqual([noteData1, noteData2]);
-      expect(result.get("2024-01-16")).toEqual([noteData3]);
+      expect(result.get("2024-01-15")).toEqual([
+        { noteData: noteData1, doc: doc1 },
+        { noteData: noteData2, doc: doc2 },
+      ]);
+      expect(result.get("2024-01-16")).toEqual([{ noteData: noteData3, doc: doc3 }]);
     });
 
     it("should skip documents with no valid content", () => {
@@ -244,7 +253,9 @@ describe("DailyNoteBuilder", () => {
         .mockReturnValueOnce({
           title: "Note 2",
           docId: "doc-2",
+          type: "note",
           createdAt: "2024-01-15T10:00:00Z",
+          attendees: [],
           markdown: "Content 2",
         });
 
@@ -254,7 +265,7 @@ describe("DailyNoteBuilder", () => {
 
       expect(result.size).toBe(1);
       expect(result.get("2024-01-15")).toHaveLength(1);
-      expect(result.get("2024-01-15")![0].docId).toBe("doc-2");
+      expect(result.get("2024-01-15")![0].noteData.docId).toBe("doc-2");
     });
 
     it("should return empty map when no valid documents", () => {
@@ -299,8 +310,10 @@ describe("DailyNoteBuilder", () => {
     const noteData: NoteData = {
       title: "Test Note",
       docId: "doc-123",
+      type: "note",
       createdAt: "2024-01-15T10:00:00Z",
       updatedAt: "2024-01-15T12:00:00Z",
+      attendees: [],
       markdown: "# Content\n\nTest content",
     };
 
@@ -331,6 +344,8 @@ describe("DailyNoteBuilder", () => {
       const noteWithoutTimestamps: NoteData = {
         title: "Test Note",
         docId: "doc-123",
+        type: "note",
+        attendees: [],
         markdown: "Content",
       };
 
@@ -359,6 +374,8 @@ describe("DailyNoteBuilder", () => {
       const noteData2: NoteData = {
         title: "Second Note",
         docId: "doc-456",
+        type: "note",
+        attendees: [],
         markdown: "Second content",
       };
 
