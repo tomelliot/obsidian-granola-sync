@@ -218,6 +218,37 @@ describe("fetchGranolaDocuments", () => {
     });
   });
 
+  it("should parse documents with attachments: null (API may return null for no attachments)", async () => {
+    const responseWithNullAttachments = {
+      docs: [
+        {
+          id: "doc-null-attachments",
+          title: "Note With Null Attachments",
+          created_at: "2024-01-15T10:00:00Z",
+          updated_at: "2024-01-15T12:00:00Z",
+          attachments: null,
+          last_viewed_panel: {
+            content: {
+              type: "doc",
+              content: [],
+            },
+          },
+        },
+      ],
+    };
+
+    (requestUrl as jest.Mock).mockResolvedValue({
+      json: responseWithNullAttachments,
+    });
+
+    const result = await fetchGranolaDocuments(mockAccessToken, 100, 0);
+
+    expect(result).toHaveLength(1);
+    const [doc] = result;
+    expect(doc.id).toBe("doc-null-attachments");
+    expect(doc.attachments).toBeNull();
+  });
+
   it("should handle network errors", async () => {
     const networkError = new Error("Network error");
     (requestUrl as jest.Mock).mockRejectedValue(networkError);

@@ -49,10 +49,10 @@ export interface GranolaDoc {
     content?: ProseMirrorDoc | string | null;
   } | null;
   notes_markdown?: string;
-   // Optional attachments array as returned by the Granola API.
-   // Currently used primarily for image attachments which are synced into
-   // the Obsidian vault and embedded at the end of the note.
-  attachments?: GranolaAttachment[];
+   // Optional attachments array as returned by the Granola API. May be null when
+   // the doc has no attachments. Used primarily for image attachments synced
+   // into the Obsidian vault and embedded at the end of the note.
+  attachments?: GranolaAttachment[] | null;
 }
 
 // Infer TypeScript type from validation schema

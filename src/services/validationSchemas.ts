@@ -21,15 +21,18 @@ export const GranolaDocSchema = v.object({
   title: v.nullish(v.string()),
   created_at: v.nullish(v.string()),
   updated_at: v.nullish(v.string()),
+  // API may return null for docs with no attachments; optional allows key to be absent
   attachments: v.optional(
-    v.array(
-      v.object({
-        id: v.string(),
-        url: v.string(),
-        type: v.optional(v.string()),
-        width: v.optional(v.number()),
-        height: v.optional(v.number()),
-      })
+    v.nullish(
+      v.array(
+        v.object({
+          id: v.string(),
+          url: v.string(),
+          type: v.optional(v.string()),
+          width: v.optional(v.number()),
+          height: v.optional(v.number()),
+        })
+      )
     )
   ),
   people: v.nullish(
