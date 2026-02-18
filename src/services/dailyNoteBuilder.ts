@@ -289,6 +289,95 @@ export class DailyNoteBuilder {
   }
 
   /**
+   * Parses existing meeting links from a daily note section.
+   *
+   * @param fileContent - The content of the daily note file
+   * @param sectionHeading - The section heading to look for
+   * @returns Array of NoteLinkData parsed from existing links
+   */
+  parseExistingLinks(
+    fileContent: string,
+    sectionHeading: string
+  ): NoteLinkData[] {
+    const links: NoteLinkData[] = [];
+    const lines = fileContent.split("\n");
+    const headingLevel = sectionHeading.match(/^(#{1,6})\s/)?.[1].length;
+
+    let inSection = false;
+
+    for (const line of lines) {
+      if (line.trim() === sectionHeading) {
+        inSection = true;
+        continue;
+      }
+
+      if (inSection) {
+        // Check if we've reached the next section at the same or higher level
+        const currentLevel = line.match(/^(#{1,6})\s/)?.[1].length;
+        if (headingLevel && currentLevel && currentLevel <= headingLevel) {
+          break;
+        }
+
+        // Parse link lines: "- HH:MM - [[path|title]]" or "- [[path|title]]"
+        const linkWithTimeMatch = line.match(
+          /^-\s+(\d{2}:\d{2})\s+-\s+\[\[([^|]+)\|([^\]]+)\]\]/
+        );
+        if (linkWithTimeMatch) {
+          links.push({
+            time: linkWithTimeMatch[1],
+            filePath: linkWithTimeMatch[2] + ".md",
+            title: linkWithTimeMatch[3],
+          });
+          continue;
+        }
+
+        const linkWithoutTimeMatch = line.match(
+          /^-\s+\[\[([^|]+)\|([^\]]+)\]\]/
+        );
+        if (linkWithoutTimeMatch) {
+          links.push({
+            filePath: linkWithoutTimeMatch[1] + ".md",
+            title: linkWithoutTimeMatch[2],
+          });
+        }
+      }
+    }
+
+    return links;
+  }
+
+  /**
+   * Merges existing links with new links, deduplicating by file path.
+   * New links take precedence over existing ones when paths match.
+   *
+   * @param existingLinks - Links already in the daily note section
+   * @param newLinks - Newly synced links to add
+   * @returns Merged and sorted array of links
+   */
+  mergeLinks(
+    existingLinks: NoteLinkData[],
+    newLinks: NoteLinkData[]
+  ): NoteLinkData[] {
+    const linksByPath = new Map<string, NoteLinkData>();
+
+    // Add existing links first
+    for (const link of existingLinks) {
+      linksByPath.set(link.filePath, link);
+    }
+
+    // New links overwrite existing ones with the same path
+    for (const link of newLinks) {
+      linksByPath.set(link.filePath, link);
+    }
+
+    // Sort by time
+    const merged = Array.from(linksByPath.values());
+    merged.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+
+    return merged;
+  }
+
+  /**
    * Builds the section content for daily note links.
    *
    * @param linksForDay - Array of note link data for the day
@@ -332,11 +421,22 @@ export class DailyNoteBuilder {
   ): Promise<void> {
     const linksMap = this.buildDailyNoteLinksMap(notesWithPaths);
 
-    for (const [dateKey, linksForDay] of linksMap) {
+    for (const [dateKey, newLinksForDay] of linksMap) {
       try {
         const dailyNoteFile = await this.getOrCreateDailyNote(dateKey);
+
+        // Read existing links from the daily note to merge with new ones
+        const fileContent = await this.app.vault.read(dailyNoteFile);
+        const existingLinks = this.parseExistingLinks(
+          fileContent,
+          sectionHeading
+        );
+
+        // Merge existing links with new ones, deduplicating by file path
+        const mergedLinks = this.mergeLinks(existingLinks, newLinksForDay);
+
         const sectionContent = this.buildDailyNoteLinksSectionContent(
-          linksForDay,
+          mergedLinks,
           sectionHeading
         );
 
@@ -348,7 +448,7 @@ export class DailyNoteBuilder {
         );
 
         log.debug(
-          `Added ${linksForDay.length} link(s) to daily note for ${dateKey}`
+          `Added ${newLinksForDay.length} new link(s) to daily note for ${dateKey} (${mergedLinks.length} total)`
         );
       } catch (error) {
         log.error(`Error adding links to daily note for ${dateKey}:`, error);
