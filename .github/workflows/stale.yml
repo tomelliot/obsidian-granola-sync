@@ -19,13 +19,13 @@ jobs:
         with:
           # Messages to post when marking as stale
           stale-issue-message: |
-            This issue has been automatically marked as stale because it has had no activity for 15 days. 
-            It will be closed in 5 days if no further activity occurs. 
+            This issue has been automatically marked as stale because it has had no activity for 10 days. 
+            It will be closed in 4 days if no further activity occurs. 
             Please comment if this issue is still relevant or needs attention.
           
           stale-pr-message: |
-            This pull request has been automatically marked as stale because it has had no activity for 15 days. 
-            It will be closed in 5 days if no further activity occurs. 
+            This pull request has been automatically marked as stale because it has had no activity for 10 days. 
+            It will be closed in 4 days if no further activity occurs. 
             Please comment or push new commits if this PR should remain open.
           
           # Messages to post when closing
@@ -38,10 +38,10 @@ jobs:
             If you would like to continue working on this PR, please reopen it or create a new one.
           
           # Days before marking as stale
-          days-before-stale: 15
+          days-before-stale: 10
           
           # Days before closing after marked as stale
-          days-before-close: 5
+          days-before-close: 4
           
           # Labels
           stale-issue-label: 'stale'
