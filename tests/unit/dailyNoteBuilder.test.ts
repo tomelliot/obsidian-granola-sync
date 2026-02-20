@@ -809,6 +809,32 @@ describe("DailyNoteBuilder", () => {
       expect(result[0].title).toBe("Updated Title");
     });
 
+    it("should deduplicate by granolaId when set (same note, different path)", () => {
+      const existing: NoteLinkData[] = [
+        {
+          time: "09:00",
+          filePath: "Granola/Old Path/Meeting.md",
+          title: "Standup",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const newLinks: NoteLinkData[] = [
+        {
+          time: "09:00",
+          filePath: "Granola/New Path/Meeting.md",
+          title: "Standup",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks(existing, newLinks);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe("Standup");
+      expect(result[0].filePath).toBe("Granola/New Path/Meeting.md");
+    });
+
     it("should sort merged links by time", () => {
       const existing: NoteLinkData[] = [
         {
@@ -1066,6 +1092,14 @@ describe("DailyNoteBuilder", () => {
         new Date("2024-01-15T09:00:00Z")
       );
 
+      // Resolver simulates FileSyncService.granolaIdCache: same note = same granolaId
+      const getGranolaIdForPath = (path: string) =>
+        path === "Granola/Morning Standup.md"
+          ? "doc-1"
+          : path === "Granola/Afternoon Planning.md"
+            ? "doc-2"
+            : null;
+
       await dailyNoteBuilder.addLinksToDailyNotes(
         [
           {
@@ -1073,7 +1107,9 @@ describe("DailyNoteBuilder", () => {
             notePath: "Granola/Morning Standup.md",
           },
         ],
-        "## Meetings"
+        "## Meetings",
+        false,
+        getGranolaIdForPath
       );
 
       const callContent = (updateSection as jest.Mock).mock.calls[0][3];

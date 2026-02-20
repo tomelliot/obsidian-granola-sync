@@ -60,6 +60,33 @@ export class FileSyncService {
   }
 
   /**
+   * Resolves a file path to its Granola ID using the cache.
+   * Used as the source of truth for deduplicating daily note links (same note may have different paths).
+   *
+   * @param path - Vault-relative file path (e.g. "Granola/Meeting.md")
+   * @returns The Granola ID if the file is in the cache, null otherwise
+   */
+  getGranolaIdByPath(path: string): string | null {
+    const normalizedPath = normalizePath(path);
+    const types: Array<"note" | "transcript" | "combined"> = [
+      "note",
+      "transcript",
+      "combined",
+    ];
+    for (const [cacheKey, file] of this.granolaIdCache) {
+      if (normalizePath(file.path) !== normalizedPath) {
+        continue;
+      }
+      for (const type of types) {
+        if (cacheKey.endsWith(`-${type}`)) {
+          return cacheKey.slice(0, -type.length - 1);
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Checks if a remote document is newer than the local file.
    * Compares the remote document's updated_at timestamp with the local file's updated frontmatter field.
    *

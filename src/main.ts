@@ -312,7 +312,8 @@ export default class GranolaSync extends Plugin {
         await this.dailyNoteBuilder.addLinksToDailyNotes(
           result.syncedNotes,
           linkHeading,
-          forceOverwrite
+          forceOverwrite,
+          (path) => this.fileSyncService.getGranolaIdByPath(path)
         );
       }
     }
