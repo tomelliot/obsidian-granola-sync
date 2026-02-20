@@ -304,7 +304,10 @@ export default class GranolaSync extends Plugin {
       );
       syncedCount = result.syncedCount;
 
-      // Add links to daily notes if enabled
+      // Add links to daily notes if enabled.
+      // Sync order: buildCache() runs before sync; each save updates the cache. So when we merge
+      // existing links here, every link we wrote in a prior sync either resolves (note still in
+      // vault) or is dropped (note deleted).
       if (this.settings.linkFromDailyNotes && result.syncedNotes.length > 0) {
         const linkHeading =
           this.settings.dailyNoteLinkHeading ||
@@ -312,7 +315,8 @@ export default class GranolaSync extends Plugin {
         await this.dailyNoteBuilder.addLinksToDailyNotes(
           result.syncedNotes,
           linkHeading,
-          forceOverwrite
+          forceOverwrite,
+          (path) => this.fileSyncService.getGranolaIdByPath(path)
         );
       }
     }

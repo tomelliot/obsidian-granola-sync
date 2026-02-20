@@ -662,7 +662,273 @@ describe("DailyNoteBuilder", () => {
     });
   });
 
+  describe("parseExistingLinks", () => {
+    it("should parse links with times from a section", () => {
+      const fileContent = [
+        "# Daily Note",
+        "",
+        "## Meetings",
+        "- 09:00 - [[Granola/Morning Standup|Morning Standup]]",
+        "- 14:00 - [[Granola/Planning Meeting|Planning Meeting]]",
+        "",
+        "## Other Section",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.parseExistingLinks(
+        fileContent,
+        "## Meetings"
+      );
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        time: "09:00",
+        filePath: "Granola/Morning Standup.md",
+        title: "Morning Standup",
+      });
+      expect(result[1]).toEqual({
+        time: "14:00",
+        filePath: "Granola/Planning Meeting.md",
+        title: "Planning Meeting",
+      });
+    });
+
+    it("should parse links without times", () => {
+      const fileContent = [
+        "## Meetings",
+        "- [[Granola/Some Meeting|Some Meeting]]",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.parseExistingLinks(
+        fileContent,
+        "## Meetings"
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        filePath: "Granola/Some Meeting.md",
+        title: "Some Meeting",
+      });
+    });
+
+    it("should return empty array when section does not exist", () => {
+      const fileContent = "# Daily Note\n\nSome content";
+
+      const result = dailyNoteBuilder.parseExistingLinks(
+        fileContent,
+        "## Meetings"
+      );
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("should stop at next same-level heading", () => {
+      const fileContent = [
+        "## Meetings",
+        "- 09:00 - [[Granola/Meeting 1|Meeting 1]]",
+        "",
+        "## Reflections",
+        "- 10:00 - [[Granola/Not A Meeting|Not A Meeting]]",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.parseExistingLinks(
+        fileContent,
+        "## Meetings"
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe("Meeting 1");
+    });
+
+    it("should handle empty section", () => {
+      const fileContent = [
+        "## Meetings",
+        "",
+        "## Other Section",
+      ].join("\n");
+
+      const result = dailyNoteBuilder.parseExistingLinks(
+        fileContent,
+        "## Meetings"
+      );
+
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe("mergeLinks", () => {
+    it("should merge existing and new links without duplicates", () => {
+      const existing: NoteLinkData[] = [
+        {
+          time: "09:00",
+          filePath: "Granola/Morning.md",
+          title: "Morning",
+          granolaId: "doc-1",
+        },
+        {
+          time: "11:00",
+          filePath: "Granola/Midday.md",
+          title: "Midday",
+          granolaId: "doc-2",
+        },
+      ];
+
+      const newLinks: NoteLinkData[] = [
+        {
+          time: "14:00",
+          filePath: "Granola/Afternoon.md",
+          title: "Afternoon",
+          granolaId: "doc-3",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks(existing, newLinks);
+
+      expect(result).toHaveLength(3);
+      expect(result[0].title).toBe("Morning");
+      expect(result[1].title).toBe("Midday");
+      expect(result[2].title).toBe("Afternoon");
+    });
+
+    it("should deduplicate by granolaId with new links taking precedence", () => {
+      const existing: NoteLinkData[] = [
+        {
+          time: "09:00",
+          filePath: "Granola/Meeting.md",
+          title: "Old Title",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const newLinks: NoteLinkData[] = [
+        {
+          time: "09:00",
+          filePath: "Granola/Meeting.md",
+          title: "Updated Title",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks(existing, newLinks);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe("Updated Title");
+    });
+
+    it("should deduplicate by granolaId when set (same note, different path)", () => {
+      const existing: NoteLinkData[] = [
+        {
+          time: "09:00",
+          filePath: "Granola/Old Path/Meeting.md",
+          title: "Standup",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const newLinks: NoteLinkData[] = [
+        {
+          time: "09:00",
+          filePath: "Granola/New Path/Meeting.md",
+          title: "Standup",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks(existing, newLinks);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe("Standup");
+      expect(result[0].filePath).toBe("Granola/New Path/Meeting.md");
+    });
+
+    it("should sort merged links by time", () => {
+      const existing: NoteLinkData[] = [
+        {
+          time: "14:00",
+          filePath: "Granola/Afternoon.md",
+          title: "Afternoon",
+          granolaId: "doc-2",
+        },
+      ];
+
+      const newLinks: NoteLinkData[] = [
+        {
+          time: "09:00",
+          filePath: "Granola/Morning.md",
+          title: "Morning",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks(existing, newLinks);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].title).toBe("Morning");
+      expect(result[1].title).toBe("Afternoon");
+    });
+
+    it("should drop links without granolaId", () => {
+      const existing: NoteLinkData[] = [
+        { time: "09:00", filePath: "Granola/A.md", title: "A" },
+      ];
+      const newLinks: NoteLinkData[] = [
+        {
+          time: "10:00",
+          filePath: "Granola/B.md",
+          title: "B",
+          granolaId: "doc-2",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks(existing, newLinks);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe("B");
+    });
+
+    it("should handle empty existing links", () => {
+      const newLinks: NoteLinkData[] = [
+        {
+          time: "10:00",
+          filePath: "Granola/Meeting.md",
+          title: "Meeting",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks([], newLinks);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe("Meeting");
+    });
+
+    it("should handle empty new links", () => {
+      const existing: NoteLinkData[] = [
+        {
+          time: "10:00",
+          filePath: "Granola/Meeting.md",
+          title: "Meeting",
+          granolaId: "doc-1",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks(existing, []);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe("Meeting");
+    });
+  });
+
   describe("addLinksToDailyNotes", () => {
+    let mockVault: { read: jest.Mock };
+
+    beforeEach(() => {
+      // addLinksToDailyNotes now reads the daily note to merge existing links
+      mockVault = {
+        read: jest.fn().mockResolvedValue(""),
+      };
+      (mockApp as any).vault = mockVault;
+    });
+
     it("should add links to daily notes for each date", async () => {
       const mockFile = { path: "2024-01-15.md" } as TFile;
       (getDailyNote as jest.Mock).mockReturnValue(mockFile);
@@ -671,6 +937,7 @@ describe("DailyNoteBuilder", () => {
       (getNoteDate as jest.Mock).mockReturnValue(
         new Date("2024-01-15T10:00:00Z")
       );
+      mockVault.read.mockResolvedValue("# Daily Note\n\n## Meetings\n\n## Other");
 
       const doc: GranolaDoc = {
         id: "doc-1",
@@ -687,7 +954,9 @@ describe("DailyNoteBuilder", () => {
 
       await dailyNoteBuilder.addLinksToDailyNotes(
         notesWithPaths,
-        "## Meetings"
+        "## Meetings",
+        false,
+        () => null
       );
 
       expect(updateSection).toHaveBeenCalledWith(
@@ -727,7 +996,9 @@ describe("DailyNoteBuilder", () => {
 
       await dailyNoteBuilder.addLinksToDailyNotes(
         notesWithPaths,
-        "## Meetings"
+        "## Meetings",
+        false,
+        () => null
       );
 
       expect(consoleErrorSpy).toHaveBeenCalled();
@@ -742,6 +1013,7 @@ describe("DailyNoteBuilder", () => {
       (getNoteDate as jest.Mock).mockReturnValue(
         new Date("2024-01-15T10:00:00Z")
       );
+      mockVault.read.mockResolvedValue("");
 
       const doc: GranolaDoc = {
         id: "doc-1",
@@ -759,7 +1031,8 @@ describe("DailyNoteBuilder", () => {
       await dailyNoteBuilder.addLinksToDailyNotes(
         notesWithPaths,
         "## Meetings",
-        true // forceOverwrite
+        true, // forceOverwrite
+        () => null
       );
 
       expect(updateSection).toHaveBeenCalledWith(
@@ -771,17 +1044,22 @@ describe("DailyNoteBuilder", () => {
       );
     });
 
-    it("should add new notes correctly when syncing multiple times on the same day", async () => {
+    it("should preserve existing links when syncing only new meetings", async () => {
       const mockFile = { path: "2024-01-15.md" } as TFile;
       (getDailyNote as jest.Mock).mockReturnValue(mockFile);
       (getAllDailyNotes as jest.Mock).mockReturnValue({});
       (updateSection as jest.Mock).mockResolvedValue(undefined);
 
-      const morningDoc: GranolaDoc = {
-        id: "doc-1",
-        title: "Morning Standup",
-        created_at: "2024-01-15T09:00:00Z",
-      };
+      // Simulate daily note that already has a morning meeting link
+      const existingDailyNoteContent = [
+        "# Daily Note",
+        "",
+        "## Meetings",
+        "- 09:00 - [[Granola/Morning Standup|Morning Standup]]",
+        "",
+        "## Reflections",
+      ].join("\n");
+      mockVault.read.mockResolvedValue(existingDailyNoteContent);
 
       const afternoonDoc: GranolaDoc = {
         id: "doc-2",
@@ -789,64 +1067,98 @@ describe("DailyNoteBuilder", () => {
         created_at: "2024-01-15T14:00:00Z",
       };
 
-      // First sync: Add morning meeting
+      // Second sync: only the afternoon meeting is new
       (getNoteDate as jest.Mock).mockReturnValue(
-        new Date("2024-01-15T09:00:00Z")
+        new Date("2024-01-15T14:00:00Z")
       );
 
       await dailyNoteBuilder.addLinksToDailyNotes(
         [
-          {
-            doc: morningDoc,
-            notePath: "Granola/Morning Standup.md",
-          },
-        ],
-        "## Meetings"
-      );
-
-      expect(updateSection).toHaveBeenCalledTimes(1);
-      const firstCallContent = (updateSection as jest.Mock).mock.calls[0][3];
-      expect(firstCallContent).toContain("## Meetings");
-      expect(firstCallContent).toContain(
-        "- 09:00 - [[Granola/Morning Standup|Morning Standup]]"
-      );
-      expect(firstCallContent).not.toContain("Afternoon Planning");
-
-      // Second sync: Add both morning and afternoon meetings
-      (getNoteDate as jest.Mock)
-        .mockReturnValueOnce(new Date("2024-01-15T09:00:00Z"))
-        .mockReturnValueOnce(new Date("2024-01-15T14:00:00Z"));
-
-      await dailyNoteBuilder.addLinksToDailyNotes(
-        [
-          {
-            doc: morningDoc,
-            notePath: "Granola/Morning Standup.md",
-          },
           {
             doc: afternoonDoc,
             notePath: "Granola/Afternoon Planning.md",
           },
         ],
-        "## Meetings"
+        "## Meetings",
+        false,
+        (path) =>
+          path === "Granola/Morning Standup.md"
+            ? "doc-1"
+            : path === "Granola/Afternoon Planning.md"
+              ? "doc-2"
+              : null
       );
 
-      expect(updateSection).toHaveBeenCalledTimes(2);
-      const secondCallContent = (updateSection as jest.Mock).mock.calls[1][3];
-      expect(secondCallContent).toContain("## Meetings");
-      // Verify heading comes first
-      expect(secondCallContent).toMatch(/^## Meetings\n/);
-      // Verify both links are present and sorted by time
-      expect(secondCallContent).toContain(
+      expect(updateSection).toHaveBeenCalledTimes(1);
+      const callContent = (updateSection as jest.Mock).mock.calls[0][3];
+
+      // Both the existing morning meeting and new afternoon meeting should be present
+      expect(callContent).toContain("## Meetings");
+      expect(callContent).toContain(
         "- 09:00 - [[Granola/Morning Standup|Morning Standup]]"
       );
-      expect(secondCallContent).toContain(
+      expect(callContent).toContain(
         "- 14:00 - [[Granola/Afternoon Planning|Afternoon Planning]]"
       );
-      // Verify morning meeting comes before afternoon meeting
-      const morningIndex = secondCallContent.indexOf("Morning Standup");
-      const afternoonIndex = secondCallContent.indexOf("Afternoon Planning");
+
+      // Verify sorted order
+      const morningIndex = callContent.indexOf("Morning Standup");
+      const afternoonIndex = callContent.indexOf("Afternoon Planning");
       expect(morningIndex).toBeLessThan(afternoonIndex);
+    });
+
+    it("should not duplicate links when re-syncing existing meetings", async () => {
+      const mockFile = { path: "2024-01-15.md" } as TFile;
+      (getDailyNote as jest.Mock).mockReturnValue(mockFile);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+      (updateSection as jest.Mock).mockResolvedValue(undefined);
+
+      // Daily note already has both meetings
+      const existingContent = [
+        "## Meetings",
+        "- 09:00 - [[Granola/Morning Standup|Morning Standup]]",
+        "- 14:00 - [[Granola/Afternoon Planning|Afternoon Planning]]",
+      ].join("\n");
+      mockVault.read.mockResolvedValue(existingContent);
+
+      // Re-sync the morning meeting (e.g., it was updated)
+      const morningDoc: GranolaDoc = {
+        id: "doc-1",
+        title: "Morning Standup",
+        created_at: "2024-01-15T09:00:00Z",
+      };
+
+      (getNoteDate as jest.Mock).mockReturnValue(
+        new Date("2024-01-15T09:00:00Z")
+      );
+
+      // Resolver simulates FileSyncService.granolaIdCache: same note = same granolaId
+      const getGranolaIdForPath = (path: string) =>
+        path === "Granola/Morning Standup.md"
+          ? "doc-1"
+          : path === "Granola/Afternoon Planning.md"
+            ? "doc-2"
+            : null;
+
+      await dailyNoteBuilder.addLinksToDailyNotes(
+        [
+          {
+            doc: morningDoc,
+            notePath: "Granola/Morning Standup.md",
+          },
+        ],
+        "## Meetings",
+        false,
+        getGranolaIdForPath
+      );
+
+      const callContent = (updateSection as jest.Mock).mock.calls[0][3];
+
+      // Should have exactly 2 links, not 3
+      const linkCount = (callContent.match(/^- /gm) || []).length;
+      expect(linkCount).toBe(2);
+      expect(callContent).toContain("Morning Standup");
+      expect(callContent).toContain("Afternoon Planning");
     });
 
     it("should preserve other content in daily note when updating section", async () => {
@@ -881,7 +1193,7 @@ describe("DailyNoteBuilder", () => {
       let modifiedContent = "";
       const mockVault = {
         read: jest.fn().mockResolvedValue(existingFileContent),
-        process: jest.fn(async (file, callback) => {
+        process: jest.fn(async (file: TFile, callback: (data: string) => string) => {
           modifiedContent = callback(existingFileContent);
           return modifiedContent;
         }),
@@ -931,7 +1243,9 @@ describe("DailyNoteBuilder", () => {
             notePath: "Granola/New Meeting.md",
           },
         ],
-        "## Meetings"
+        "## Meetings",
+        false,
+        () => null
       );
 
       expect(mockVault.process).toHaveBeenCalled();
@@ -949,7 +1263,6 @@ describe("DailyNoteBuilder", () => {
       expect(modifiedContent).toContain(
         "- 10:00 - [[Granola/New Meeting|New Meeting]]"
       );
-      expect(modifiedContent).not.toContain("- Old meeting link");
 
       // Verify section structure: heading comes first in the section
       const meetingsSectionMatch = modifiedContent.match(
