@@ -762,11 +762,13 @@ describe("DailyNoteBuilder", () => {
           time: "09:00",
           filePath: "Granola/Morning.md",
           title: "Morning",
+          granolaId: "doc-1",
         },
         {
           time: "11:00",
           filePath: "Granola/Midday.md",
           title: "Midday",
+          granolaId: "doc-2",
         },
       ];
 
@@ -775,6 +777,7 @@ describe("DailyNoteBuilder", () => {
           time: "14:00",
           filePath: "Granola/Afternoon.md",
           title: "Afternoon",
+          granolaId: "doc-3",
         },
       ];
 
@@ -786,12 +789,13 @@ describe("DailyNoteBuilder", () => {
       expect(result[2].title).toBe("Afternoon");
     });
 
-    it("should deduplicate by file path with new links taking precedence", () => {
+    it("should deduplicate by granolaId with new links taking precedence", () => {
       const existing: NoteLinkData[] = [
         {
           time: "09:00",
           filePath: "Granola/Meeting.md",
           title: "Old Title",
+          granolaId: "doc-1",
         },
       ];
 
@@ -800,6 +804,7 @@ describe("DailyNoteBuilder", () => {
           time: "09:00",
           filePath: "Granola/Meeting.md",
           title: "Updated Title",
+          granolaId: "doc-1",
         },
       ];
 
@@ -841,6 +846,7 @@ describe("DailyNoteBuilder", () => {
           time: "14:00",
           filePath: "Granola/Afternoon.md",
           title: "Afternoon",
+          granolaId: "doc-2",
         },
       ];
 
@@ -849,6 +855,7 @@ describe("DailyNoteBuilder", () => {
           time: "09:00",
           filePath: "Granola/Morning.md",
           title: "Morning",
+          granolaId: "doc-1",
         },
       ];
 
@@ -859,12 +866,32 @@ describe("DailyNoteBuilder", () => {
       expect(result[1].title).toBe("Afternoon");
     });
 
+    it("should drop links without granolaId", () => {
+      const existing: NoteLinkData[] = [
+        { time: "09:00", filePath: "Granola/A.md", title: "A" },
+      ];
+      const newLinks: NoteLinkData[] = [
+        {
+          time: "10:00",
+          filePath: "Granola/B.md",
+          title: "B",
+          granolaId: "doc-2",
+        },
+      ];
+
+      const result = dailyNoteBuilder.mergeLinks(existing, newLinks);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe("B");
+    });
+
     it("should handle empty existing links", () => {
       const newLinks: NoteLinkData[] = [
         {
           time: "10:00",
           filePath: "Granola/Meeting.md",
           title: "Meeting",
+          granolaId: "doc-1",
         },
       ];
 
@@ -880,6 +907,7 @@ describe("DailyNoteBuilder", () => {
           time: "10:00",
           filePath: "Granola/Meeting.md",
           title: "Meeting",
+          granolaId: "doc-1",
         },
       ];
 
@@ -926,7 +954,9 @@ describe("DailyNoteBuilder", () => {
 
       await dailyNoteBuilder.addLinksToDailyNotes(
         notesWithPaths,
-        "## Meetings"
+        "## Meetings",
+        false,
+        () => null
       );
 
       expect(updateSection).toHaveBeenCalledWith(
@@ -966,7 +996,9 @@ describe("DailyNoteBuilder", () => {
 
       await dailyNoteBuilder.addLinksToDailyNotes(
         notesWithPaths,
-        "## Meetings"
+        "## Meetings",
+        false,
+        () => null
       );
 
       expect(consoleErrorSpy).toHaveBeenCalled();
@@ -999,7 +1031,8 @@ describe("DailyNoteBuilder", () => {
       await dailyNoteBuilder.addLinksToDailyNotes(
         notesWithPaths,
         "## Meetings",
-        true // forceOverwrite
+        true, // forceOverwrite
+        () => null
       );
 
       expect(updateSection).toHaveBeenCalledWith(
@@ -1046,7 +1079,14 @@ describe("DailyNoteBuilder", () => {
             notePath: "Granola/Afternoon Planning.md",
           },
         ],
-        "## Meetings"
+        "## Meetings",
+        false,
+        (path) =>
+          path === "Granola/Morning Standup.md"
+            ? "doc-1"
+            : path === "Granola/Afternoon Planning.md"
+              ? "doc-2"
+              : null
       );
 
       expect(updateSection).toHaveBeenCalledTimes(1);
@@ -1203,7 +1243,9 @@ describe("DailyNoteBuilder", () => {
             notePath: "Granola/New Meeting.md",
           },
         ],
-        "## Meetings"
+        "## Meetings",
+        false,
+        () => null
       );
 
       expect(mockVault.process).toHaveBeenCalled();

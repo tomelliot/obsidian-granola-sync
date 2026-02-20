@@ -350,29 +350,33 @@ export class DailyNoteBuilder {
   }
 
   /**
-   * Merges existing links with new links, deduplicating by granolaId (from
-   * FileSyncService.granolaIdCache). When granolaId is missing, falls back to
-   * file path. New links take precedence when keys match.
+   * Merges existing links with new links, deduplicating by granolaId.
+   * Only links with a granolaId are included (unresolved/deleted notes are dropped).
+   * New links take precedence when granolaIds match.
    *
-   * @param existingLinks - Links already in the daily note section
-   * @param newLinks - Newly synced links to add
+   * @param existingLinks - Links already in the daily note section (with granolaId set by caller)
+   * @param newLinks - Newly synced links to add (always have granolaId from doc.id)
    * @returns Merged and sorted array of links
    */
   mergeLinks(
     existingLinks: NoteLinkData[],
     newLinks: NoteLinkData[]
   ): NoteLinkData[] {
-    const key = (link: NoteLinkData) => link.granolaId ?? link.filePath;
-    const byKey = new Map<string, NoteLinkData>();
+    const withGranolaId = (
+      l: NoteLinkData
+    ): l is NoteLinkData & { granolaId: string } => l.granolaId != null;
+    const existing = existingLinks.filter(withGranolaId);
+    const new_ = newLinks.filter(withGranolaId);
 
-    for (const link of existingLinks) {
-      byKey.set(key(link), link);
+    const byGranolaId = new Map<string, (NoteLinkData & { granolaId: string })>();
+    for (const link of existing) {
+      byGranolaId.set(link.granolaId, link);
     }
-    for (const link of newLinks) {
-      byKey.set(key(link), link);
+    for (const link of new_) {
+      byGranolaId.set(link.granolaId, link);
     }
 
-    const merged = Array.from(byKey.values());
+    const merged = Array.from(byGranolaId.values());
     merged.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
     return merged;
   }
@@ -407,10 +411,14 @@ export class DailyNoteBuilder {
   /**
    * Adds links to daily notes for a set of synced individual note files.
    *
+   * Sync order guarantees: buildCache() runs before sync; each save updates the cache.
+   * So existing links in the section were written by a prior sync and resolve via the cache
+   * unless the note was deleted—in which case the link is dropped.
+   *
    * @param notesWithPaths - Array of objects containing doc and note path
    * @param sectionHeading - The heading for the links section
    * @param forceOverwrite - If true, always updates the section even if content is unchanged
-   * @param getGranolaIdForPath - Resolver from file path to Granola ID (e.g. FileSyncService.getGranolaIdByPath). Used to deduplicate by granolaId.
+   * @param getGranolaIdForPath - Resolver from file path to Granola ID (FileSyncService.getGranolaIdByPath). Required; unresolved existing links are dropped (e.g. deleted note).
    */
   async addLinksToDailyNotes(
     notesWithPaths: Array<{
@@ -419,7 +427,7 @@ export class DailyNoteBuilder {
     }>,
     sectionHeading: string,
     forceOverwrite: boolean = false,
-    getGranolaIdForPath?: (path: string) => string | null
+    getGranolaIdForPath: (path: string) => string | null
   ): Promise<void> {
     const linksMap = this.buildDailyNoteLinksMap(notesWithPaths);
 
@@ -433,11 +441,9 @@ export class DailyNoteBuilder {
           sectionHeading
         );
 
-        // Resolve granolaIds for existing links so we can deduplicate by granolaId
-        if (getGranolaIdForPath) {
-          for (const link of existingLinks) {
-            link.granolaId = getGranolaIdForPath(link.filePath) ?? undefined;
-          }
+        // Resolve granolaId from cache; drop links that don't resolve (e.g. deleted note)
+        for (const link of existingLinks) {
+          link.granolaId = getGranolaIdForPath(link.filePath) ?? undefined;
         }
 
         const mergedLinks = this.mergeLinks(existingLinks, newLinksForDay);
