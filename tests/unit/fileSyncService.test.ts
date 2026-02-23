@@ -189,6 +189,42 @@ describe("FileSyncService", () => {
     });
   });
 
+  describe("getGranolaIdByPath", () => {
+    it("should return granolaId when path matches cached file", async () => {
+      const mockFile = { path: "Granola/Meeting.md" } as TFile;
+      mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: { granola_id: "doc-123" },
+      } as any);
+
+      await fileSyncService.buildCache();
+      const result = fileSyncService.getGranolaIdByPath("Granola/Meeting.md");
+
+      expect(result).toBe("doc-123");
+    });
+
+    it("should return null when path is not in cache", async () => {
+      mockApp.vault.getMarkdownFiles.mockReturnValue([]);
+      await fileSyncService.buildCache();
+      const result = fileSyncService.getGranolaIdByPath("Granola/Other.md");
+
+      expect(result).toBeNull();
+    });
+
+    it("should normalize path when matching", async () => {
+      const mockFile = { path: "Granola/Sub/Note.md" } as TFile;
+      mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: { granola_id: "id-1" },
+      } as any);
+
+      await fileSyncService.buildCache();
+      expect(fileSyncService.getGranolaIdByPath("Granola/Sub/Note.md")).toBe(
+        "id-1"
+      );
+    });
+  });
+
   describe("isRemoteNewer", () => {
     it("should return true when local file does not exist", () => {
       const result = fileSyncService.isRemoteNewer(
