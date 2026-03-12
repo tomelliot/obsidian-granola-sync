@@ -717,8 +717,7 @@ export default class GranolaSync extends Plugin {
       const contentToParse = doc.last_viewed_panel?.content;
       if (
         !contentToParse ||
-        typeof contentToParse === "string" ||
-        contentToParse.type !== "doc"
+        (typeof contentToParse !== "string" && contentToParse.type !== "doc")
       ) {
         log.debug(`Skipping doc ${doc.id} — no parseable content (type=${typeof contentToParse === "object" && contentToParse ? (contentToParse as { type?: string }).type : typeof contentToParse})`);
         continue;
