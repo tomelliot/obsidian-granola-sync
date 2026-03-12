@@ -1,5 +1,6 @@
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
+import { convertHtmlToMarkdown } from "./htmlMarkdown";
 import {
   getTitleOrDefault,
   resolveFilenamePattern,
@@ -91,15 +92,20 @@ export class DocumentProcessor {
    */
   buildNoteBody(doc: GranolaDoc, options: BodyOptions): string {
     const contentToParse = doc.last_viewed_panel?.content;
-    if (
-      !contentToParse ||
-      typeof contentToParse === "string" ||
-      contentToParse.type !== "doc"
-    ) {
+    if (!contentToParse) {
       throw new Error("Document has no valid content to parse");
     }
 
-    const markdownContent = convertProsemirrorToMarkdown(contentToParse);
+    // The Granola API may return content as either a ProseMirror JSON document
+    // or an HTML string. Handle both formats.
+    let markdownContent: string;
+    if (typeof contentToParse === "string") {
+      markdownContent = convertHtmlToMarkdown(contentToParse);
+    } else if (contentToParse.type === "doc") {
+      markdownContent = convertProsemirrorToMarkdown(contentToParse);
+    } else {
+      throw new Error("Document has no valid content to parse");
+    }
     const headingPrefix = "#".repeat(options.headingLevel);
 
     // Add private notes section if enabled and content exists
