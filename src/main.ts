@@ -359,21 +359,40 @@ export default class GranolaSync extends Plugin {
   ): Promise<void> {
     const files = this.app.vault.getMarkdownFiles();
     let updatedCount = 0;
+    let scannedCount = 0;
+    let alreadyHasFoldersCount = 0;
+    let noFolderDataCount = 0;
+    let noFrontmatterCount = 0;
+
+    log.debug(`backfillFolderMetadata — scanning ${files.length} markdown file(s), docFolders has ${Object.keys(docFolders).length} mapping(s)`);
 
     for (const file of files) {
       const cache = this.app.metadataCache.getFileCache(file);
       if (!cache?.frontmatter?.granola_id) continue;
 
+      scannedCount++;
+
       // Skip files that already have a folders field
-      if (cache.frontmatter.folders !== undefined) continue;
+      if (cache.frontmatter.folders !== undefined) {
+        alreadyHasFoldersCount++;
+        continue;
+      }
 
       const granolaId = cache.frontmatter.granola_id as string;
       const folders = docFolders[granolaId];
-      if (!folders || folders.length === 0) continue;
+      if (!folders || folders.length === 0) {
+        noFolderDataCount++;
+        log.debug(`backfill skip — no folder data for granolaId=${granolaId} (${file.path})`);
+        continue;
+      }
 
       const content = await this.app.vault.read(file);
       const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!frontmatterMatch) continue;
+      if (!frontmatterMatch) {
+        noFrontmatterCount++;
+        log.debug(`backfill skip — no parseable frontmatter in ${file.path}`);
+        continue;
+      }
 
       const frontmatter = frontmatterMatch[1];
       const foldersYaml = `folders: ${formatStringListAsYaml(folders)}`;
@@ -386,14 +405,11 @@ export default class GranolaSync extends Plugin {
       if (updatedContent !== content) {
         await this.app.vault.modify(file, updatedContent);
         updatedCount++;
+        log.debug(`backfill updated — ${file.path} (granolaId=${granolaId}, folders=${JSON.stringify(folders)})`);
       }
     }
 
-    if (updatedCount > 0) {
-      log.debug(
-        `Backfilled folders metadata on ${updatedCount} existing note(s)`
-      );
-    }
+    log.debug(`backfillFolderMetadata — scanned=${scannedCount} granola files, updated=${updatedCount}, alreadyHasFolders=${alreadyHasFoldersCount}, noFolderData=${noFolderDataCount}, noFrontmatter=${noFrontmatterCount}`);
   }
 
   // Top-level sync function that handles common setup once
@@ -498,6 +514,7 @@ export default class GranolaSync extends Plugin {
       await this.saveData(this.settings);
 
       docFolders = freshFolderMap.docFolders;
+      log.debug(`Folder map built — ${Object.keys(freshFolderMap.folders).length} folder(s), ${Object.keys(docFolders).length} document(s) with folder data`);
 
       // Backfill folders on existing notes that don't have the field yet
       await this.backfillFolderMetadata(docFolders);
@@ -734,6 +751,7 @@ export default class GranolaSync extends Plugin {
       this.updateSyncStatus("Note", processedCount, documents.length);
 
       const folders = docFolders[doc.id];
+      log.debug(`Syncing doc ${doc.id} — folders=${folders ? JSON.stringify(folders) : "none"}`);
 
       // Handle combined mode: save note and transcript together
       if (isCombinedMode && transcriptDataMap) {

@@ -77,6 +77,8 @@ export async function buildFolderMap(
     };
   }
 
+  log.debug(`buildFolderMap — found ${Object.keys(folders).length} folder(s)`);
+
   // Step 2: Fetch document memberships for each folder
   const docFolders: Record<string, string[]> = {};
   const folderIds = Object.keys(folders);
@@ -85,6 +87,8 @@ export async function buildFolderMap(
     try {
       const listData = await fetchDocumentList(accessToken, folderId);
       const folderPath = resolveFolderPath(folderId, folders);
+      const docCount = listData.documents?.length ?? 0;
+      log.debug(`Folder "${folderPath}" (${folderId}) — ${docCount} document(s)`);
 
       for (const doc of listData.documents ?? []) {
         if (!docFolders[doc.id]) {
@@ -97,6 +101,9 @@ export async function buildFolderMap(
       // Continue with other folders — don't let one failure block everything
     }
   }
+
+  const docCount = Object.keys(docFolders).length;
+  log.debug(`buildFolderMap — ${docCount} document(s) mapped to folders`);
 
   return {
     folders,
