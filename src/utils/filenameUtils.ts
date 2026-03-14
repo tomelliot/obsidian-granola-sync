@@ -8,7 +8,7 @@ import { getNoteDate, formatDateForFilename } from "./dateUtils";
  * @returns A sanitized filename safe for filesystem operations
  */
 export function sanitizeFilename(title: string): string {
-  const invalidChars = /[<>:"/\\|?*]/g;
+  const invalidChars = /[<>:"/\\|?*\r\n]/g;
   let filename = title.replace(invalidChars, "_");
   // Truncate filename if too long (e.g., 200 chars, common limit)
   const maxLength = 200;

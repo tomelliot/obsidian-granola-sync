@@ -1,3 +1,4 @@
+import { stringifyYaml } from "obsidian";
 import { TranscriptEntry } from "./granolaApi";
 import { formatAttendeesAsYaml } from "../utils/yamlUtils";
 
@@ -83,11 +84,10 @@ export function formatTranscriptBySpeaker(
   }
 
   // Add frontmatter with granola_id for transcript deduplication
-  const escapedTitleForYaml = title.replace(/"/g, '\\"');
   const frontmatterLines = [
     "---",
     `granola_id: ${granolaId}`,
-    `title: "${escapedTitleForYaml} - Transcript"`,
+    `title: ${stringifyYaml(`${title} - Transcript`).trim()}`,
     `type: transcript`,
   ];
   if (createdAt) frontmatterLines.push(`created: ${createdAt}`);

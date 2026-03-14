@@ -53,14 +53,25 @@ export const Platform = {
  * Converts a JavaScript value to YAML format
  *
  * Note: We assume Obsidian's stringifyYaml handles proper escaping of special characters.
- * This mock simply returns the quoted string without escaping.
+ * This mock approximates real behavior: quotes strings containing special YAML
+ * characters and replaces newlines, and always appends a trailing newline.
  */
 export function stringifyYaml(value: unknown): string {
   if (typeof value === "string") {
-    return `${value}`;
+    // Approximate real YAML: quote if the string contains special characters
+    const needsQuoting = /["'\n\r:#{}[\],&*?|>!%@`]/.test(value);
+    if (needsQuoting) {
+      const escaped = value
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "\\r");
+      return `"${escaped}"\n`;
+    }
+    return `${value}\n`;
   }
 
   // For arrays, objects, etc., use JSON stringification as a simple mock
   // In real Obsidian, this would use a proper YAML library
-  return JSON.stringify(value);
+  return JSON.stringify(value) + "\n";
 }

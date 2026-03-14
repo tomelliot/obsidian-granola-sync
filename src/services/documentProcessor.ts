@@ -1,3 +1,4 @@
+import { stringifyYaml } from "obsidian";
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import {
@@ -155,11 +156,10 @@ export class DocumentProcessor {
     const body = this.buildNoteBody(doc, { headingLevel: 2 });
 
     // Prepare frontmatter
-    const escapedTitleForYaml = metadata.title.replace(/"/g, '\\"');
     const frontmatterLines = [
       "---",
       `granola_id: ${metadata.granolaId}`,
-      `title: "${escapedTitleForYaml}"`,
+      `title: ${stringifyYaml(metadata.title).trim()}`,
       `type: ${metadata.type}`,
     ];
     if (metadata.createdAt) frontmatterLines.push(`created: ${metadata.createdAt}`);
@@ -226,11 +226,10 @@ export class DocumentProcessor {
     const body = this.buildNoteBody(doc, { headingLevel: 2 });
 
     // Prepare frontmatter with type: combined
-    const escapedTitleForYaml = metadata.title.replace(/"/g, '\\"');
     const frontmatterLines = [
       "---",
       `granola_id: ${metadata.granolaId}`,
-      `title: "${escapedTitleForYaml}"`,
+      `title: ${stringifyYaml(metadata.title).trim()}`,
       `type: ${metadata.type}`,
     ];
     if (metadata.createdAt) frontmatterLines.push(`created: ${metadata.createdAt}`);

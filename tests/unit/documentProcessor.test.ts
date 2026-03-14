@@ -90,7 +90,7 @@ describe("DocumentProcessor", () => {
       expect(result.filename).toBe("Test Note.md");
       expect(result.content).toContain("---");
       expect(result.content).toContain("granola_id: doc-123");
-      expect(result.content).toContain('title: "Test Note"');
+      expect(result.content).toContain("title: Test Note");
       expect(result.content).toContain("type: note");
       expect(result.content).toContain("created: 2024-01-15T10:00:00Z");
       expect(result.content).toContain("updated: 2024-01-15T12:00:00Z");
@@ -133,6 +133,28 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain('title: "Note with \\"quotes\\""');
+    });
+
+    it("should sanitize newlines in titles for YAML frontmatter", () => {
+      const doc: GranolaDoc = {
+        id: "doc-newline",
+        title: "\nMeeting Title With Leading Newline",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      // Title should be on a single line — no raw newlines breaking YAML
+      const frontmatter = result.content.split("---")[1];
+      const titleLine = frontmatter.split("\n").find((l: string) => l.startsWith("title:"));
+      expect(titleLine).toBeDefined();
+      // The title value should not contain a raw newline
+      expect(titleLine).not.toMatch(/title:.*\n.*\n/);
     });
 
     it("should add transcript field to frontmatter when transcripts enabled and path provided", () => {
@@ -285,7 +307,7 @@ describe("DocumentProcessor", () => {
       const result = documentProcessor.prepareNote(doc);
 
       expect(result.content).toContain(
-        'title: "Untitled Granola Note at 2024-01-15 00-00-00"'
+        "title: Untitled Granola Note at 2024-01-15 00-00-00"
       );
     });
 
@@ -506,7 +528,7 @@ describe("DocumentProcessor", () => {
       expect(result.filename).toBe("Test Note.md");
       expect(result.content).toContain("---");
       expect(result.content).toContain("granola_id: doc-123");
-      expect(result.content).toContain('title: "Test Note"');
+      expect(result.content).toContain("title: Test Note");
       expect(result.content).toContain("type: combined");
       expect(result.content).toContain("created: 2024-01-15T10:00:00Z");
       expect(result.content).toContain("updated: 2024-01-15T12:00:00Z");
@@ -649,6 +671,31 @@ describe("DocumentProcessor", () => {
       expect(result.content).toContain('title: "Note with \\"quotes\\""');
     });
 
+    it("should sanitize newlines in titles for YAML frontmatter", () => {
+      const doc: GranolaDoc = {
+        id: "doc-newline",
+        title: "\nMeeting Title With Leading Newline",
+        last_viewed_panel: {
+          content: {
+            type: "doc",
+            content: [],
+          },
+        },
+      };
+
+      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+
+      const result = documentProcessor.prepareCombinedNote(
+        doc,
+        transcriptContent
+      );
+
+      const frontmatter = result.content.split("---")[1];
+      const titleLine = frontmatter.split("\n").find((l: string) => l.startsWith("title:"));
+      expect(titleLine).toBeDefined();
+      expect(titleLine).not.toMatch(/title:.*\n.*\n/);
+    });
+
     it("should place transcript content after note content", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
@@ -710,7 +757,7 @@ describe("DocumentProcessor", () => {
       );
 
       expect(result.content).toContain(
-        'title: "Untitled Granola Note at 2024-01-15 00-00-00"'
+        "title: Untitled Granola Note at 2024-01-15 00-00-00"
       );
     });
   });
