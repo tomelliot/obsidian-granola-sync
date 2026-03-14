@@ -12,6 +12,7 @@ import { DocumentProcessor } from "../../src/services/documentProcessor";
 import { DailyNoteBuilder } from "../../src/services/dailyNoteBuilder";
 import { PathResolver } from "../../src/services/pathResolver";
 import { formatTranscriptBySpeaker } from "../../src/services/transcriptFormatter";
+import { buildFolderMap, diffFolderMaps } from "../../src/services/folderMapBuilder";
 import { getNoteDate } from "../../src/utils/dateUtils";
 import { showStatusBar, hideStatusBar, showStatusBarTemporary } from "../../src/utils/statusBar";
 import { Notice, App } from "obsidian";
@@ -26,6 +27,7 @@ jest.mock("../../src/services/documentProcessor");
 jest.mock("../../src/services/dailyNoteBuilder");
 jest.mock("../../src/services/pathResolver");
 jest.mock("../../src/services/transcriptFormatter");
+jest.mock("../../src/services/folderMapBuilder");
 jest.mock("../../src/utils/dateUtils");
 jest.mock("../../src/utils/statusBar");
 jest.mock("obsidian-daily-notes-interface");
@@ -119,6 +121,17 @@ describe("GranolaSync", () => {
 
     // Mock Notice
     (Notice as jest.Mock).mockImplementation(() => ({}));
+
+    // Mock folder map builder
+    (buildFolderMap as jest.Mock).mockResolvedValue({
+      folders: {},
+      docFolders: {},
+      lastUpdated: Date.now(),
+    });
+    (diffFolderMaps as jest.Mock).mockReturnValue({ renamedPaths: new Map() });
+
+    // Mock saveData to prevent actual writes
+    plugin.saveData = jest.fn().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -462,7 +475,8 @@ describe("GranolaSync", () => {
       expect((plugin as any).syncNotes).toHaveBeenCalledWith(
         [mockDoc],
         false,
-        mockTranscriptMap
+        mockTranscriptMap,
+        {}
       );
     });
 
@@ -486,7 +500,8 @@ describe("GranolaSync", () => {
       expect((plugin as any).syncNotes).toHaveBeenCalledWith(
         [mockDoc],
         true,
-        mockTranscriptMap
+        mockTranscriptMap,
+        {}
       );
     });
 

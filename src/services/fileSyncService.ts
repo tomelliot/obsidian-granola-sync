@@ -419,7 +419,8 @@ export class FileSyncService {
     doc: GranolaDoc,
     documentProcessor: DocumentProcessor,
     transcriptContent: string,
-    forceOverwrite: boolean = false
+    forceOverwrite: boolean = false,
+    folders?: string[]
   ): Promise<boolean> {
     if (!doc.id) {
       log.error("Document missing required id field:", doc);
@@ -427,7 +428,8 @@ export class FileSyncService {
     }
     const { filename, content } = documentProcessor.prepareCombinedNote(
       doc,
-      transcriptContent
+      transcriptContent,
+      folders
     );
     const noteDate = getNoteDate(doc);
 
@@ -473,7 +475,8 @@ export class FileSyncService {
     doc: GranolaDoc,
     documentProcessor: DocumentProcessor,
     forceOverwrite: boolean = false,
-    transcriptPath?: string
+    transcriptPath?: string,
+    folders?: string[]
   ): Promise<boolean> {
     if (!doc.id) {
       log.error("Document missing required id field:", doc);
@@ -481,7 +484,8 @@ export class FileSyncService {
     }
     const { filename, content } = documentProcessor.prepareNote(
       doc,
-      transcriptPath
+      transcriptPath,
+      folders
     );
     const noteDate = getNoteDate(doc);
 

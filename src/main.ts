@@ -19,6 +19,10 @@ import {
   TranscriptEntry,
 } from "./services/granolaApi";
 import {
+  buildFolderMap,
+  diffFolderMaps,
+} from "./services/folderMapBuilder";
+import {
   loadCredentials as loadGranolaCredentials,
 } from "./services/credentials";
 import {
@@ -30,6 +34,7 @@ import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
 import { configureLogger, log } from "./utils/logger";
+import { formatStringListAsYaml } from "./utils/yamlUtils";
 import {
   showStatusBar,
   hideStatusBar,
@@ -267,9 +272,129 @@ export default class GranolaSync extends Plugin {
     showStatusBar(this, `Granola sync: ${label} ${clampedCurrent}/${total}`);
   }
 
-  // Build the Granola ID cache by scanning all markdown files in the vault
+  /**
+   * Updates frontmatter on all vault notes affected by folder renames.
+   * Scans all markdown files for folders entries matching old paths
+   * and replaces them with new paths.
+   */
+  private async updateRenamedFolders(
+    renamedPaths: Map<string, string>
+  ): Promise<void> {
+    const files = this.app.vault.getMarkdownFiles();
+    let updatedCount = 0;
 
-  // Compute the folder path for a note based on daily note settings
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const folders = cache?.frontmatter?.folders as
+        | string[]
+        | undefined;
+      if (!folders || !Array.isArray(folders)) continue;
+
+      let changed = false;
+      const updatedFolders = folders.map((folder) => {
+        const newPath = renamedPaths.get(folder);
+        if (newPath) {
+          changed = true;
+          return newPath;
+        }
+        return folder;
+      });
+
+      if (changed) {
+        const content = await this.app.vault.read(file);
+        const updatedContent = this.replaceFrontmatterFolders(
+          content,
+          updatedFolders
+        );
+        if (updatedContent !== content) {
+          await this.app.vault.modify(file, updatedContent);
+          updatedCount++;
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      log.debug(
+        `Updated folders in ${updatedCount} file(s) due to folder renames`
+      );
+    }
+  }
+
+  /**
+   * Replaces the folders list in YAML frontmatter with updated values.
+   */
+  private replaceFrontmatterFolders(
+    content: string,
+    newFolders: string[]
+  ): string {
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!frontmatterMatch) return content;
+
+    const frontmatter = frontmatterMatch[1];
+
+    const folderBlockRegex =
+      /folders:\s*\n((?:\s+-\s+.*\n?)*)/;
+    const match = frontmatter.match(folderBlockRegex);
+    if (!match) return content;
+
+    const newBlock =
+      "folders:\n" +
+      newFolders.map((f) => `  - "${f}"`).join("\n") +
+      "\n";
+    const updatedFrontmatter = frontmatter.replace(folderBlockRegex, newBlock);
+
+    return content.replace(
+      /^---\n[\s\S]*?\n---/,
+      `---\n${updatedFrontmatter}\n---`
+    );
+  }
+
+  /**
+   * Backfills the `folders` frontmatter field on existing vault notes that have
+   * a `granola_id` but are missing folder metadata. This ensures previously
+   * synced documents get folder paths added when the feature is first enabled.
+   */
+  private async backfillFolderMetadata(
+    docFolders: Record<string, string[]>
+  ): Promise<void> {
+    const files = this.app.vault.getMarkdownFiles();
+    let updatedCount = 0;
+
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      if (!cache?.frontmatter?.granola_id) continue;
+
+      // Skip files that already have a folders field
+      if (cache.frontmatter.folders !== undefined) continue;
+
+      const granolaId = cache.frontmatter.granola_id as string;
+      const folders = docFolders[granolaId];
+      if (!folders || folders.length === 0) continue;
+
+      const content = await this.app.vault.read(file);
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (!frontmatterMatch) continue;
+
+      const frontmatter = frontmatterMatch[1];
+      const foldersYaml = `folders: ${formatStringListAsYaml(folders)}`;
+      const updatedFrontmatter = frontmatter + "\n" + foldersYaml;
+      const updatedContent = content.replace(
+        /^---\n[\s\S]*?\n---/,
+        `---\n${updatedFrontmatter}\n---`
+      );
+
+      if (updatedContent !== content) {
+        await this.app.vault.modify(file, updatedContent);
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount > 0) {
+      log.debug(
+        `Backfilled folders metadata on ${updatedCount} existing note(s)`
+      );
+    }
+  }
 
   // Top-level sync function that handles common setup once
   async sync(options: { mode?: "standard" | "full" } = {}) {
@@ -354,6 +479,37 @@ export default class GranolaSync extends Plugin {
         : `Granola API: fetched ${documents.length} documents within ${this.settings.syncDaysBack} day(s)`
     );
 
+    // Build folder map (document → folder paths)
+    let docFolders: Record<string, string[]> = {};
+    try {
+      showStatusBar(this, "Granola sync: Fetching folders...");
+      const freshFolderMap = await buildFolderMap(accessToken);
+      const previousFolderMap = this.settings._folderMapCache ?? null;
+
+      // Detect folder renames and update affected notes
+      const diff = diffFolderMaps(previousFolderMap, freshFolderMap);
+      if (diff.renamedPaths.size > 0) {
+        log.debug(`Detected ${diff.renamedPaths.size} folder rename(s)`);
+        await this.updateRenamedFolders(diff.renamedPaths);
+      }
+
+      // Persist the fresh folder map
+      this.settings._folderMapCache = freshFolderMap;
+      await this.saveData(this.settings);
+
+      docFolders = freshFolderMap.docFolders;
+
+      // Backfill folders on existing notes that don't have the field yet
+      await this.backfillFolderMetadata(docFolders);
+    } catch (error) {
+      log.error("Failed to build folder map, continuing sync without folder data:", error);
+      // Use previously cached data if available
+      if (this.settings._folderMapCache) {
+        docFolders = this.settings._folderMapCache.docFolders;
+        log.debug("Using cached folder map from previous sync");
+      }
+    }
+
     // Always sync transcripts first if enabled, so notes can link to them
     const forceOverwrite = mode === "full";
     let transcriptDataMap: Map<string, TranscriptEntry[]> | null = null;
@@ -365,7 +521,7 @@ export default class GranolaSync extends Plugin {
       );
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(documents, forceOverwrite, transcriptDataMap);
+      await this.syncNotes(documents, forceOverwrite, transcriptDataMap, docFolders);
     }
 
     // Show success message
@@ -375,7 +531,8 @@ export default class GranolaSync extends Plugin {
   private async syncNotes(
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
-    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
+    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
+    docFolders: Record<string, string[]> = {}
   ): Promise<void> {
     let syncedCount: number;
     log.debug(`syncNotes — mode=${this.settings.saveAsIndividualFiles ? "individual" : "daily-notes"}, docs=${documents.length}`);
@@ -384,13 +541,15 @@ export default class GranolaSync extends Plugin {
       syncedCount = await this.syncNotesToDailyNotes(
         documents,
         forceOverwrite,
-        transcriptDataMap
+        transcriptDataMap,
+        docFolders
       );
     } else {
       const result = await this.syncNotesToIndividualFiles(
         documents,
         forceOverwrite,
-        transcriptDataMap
+        transcriptDataMap,
+        docFolders
       );
       syncedCount = result.syncedCount;
 
@@ -420,9 +579,10 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToDailyNotes(
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
-    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
+    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
+    docFolders: Record<string, string[]> = {}
   ): Promise<number> {
-    const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
+    const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents, docFolders);
     const sectionHeadingSetting = (
       this.settings.dailyNoteSectionHeading ||
       DEFAULT_SETTINGS.dailyNoteSectionHeading!
@@ -520,7 +680,8 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToIndividualFiles(
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
-    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
+    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
+    docFolders: Record<string, string[]> = {}
   ): Promise<{
     syncedCount: number;
     syncedNotes: Array<{ doc: GranolaDoc; notePath: string }>;
@@ -572,6 +733,8 @@ export default class GranolaSync extends Plugin {
       processedCount++;
       this.updateSyncStatus("Note", processedCount, documents.length);
 
+      const folders = docFolders[doc.id];
+
       // Handle combined mode: save note and transcript together
       if (isCombinedMode && transcriptDataMap) {
         const transcriptData = transcriptDataMap.get(doc.id || "");
@@ -582,7 +745,8 @@ export default class GranolaSync extends Plugin {
               doc,
               this.documentProcessor,
               transcriptBody,
-              forceOverwrite
+              forceOverwrite,
+              folders
             )
           ) {
             syncedCount++;
@@ -594,7 +758,9 @@ export default class GranolaSync extends Plugin {
             await this.fileSyncService.saveNoteToDisk(
               doc,
               this.documentProcessor,
-              forceOverwrite
+              forceOverwrite,
+              undefined,
+              folders
             )
           ) {
             syncedCount++;
@@ -618,7 +784,8 @@ export default class GranolaSync extends Plugin {
             doc,
             this.documentProcessor,
             forceOverwrite,
-            transcriptPath ?? undefined
+            transcriptPath ?? undefined,
+            folders
           )
         ) {
           syncedCount++;

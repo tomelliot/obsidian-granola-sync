@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
+import type { FolderMapData } from "./services/folderMapBuilder";
 
 /**
  * @deprecated These enums will be removed in version 3.0.0.
@@ -78,6 +79,8 @@ export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
   AutomaticSyncSettings & {
     enableDebugLogging: boolean;
+    // Persisted folder map for detecting renames across syncs
+    _folderMapCache?: FolderMapData;
     // Legacy settings preserved for potential rollback
     _legacySettings?: {
       syncDestination?: SyncDestination;
