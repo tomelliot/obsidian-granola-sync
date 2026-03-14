@@ -77,6 +77,7 @@ export interface AutomaticSyncSettings {
 export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
   AutomaticSyncSettings & {
+    enableDebugLogging: boolean;
     // Legacy settings preserved for potential rollback
     _legacySettings?: {
       syncDestination?: SyncDestination;
@@ -110,6 +111,8 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   customTranscriptBaseFolder: "Granola/Transcripts",
   transcriptSubfolderPattern: "none",
   transcriptFilenamePattern: "{title}-transcript",
+  // Debug / diagnostics
+  enableDebugLogging: false,
 };
 
 /**
@@ -648,6 +651,42 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             );
           }
         })
+      );
+
+    new Setting(containerEl)
+      .setName("Enable debug logging")
+      .setDesc(
+        "When enabled, writes detailed plugin logs to a granola-sync-debug.log file in the plugin folder. Disable when not needed."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableDebugLogging)
+          .onChange(async (value) => {
+            this.plugin.settings.enableDebugLogging = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Copy logs to clipboard")
+      .setDesc(
+        "Copy the current contents of the debug log file to your clipboard for debugging or bug reports."
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Copy logs to clipboard")
+          .onClick(async () => {
+            // Delegate to plugin so it can handle filesystem access and error handling
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const pluginWithMethod = this.plugin as any;
+            if (typeof pluginWithMethod.copyDebugLogsToClipboard === "function") {
+              await pluginWithMethod.copyDebugLogsToClipboard();
+            } else {
+              new Notice(
+                "Copying debug logs is not available in this environment."
+              );
+            }
+          })
       );
   }
 }

@@ -1,4 +1,6 @@
-import { Notice, Plugin } from "obsidian";
+import { FileSystemAdapter, Notice, Plugin } from "obsidian";
+import fs from "fs";
+import path from "path";
 import moment from "moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
 import { getTitleOrDefault } from "./utils/filenameUtils";
@@ -27,7 +29,7 @@ import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
-import { log } from "./utils/logger";
+import { configureLogger, log } from "./utils/logger";
 import {
   showStatusBar,
   hideStatusBar,
@@ -46,6 +48,8 @@ export default class GranolaSync extends Plugin {
 
   async onload() {
     await this.loadSettings();
+
+    this.initializeLogger();
 
     // Initialize services
     this.initializeServices();
@@ -165,6 +169,90 @@ export default class GranolaSync extends Plugin {
     }
   }
 
+  private debugLogFilePath: string | null = null;
+
+  private getPluginDirPath(): string | null {
+    const adapter = this.app.vault.adapter;
+
+    if (adapter instanceof FileSystemAdapter) {
+      const basePath = adapter.getBasePath();
+      const configDir = this.app.vault.configDir;
+      return path.join(basePath, configDir, "plugins", this.manifest.id);
+    }
+
+    return null;
+  }
+
+  private initializeLogger(): void {
+    const pluginDir = this.getPluginDirPath();
+
+    if (!pluginDir) {
+      configureLogger(null);
+      return;
+    }
+
+    // Generate a timestamped log filename once per session
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/:/g, "-")
+      .replace(/\.\d{3}Z$/, "");
+    this.debugLogFilePath = path.join(
+      pluginDir,
+      "logs",
+      `${timestamp}.log`
+    );
+
+    configureLogger({
+      isDebugEnabled: () => this.settings.enableDebugLogging,
+      appendLine: async (line: string) => {
+        if (!this.debugLogFilePath) return;
+        try {
+          await fs.promises.mkdir(path.dirname(this.debugLogFilePath), {
+            recursive: true,
+          });
+          await fs.promises.appendFile(this.debugLogFilePath, line, "utf-8");
+        } catch {
+          // Swallow all errors to avoid affecting plugin behavior
+        }
+      },
+    });
+  }
+
+  async copyDebugLogsToClipboard(): Promise<void> {
+    const debugLogPath = this.debugLogFilePath;
+
+    if (!debugLogPath) {
+      new Notice(
+        "Copying debug logs is not available in this environment."
+      );
+      return;
+    }
+
+    try {
+      const contents = await fs.promises.readFile(debugLogPath, "utf-8");
+
+      if (!contents) {
+        new Notice("Debug log file is empty.");
+        return;
+      }
+
+      await navigator.clipboard.writeText(contents);
+      new Notice("Debug logs copied to clipboard.");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        new Notice(
+          "Debug log file not found. Enable debug logging and try again."
+        );
+      } else {
+        new Notice(
+          "Failed to copy debug logs: " +
+            (error instanceof Error ? error.message : String(error))
+        );
+      }
+    }
+  }
+
   private updateSyncStatus(
     kind: "Note" | "Transcript",
     current: number,
@@ -186,6 +274,7 @@ export default class GranolaSync extends Plugin {
   // Top-level sync function that handles common setup once
   async sync(options: { mode?: "standard" | "full" } = {}) {
     const mode = options.mode ?? "standard";
+    log.debug(`Sync started — mode=${mode}, daysBack=${this.settings.syncDaysBack}`);
     showStatusBar(this, "Granola sync: Syncing...");
 
     // Load credentials at the start of each sync
@@ -289,6 +378,7 @@ export default class GranolaSync extends Plugin {
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
   ): Promise<void> {
     let syncedCount: number;
+    log.debug(`syncNotes — mode=${this.settings.saveAsIndividualFiles ? "individual" : "daily-notes"}, docs=${documents.length}`);
 
     if (!this.settings.saveAsIndividualFiles) {
       syncedCount = await this.syncNotesToDailyNotes(
@@ -367,7 +457,7 @@ export default class GranolaSync extends Plugin {
         });
 
         if (allNotesUpToDate && existingNotes.size === notesForDay.length) {
-          // All notes are present and up-to-date, skip this date
+          log.debug(`Daily notes for ${dateKey} — all ${notesForDay.length} note(s) up-to-date, skipping`);
           processedCount += notesForDay.length;
           this.updateSyncStatus("Note", processedCount, documents.length);
           continue;
@@ -452,6 +542,7 @@ export default class GranolaSync extends Plugin {
         typeof contentToParse === "string" ||
         contentToParse.type !== "doc"
       ) {
+        log.debug(`Skipping doc ${doc.id} — no parseable content (type=${typeof contentToParse === "object" && contentToParse ? (contentToParse as { type?: string }).type : typeof contentToParse})`);
         continue;
       }
 
@@ -472,7 +563,7 @@ export default class GranolaSync extends Plugin {
               isCombinedMode ? "combined" : "note"
             )
           ) {
-            // Note is up-to-date, skip syncing (and don't add to syncedNotes for daily note linking)
+            log.debug(`Skipping doc ${doc.id} — local copy is up-to-date`);
             continue;
           }
         }
@@ -572,6 +663,7 @@ export default class GranolaSync extends Plugin {
                 isCombinedMode ? "combined" : "transcript"
               )
             ) {
+              log.debug(`Skipping transcript for doc ${docId} — local copy is up-to-date`);
               continue;
             }
           }
@@ -582,6 +674,7 @@ export default class GranolaSync extends Plugin {
           docId
         );
         if (transcriptData.length === 0) {
+          log.debug(`Skipping transcript for doc ${docId} — API returned empty transcript`);
           continue;
         }
 

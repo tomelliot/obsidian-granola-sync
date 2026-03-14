@@ -248,6 +248,7 @@ export class FileSyncService {
   ): Promise<boolean> {
     const newFile = await this.app.vault.create(normalizedPath, content);
     this.updateCache(granolaId, newFile, type);
+    log.debug(`Created ${type} file: ${normalizedPath} (granolaId=${granolaId})`);
     return true;
   }
 
@@ -267,6 +268,7 @@ export class FileSyncService {
     // Skip update if content unchanged and not forcing overwrite
     if (!forceOverwrite && existingContent === content) {
       this.updateCache(granolaId, existingFile, type);
+      log.debug(`Skipped ${type} file — content unchanged: ${existingFile.path} (granolaId=${granolaId})`);
       return false;
     }
 
@@ -274,9 +276,11 @@ export class FileSyncService {
 
     // Handle path change (e.g., title changed)
     if (existingFile.path !== normalizedPath) {
+      log.debug(`Renaming ${type} file: ${existingFile.path} → ${normalizedPath} (granolaId=${granolaId})`);
       await this.attemptRename(existingFile, normalizedPath, granolaId, type);
     }
 
+    log.debug(`Updated ${type} file: ${existingFile.path} (granolaId=${granolaId})`);
     this.updateCache(granolaId, existingFile, type);
     return true;
   }
@@ -334,6 +338,7 @@ export class FileSyncService {
         const filenameWithoutExtension = resolvedFilename.replace(/\.md$/, "");
         const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
         resolvedFilename = `${filenameWithoutExtension}-${dateSuffix}.md`;
+        log.debug(`Filename collision for granolaId=${granolaId} at ${filePath} — using suffix: ${resolvedFilename}`);
         filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
       }
     }
@@ -356,10 +361,12 @@ export class FileSyncService {
   ): Promise<boolean> {
     const folderPath = this.resolveFolderPath(noteDate, isTranscript);
     if (!folderPath) {
+      log.debug(`Cannot resolve folder path for ${filename} (granolaId=${granolaId}, isTranscript=${isTranscript})`);
       return false;
     }
 
     if (!(await this.ensureFolder(folderPath))) {
+      log.debug(`Failed to create folder: ${folderPath} — skipping ${filename}`);
       new Notice(
         `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
         7000
@@ -374,6 +381,7 @@ export class FileSyncService {
       isTranscript
     );
     if (!filePath) {
+      log.debug(`Cannot resolve file path for ${filename} (granolaId=${granolaId})`);
       return false;
     }
 
@@ -714,6 +722,7 @@ export class FileSyncService {
       // Save the downloaded image
       const buffer = response.arrayBuffer;
       await this.app.vault.createBinary(normalizedPath, buffer);
+      log.debug(`Saved image attachment: ${normalizedPath} (granolaId=${doc.id})`);
       return normalizedPath;
     } catch (error) {
       log.warn("Failed to download or save attachment image", {

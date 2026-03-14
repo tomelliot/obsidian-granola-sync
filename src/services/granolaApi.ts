@@ -114,6 +114,7 @@ export async function fetchGranolaDocuments(
   limit: number = 100,
   offset: number = 0
 ): Promise<GranolaDoc[]> {
+  log.debug(`Fetching documents — offset=${offset}, limit=${limit}`);
   const response = await requestUrl({
     url: "https://api.granola.ai/v2/get-documents",
     method: "POST",
@@ -136,6 +137,7 @@ export async function fetchGranolaDocuments(
   const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
   if (!result.success) {
     log.error("Validation failed for GranolaApiResponseSchema:");
+    log.debug("Response keys:", Object.keys(jsonResponse ?? {}));
     printValidationIssuePaths(result);
     log.error(JSON.stringify(result.issues, null, 2));
 
@@ -143,6 +145,7 @@ export async function fetchGranolaDocuments(
       `Invalid response from Granola API (GranolaApiResponseSchema)`
     );
   }
+  log.debug(`Fetched ${result.output.docs.length} document(s) at offset=${offset}`);
   return result.output.docs as GranolaDoc[];
 }
 
@@ -227,6 +230,7 @@ export async function fetchGranolaTranscript(
   accessToken: string,
   docId: string
 ): Promise<TranscriptEntry[]> {
+  log.debug(`Fetching transcript for doc ${docId}`);
   const transcriptResp = await requestUrl({
     url: "https://api.granola.ai/v1/get-document-transcript",
     method: "POST",
@@ -243,6 +247,7 @@ export async function fetchGranolaTranscript(
   const result = v.safeParse(TranscriptResponseSchema, transcriptResp.json);
   if (!result.success) {
     log.error("Validation failed for TranscriptResponseSchema:");
+    log.debug("Transcript response type:", typeof transcriptResp.json, Array.isArray(transcriptResp.json) ? `length=${transcriptResp.json.length}` : "");
     printValidationIssuePaths(result);
     log.error(JSON.stringify(result.issues, null, 2));
 
@@ -250,5 +255,6 @@ export async function fetchGranolaTranscript(
       `Invalid transcript response from Granola API (TranscriptResponseSchema)`
     );
   }
+  log.debug(`Fetched ${result.output.length} transcript entry/entries for doc ${docId}`);
   return result.output as TranscriptEntry[];
 }

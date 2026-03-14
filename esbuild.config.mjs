@@ -1,3 +1,6 @@
+/* eslint-env node */
+/* global console */
+
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
@@ -25,7 +28,7 @@ const DEV_PLUGIN_PATH =
   process.env.DEV_PLUGIN_PATH ||
   path.join(
     process.env.HOME,
-    "Documents/Obsidian Vault/.obsidian/plugins/obsidian-granola-sync/main.js"
+    "Documents/Obsidian Vault/.obsidian/plugins/granola-sync/main.js"
   );
 
 function copyToDevPlugin() {
@@ -34,6 +37,7 @@ function copyToDevPlugin() {
   try {
     const outputPath = path.join(__dirname, "output/main.js");
     const targetDir = path.dirname(DEV_PLUGIN_PATH);
+    const manifestTargetPath = path.join(targetDir, "manifest.json");
 
     // Check if target directory exists
     if (!fs.existsSync(targetDir)) {
@@ -41,9 +45,18 @@ function copyToDevPlugin() {
       return;
     }
 
-    // Copy the file
+    // Copy the built main.js
     fs.copyFileSync(outputPath, DEV_PLUGIN_PATH);
-    console.log(`✓ Copied to ${DEV_PLUGIN_PATH}`);
+    console.log(`✓ Copied main.js to ${DEV_PLUGIN_PATH}`);
+
+    // Write a dev manifest with a fixed version so it doesn't override production
+    const devManifest = { ...manifest, version: "1.0.0" };
+    fs.writeFileSync(
+      manifestTargetPath,
+      `${JSON.stringify(devManifest, null, 2)}\n`,
+      "utf-8"
+    );
+    console.log(`✓ Wrote dev manifest.json to ${manifestTargetPath}`);
   } catch (error) {
     console.error(`Failed to copy to dev plugin directory: ${error.message}`);
   }
