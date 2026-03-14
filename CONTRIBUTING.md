@@ -49,7 +49,7 @@ The plugin uses a combination of unit and integration tests:
 ## Testing Changes
 
 - Make changes
-- Set env var `DEV_PLUGIN_PATH` to the Obsidian plugin dir. On macOS that is `~/Documents/Obsidian Vault/.obsidian/plugins/obsidian-granola-sync/main.js`
+- Set env var `DEV_PLUGIN_PATH` to the Obsidian plugin dir. On macOS that is `~/obsidian/Everything/.obsidian/plugins/granola-sync/main.js`
 - Use `npm run dev`
 - Either restart Obsidian between changes, or use the [hot reload plugin](https://github.com/pjeby/hot-reload)
 - Test changes worked in Obsidian
