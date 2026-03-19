@@ -28,7 +28,7 @@ const DEV_PLUGIN_PATH =
   process.env.DEV_PLUGIN_PATH ||
   path.join(
     process.env.HOME,
-    "Documents/Obsidian Vault/.obsidian/plugins/granola-sync/main.js"
+    "obsidian/Everything/.obsidian/plugins/granola-sync/main.js"
   );
 
 function copyToDevPlugin() {

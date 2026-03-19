@@ -13,7 +13,9 @@
       "Bash(gh pr create:*)",
       "Bash(gh pr view:*)",
       "Bash(git log:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "WebFetch(domain:docs.obsidian.md)",
+      "Bash(npx eslint:*)"
     ],
     "deny": [],
     "ask": []

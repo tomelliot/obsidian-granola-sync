@@ -44,7 +44,7 @@ describe("formatTranscriptBySpeaker", () => {
 
     expect(result).toContain("---");
     expect(result).toContain("granola_id: test-id");
-    expect(result).toContain('title: "Test Meeting - Transcript"');
+    expect(result).toContain("title: Test Meeting - Transcript");
     expect(result).toContain("type: transcript");
     expect(result).toContain("# Transcript for: Test Meeting");
     expect(result).toContain("## You (00:00:01)");
@@ -139,6 +139,31 @@ describe("formatTranscriptBySpeaker", () => {
     expect(result).toContain(
       'title: "Meeting \\"Project Alpha\\" - Transcript"'
     );
+  });
+
+  it("should sanitize newlines in title for YAML frontmatter", () => {
+    const transcriptData: TranscriptEntry[] = [
+      {
+        document_id: "doc1",
+        start_timestamp: "00:00:01",
+        end_timestamp: "00:00:05",
+        text: "Test text",
+        source: "microphone",
+        id: "entry1",
+        is_final: true,
+      },
+    ];
+
+    const result = formatTranscriptBySpeaker(
+      transcriptData,
+      "\nMeeting With Newline",
+      "test-id"
+    );
+
+    const frontmatter = result.split("---")[1];
+    const titleLine = frontmatter.split("\n").find((l: string) => l.startsWith("title:"));
+    expect(titleLine).toBeDefined();
+    expect(titleLine).not.toMatch(/title:.*\n.*\n/);
   });
 
   it("should distinguish between microphone and speaker sources", () => {

@@ -57,6 +57,13 @@ describe("sanitizeFilename", () => {
     expect(result).toBe("file-name_with.special!chars@#$%^&()[]{}");
   });
 
+  it("should replace newlines and carriage returns with underscores", () => {
+    expect(sanitizeFilename("\nLeading newline")).toBe("_Leading newline");
+    expect(sanitizeFilename("Mid\nnewline")).toBe("Mid_newline");
+    expect(sanitizeFilename("CRLF\r\nending")).toBe("CRLF__ending");
+    expect(sanitizeFilename("CR\ronly")).toBe("CR_only");
+  });
+
   it("should handle mixed invalid characters and spaces", () => {
     const filename = "test: file / name * with ? invalid | chars";
     const result = sanitizeFilename(filename);
