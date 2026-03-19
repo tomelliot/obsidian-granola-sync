@@ -19,6 +19,7 @@ export interface NoteData {
   updatedAt?: string;
   attendees: string[];
   transcript?: string;
+  folders?: string[];
   markdown: string;
 }
 
@@ -119,7 +120,8 @@ export class DailyNoteBuilder {
    * @returns Map of date keys (YYYY-MM-DD) to arrays of note data with their source documents
    */
   buildDailyNotesMap(
-    documents: GranolaDoc[]
+    documents: GranolaDoc[],
+    docFolders: Record<string, string[]> = {}
   ): Map<string, Array<{ noteData: NoteData; doc: GranolaDoc }>> {
     const dailyNotesMap = new Map<
       string,
@@ -127,7 +129,12 @@ export class DailyNoteBuilder {
     >();
 
     for (const doc of documents) {
-      const noteData = this.documentProcessor.extractNoteForDailyNote(doc);
+      const folders = docFolders[doc.id];
+      const noteData = this.documentProcessor.extractNoteForDailyNote(
+        doc,
+        undefined,
+        folders
+      );
       if (!noteData) {
         continue;
       }
@@ -206,6 +213,10 @@ export class DailyNoteBuilder {
 
       if (note.transcript) {
         content += `**Transcript:** ${note.transcript}\n`;
+      }
+
+      if (note.folders && note.folders.length > 0) {
+        content += `**Folders:** ${note.folders.join(", ")}\n`;
       }
 
       content += `\n${note.markdown}\n`;

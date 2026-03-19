@@ -71,3 +71,30 @@ export const TranscriptEntrySchema = v.object({
 });
 
 export const TranscriptResponseSchema = v.array(TranscriptEntrySchema);
+
+// Document list (folder) validation schemas
+export const DocumentListMetadataEntrySchema = v.object({
+  id: v.string(),
+  title: v.string(),
+  parent_document_list_id: v.nullish(v.string()),
+  created_at: v.nullish(v.string()),
+  updated_at: v.nullish(v.string()),
+  is_default_folder: v.optional(v.boolean()),
+  sort_order: v.optional(v.number()),
+});
+
+export const DocumentListsMetadataResponseSchema = v.object({
+  lists: v.record(v.string(), DocumentListMetadataEntrySchema),
+});
+
+// For get-document-list response, we only need document IDs from the documents array
+const DocumentListDocRefSchema = v.object({
+  id: v.string(),
+});
+
+export const DocumentListWithDocsResponseSchema = v.object({
+  id: v.string(),
+  title: v.string(),
+  parent_document_list_id: v.nullish(v.string()),
+  documents: v.optional(v.array(DocumentListDocRefSchema), []),
+});

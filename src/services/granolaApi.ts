@@ -2,61 +2,29 @@ import { requestUrl } from "obsidian";
 import * as v from "valibot";
 import {
   GranolaApiResponseSchema,
-  TranscriptEntrySchema,
   TranscriptResponseSchema,
+  DocumentListsMetadataResponseSchema,
+  DocumentListWithDocsResponseSchema,
 } from "./validationSchemas";
 import { log } from "../utils/logger";
 
-// ProseMirror types (defined explicitly due to recursive nature)
-export interface ProseMirrorNode {
-  type: string;
-  content?: ProseMirrorNode[];
-  text?: string;
-  attrs?: { [key: string]: unknown };
-}
+// Re-export all types so existing imports from "./granolaApi" continue to work
+export type {
+  ProseMirrorNode,
+  ProseMirrorDoc,
+  GranolaAttachment,
+  GranolaDoc,
+  TranscriptEntry,
+  DocumentListMetadata,
+  DocumentListWithDocs,
+} from "./granolaTypes";
 
-export interface ProseMirrorDoc {
-  type: "doc";
-  content: ProseMirrorNode[];
-}
-
-// GranolaDoc type (defined explicitly due to recursive nature of ProseMirrorDoc)
-export interface GranolaAttachment {
-  id: string;
-  url: string;
-  type?: string;
-  width?: number;
-  height?: number;
-  // Allow additional metadata fields without forcing callers to model them
-  // explicitly. This keeps the type aligned with the API while remaining
-  // forward-compatible.
-  [key: string]: unknown;
-}
-
-export interface GranolaDoc {
-  id: string;
-  title: string | null;
-  created_at?: string;
-  updated_at?: string;
-  attendees?: string[];
-  people?: {
-    attendees?: Array<{
-      name?: string;
-      email?: string;
-    }>;
-  };
-  last_viewed_panel?: {
-    content?: ProseMirrorDoc | string | null;
-  } | null;
-  notes_markdown?: string;
-   // Optional attachments array as returned by the Granola API. May be null when
-   // the doc has no attachments. Used primarily for image attachments synced
-   // into the Obsidian vault and embedded at the end of the note.
-  attachments?: GranolaAttachment[] | null;
-}
-
-// Infer TypeScript type from validation schema
-export type TranscriptEntry = v.InferOutput<typeof TranscriptEntrySchema>;
+import type {
+  GranolaDoc,
+  TranscriptEntry,
+  DocumentListMetadata,
+  DocumentListWithDocs,
+} from "./granolaTypes";
 
 /**
  * Helper function to print validation issue paths from a Valibot safeParse result.
@@ -114,6 +82,7 @@ export async function fetchGranolaDocuments(
   limit: number = 100,
   offset: number = 0
 ): Promise<GranolaDoc[]> {
+  log.debug(`Fetching documents — offset=${offset}, limit=${limit}`);
   const response = await requestUrl({
     url: "https://api.granola.ai/v2/get-documents",
     method: "POST",
@@ -136,6 +105,7 @@ export async function fetchGranolaDocuments(
   const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
   if (!result.success) {
     log.error("Validation failed for GranolaApiResponseSchema:");
+    log.debug("Response keys:", Object.keys(jsonResponse ?? {}));
     printValidationIssuePaths(result);
     log.error(JSON.stringify(result.issues, null, 2));
 
@@ -143,6 +113,7 @@ export async function fetchGranolaDocuments(
       `Invalid response from Granola API (GranolaApiResponseSchema)`
     );
   }
+  log.debug(`Fetched ${result.output.docs.length} document(s) at offset=${offset}`);
   return result.output.docs as GranolaDoc[];
 }
 
@@ -227,6 +198,7 @@ export async function fetchGranolaTranscript(
   accessToken: string,
   docId: string
 ): Promise<TranscriptEntry[]> {
+  log.debug(`Fetching transcript for doc ${docId}`);
   const transcriptResp = await requestUrl({
     url: "https://api.granola.ai/v1/get-document-transcript",
     method: "POST",
@@ -243,6 +215,7 @@ export async function fetchGranolaTranscript(
   const result = v.safeParse(TranscriptResponseSchema, transcriptResp.json);
   if (!result.success) {
     log.error("Validation failed for TranscriptResponseSchema:");
+    log.debug("Transcript response type:", typeof transcriptResp.json, Array.isArray(transcriptResp.json) ? `length=${transcriptResp.json.length}` : "");
     printValidationIssuePaths(result);
     log.error(JSON.stringify(result.issues, null, 2));
 
@@ -250,5 +223,86 @@ export async function fetchGranolaTranscript(
       `Invalid transcript response from Granola API (TranscriptResponseSchema)`
     );
   }
+  log.debug(`Fetched ${result.output.length} transcript entry/entries for doc ${docId}`);
   return result.output as TranscriptEntry[];
+}
+
+/**
+ * Fetches metadata for all document lists (folders) the user has access to.
+ * Returns a record keyed by list ID.
+ */
+export async function fetchDocumentListsMetadata(
+  accessToken: string
+): Promise<Record<string, DocumentListMetadata>> {
+  log.debug("Fetching document lists metadata");
+  const response = await requestUrl({
+    url: "https://api.granola.ai/v1/get-document-lists-metadata",
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+    },
+    body: JSON.stringify({}),
+  });
+
+  const result = v.safeParse(
+    DocumentListsMetadataResponseSchema,
+    response.json
+  );
+  if (!result.success) {
+    log.error("Validation failed for DocumentListsMetadataResponseSchema:");
+    log.error(JSON.stringify(result.issues, null, 2));
+    throw new Error(
+      "Invalid response from Granola API (DocumentListsMetadataResponseSchema)"
+    );
+  }
+
+  const listCount = Object.keys(result.output.lists).length;
+  log.debug(`Fetched metadata for ${listCount} document list(s)`);
+  return result.output.lists as Record<string, DocumentListMetadata>;
+}
+
+/**
+ * Fetches a single document list (folder) including its document memberships.
+ * Only document IDs are extracted from the response.
+ */
+export async function fetchDocumentList(
+  accessToken: string,
+  listId: string
+): Promise<DocumentListWithDocs> {
+  log.debug(`Fetching document list ${listId}`);
+  const response = await requestUrl({
+    url: "https://api.granola.ai/v1/get-document-list",
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+    },
+    body: JSON.stringify({ list_id: listId }),
+  });
+
+  const result = v.safeParse(
+    DocumentListWithDocsResponseSchema,
+    response.json
+  );
+  if (!result.success) {
+    log.error(
+      `Validation failed for DocumentListWithDocsResponseSchema (list ${listId}):`
+    );
+    log.error(JSON.stringify(result.issues, null, 2));
+    throw new Error(
+      `Invalid response from Granola API (DocumentListWithDocsResponseSchema) for list ${listId}`
+    );
+  }
+
+  log.debug(
+    `Fetched document list "${result.output.title}" with ${result.output.documents?.length ?? 0} document(s)`
+  );
+  return result.output as DocumentListWithDocs;
 }

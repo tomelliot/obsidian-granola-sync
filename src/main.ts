@@ -1,4 +1,6 @@
-import { Notice, Plugin } from "obsidian";
+import { FileSystemAdapter, Notice, Plugin } from "obsidian";
+import fs from "fs";
+import path from "path";
 import moment from "moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
 import { getTitleOrDefault } from "./utils/filenameUtils";
@@ -17,6 +19,10 @@ import {
   TranscriptEntry,
 } from "./services/granolaApi";
 import {
+  buildFolderMap,
+  diffFolderMaps,
+} from "./services/folderMapBuilder";
+import {
   loadCredentials as loadGranolaCredentials,
 } from "./services/credentials";
 import {
@@ -27,7 +33,8 @@ import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
-import { log } from "./utils/logger";
+import { configureLogger, log } from "./utils/logger";
+import { formatStringListAsYaml } from "./utils/yamlUtils";
 import {
   showStatusBar,
   hideStatusBar,
@@ -46,6 +53,8 @@ export default class GranolaSync extends Plugin {
 
   async onload() {
     await this.loadSettings();
+
+    this.initializeLogger();
 
     // Initialize services
     this.initializeServices();
@@ -165,6 +174,90 @@ export default class GranolaSync extends Plugin {
     }
   }
 
+  private debugLogFilePath: string | null = null;
+
+  private getPluginDirPath(): string | null {
+    const adapter = this.app.vault.adapter;
+
+    if (adapter instanceof FileSystemAdapter) {
+      const basePath = adapter.getBasePath();
+      const configDir = this.app.vault.configDir;
+      return path.join(basePath, configDir, "plugins", this.manifest.id);
+    }
+
+    return null;
+  }
+
+  private initializeLogger(): void {
+    const pluginDir = this.getPluginDirPath();
+
+    if (!pluginDir) {
+      configureLogger(null);
+      return;
+    }
+
+    // Generate a timestamped log filename once per session
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/:/g, "-")
+      .replace(/\.\d{3}Z$/, "");
+    this.debugLogFilePath = path.join(
+      pluginDir,
+      "logs",
+      `${timestamp}.log`
+    );
+
+    configureLogger({
+      isDebugEnabled: () => this.settings.enableDebugLogging,
+      appendLine: async (line: string) => {
+        if (!this.debugLogFilePath) return;
+        try {
+          await fs.promises.mkdir(path.dirname(this.debugLogFilePath), {
+            recursive: true,
+          });
+          await fs.promises.appendFile(this.debugLogFilePath, line, "utf-8");
+        } catch {
+          // Swallow all errors to avoid affecting plugin behavior
+        }
+      },
+    });
+  }
+
+  async copyDebugLogsToClipboard(): Promise<void> {
+    const debugLogPath = this.debugLogFilePath;
+
+    if (!debugLogPath) {
+      new Notice(
+        "Copying debug logs is not available in this environment."
+      );
+      return;
+    }
+
+    try {
+      const contents = await fs.promises.readFile(debugLogPath, "utf-8");
+
+      if (!contents) {
+        new Notice("Debug log file is empty.");
+        return;
+      }
+
+      await navigator.clipboard.writeText(contents);
+      new Notice("Debug logs copied to clipboard.");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        new Notice(
+          "Debug log file not found. Enable debug logging and try again."
+        );
+      } else {
+        new Notice(
+          "Failed to copy debug logs: " +
+            (error instanceof Error ? error.message : String(error))
+        );
+      }
+    }
+  }
+
   private updateSyncStatus(
     kind: "Note" | "Transcript",
     current: number,
@@ -179,13 +272,150 @@ export default class GranolaSync extends Plugin {
     showStatusBar(this, `Granola sync: ${label} ${clampedCurrent}/${total}`);
   }
 
-  // Build the Granola ID cache by scanning all markdown files in the vault
+  /**
+   * Updates frontmatter on all vault notes affected by folder renames.
+   * Scans all markdown files for folders entries matching old paths
+   * and replaces them with new paths.
+   */
+  private async updateRenamedFolders(
+    renamedPaths: Map<string, string>
+  ): Promise<void> {
+    const files = this.app.vault.getMarkdownFiles();
+    let updatedCount = 0;
 
-  // Compute the folder path for a note based on daily note settings
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const folders = cache?.frontmatter?.folders as
+        | string[]
+        | undefined;
+      if (!folders || !Array.isArray(folders)) continue;
+
+      let changed = false;
+      const updatedFolders = folders.map((folder) => {
+        const newPath = renamedPaths.get(folder);
+        if (newPath) {
+          changed = true;
+          return newPath;
+        }
+        return folder;
+      });
+
+      if (changed) {
+        const content = await this.app.vault.read(file);
+        const updatedContent = this.replaceFrontmatterFolders(
+          content,
+          updatedFolders
+        );
+        if (updatedContent !== content) {
+          await this.app.vault.modify(file, updatedContent);
+          updatedCount++;
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      log.debug(
+        `Updated folders in ${updatedCount} file(s) due to folder renames`
+      );
+    }
+  }
+
+  /**
+   * Replaces the folders list in YAML frontmatter with updated values.
+   */
+  private replaceFrontmatterFolders(
+    content: string,
+    newFolders: string[]
+  ): string {
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!frontmatterMatch) return content;
+
+    const frontmatter = frontmatterMatch[1];
+
+    const folderBlockRegex =
+      /folders:\s*\n((?:\s+-\s+.*\n?)*)/;
+    const match = frontmatter.match(folderBlockRegex);
+    if (!match) return content;
+
+    const newBlock =
+      "folders:\n" +
+      newFolders.map((f) => `  - "${f}"`).join("\n") +
+      "\n";
+    const updatedFrontmatter = frontmatter.replace(folderBlockRegex, newBlock);
+
+    return content.replace(
+      /^---\n[\s\S]*?\n---/,
+      `---\n${updatedFrontmatter}\n---`
+    );
+  }
+
+  /**
+   * Backfills the `folders` frontmatter field on existing vault notes that have
+   * a `granola_id` but are missing folder metadata. This ensures previously
+   * synced documents get folder paths added when the feature is first enabled.
+   */
+  private async backfillFolderMetadata(
+    docFolders: Record<string, string[]>
+  ): Promise<void> {
+    const files = this.app.vault.getMarkdownFiles();
+    let updatedCount = 0;
+    let scannedCount = 0;
+    let alreadyHasFoldersCount = 0;
+    let noFolderDataCount = 0;
+    let noFrontmatterCount = 0;
+
+    log.debug(`backfillFolderMetadata — scanning ${files.length} markdown file(s), docFolders has ${Object.keys(docFolders).length} mapping(s)`);
+
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      if (!cache?.frontmatter?.granola_id) continue;
+
+      scannedCount++;
+
+      // Skip files that already have a folders field
+      if (cache.frontmatter.folders !== undefined) {
+        alreadyHasFoldersCount++;
+        continue;
+      }
+
+      const granolaId = cache.frontmatter.granola_id as string;
+      const folders = docFolders[granolaId];
+      if (!folders || folders.length === 0) {
+        noFolderDataCount++;
+        log.debug(`backfill skip — no folder data for granolaId=${granolaId} (${file.path})`);
+        continue;
+      }
+
+      const content = await this.app.vault.read(file);
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (!frontmatterMatch) {
+        noFrontmatterCount++;
+        log.debug(`backfill skip — no parseable frontmatter in ${file.path}`);
+        continue;
+      }
+
+      const frontmatter = frontmatterMatch[1];
+      const foldersYaml = `folders: ${formatStringListAsYaml(folders)}`;
+      const updatedFrontmatter = frontmatter + "\n" + foldersYaml;
+      const updatedContent = content.replace(
+        /^---\n[\s\S]*?\n---/,
+        `---\n${updatedFrontmatter}\n---`
+      );
+
+      if (updatedContent !== content) {
+        await this.app.vault.modify(file, updatedContent);
+        updatedCount++;
+        log.debug(`backfill updated — ${file.path} (granolaId=${granolaId}, folders=${JSON.stringify(folders)})`);
+      }
+    }
+
+    log.debug(`backfillFolderMetadata — scanned=${scannedCount} granola files, updated=${updatedCount}, alreadyHasFolders=${alreadyHasFoldersCount}, noFolderData=${noFolderDataCount}, noFrontmatter=${noFrontmatterCount}`);
+  }
 
   // Top-level sync function that handles common setup once
   async sync(options: { mode?: "standard" | "full" } = {}) {
     const mode = options.mode ?? "standard";
+    log.debug(`Sync started — mode=${mode}, daysBack=${this.settings.syncDaysBack}`);
     showStatusBar(this, "Granola sync: Syncing...");
 
     // Load credentials at the start of each sync
@@ -265,6 +495,38 @@ export default class GranolaSync extends Plugin {
         : `Granola API: fetched ${documents.length} documents within ${this.settings.syncDaysBack} day(s)`
     );
 
+    // Build folder map (document → folder paths)
+    let docFolders: Record<string, string[]> = {};
+    try {
+      showStatusBar(this, "Granola sync: Fetching folders...");
+      const freshFolderMap = await buildFolderMap(accessToken);
+      const previousFolderMap = this.settings._folderMapCache ?? null;
+
+      // Detect folder renames and update affected notes
+      const diff = diffFolderMaps(previousFolderMap, freshFolderMap);
+      if (diff.renamedPaths.size > 0) {
+        log.debug(`Detected ${diff.renamedPaths.size} folder rename(s)`);
+        await this.updateRenamedFolders(diff.renamedPaths);
+      }
+
+      // Persist the fresh folder map
+      this.settings._folderMapCache = freshFolderMap;
+      await this.saveData(this.settings);
+
+      docFolders = freshFolderMap.docFolders;
+      log.debug(`Folder map built — ${Object.keys(freshFolderMap.folders).length} folder(s), ${Object.keys(docFolders).length} document(s) with folder data`);
+
+      // Backfill folders on existing notes that don't have the field yet
+      await this.backfillFolderMetadata(docFolders);
+    } catch (error) {
+      log.error("Failed to build folder map, continuing sync without folder data:", error);
+      // Use previously cached data if available
+      if (this.settings._folderMapCache) {
+        docFolders = this.settings._folderMapCache.docFolders;
+        log.debug("Using cached folder map from previous sync");
+      }
+    }
+
     // Always sync transcripts first if enabled, so notes can link to them
     const forceOverwrite = mode === "full";
     let transcriptDataMap: Map<string, TranscriptEntry[]> | null = null;
@@ -276,7 +538,7 @@ export default class GranolaSync extends Plugin {
       );
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(documents, forceOverwrite, transcriptDataMap);
+      await this.syncNotes(documents, forceOverwrite, transcriptDataMap, docFolders);
     }
 
     // Show success message
@@ -286,21 +548,25 @@ export default class GranolaSync extends Plugin {
   private async syncNotes(
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
-    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
+    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
+    docFolders: Record<string, string[]> = {}
   ): Promise<void> {
     let syncedCount: number;
+    log.debug(`syncNotes — mode=${this.settings.saveAsIndividualFiles ? "individual" : "daily-notes"}, docs=${documents.length}`);
 
     if (!this.settings.saveAsIndividualFiles) {
       syncedCount = await this.syncNotesToDailyNotes(
         documents,
         forceOverwrite,
-        transcriptDataMap
+        transcriptDataMap,
+        docFolders
       );
     } else {
       const result = await this.syncNotesToIndividualFiles(
         documents,
         forceOverwrite,
-        transcriptDataMap
+        transcriptDataMap,
+        docFolders
       );
       syncedCount = result.syncedCount;
 
@@ -330,9 +596,10 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToDailyNotes(
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
-    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
+    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
+    docFolders: Record<string, string[]> = {}
   ): Promise<number> {
-    const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents);
+    const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents, docFolders);
     const sectionHeadingSetting = (
       this.settings.dailyNoteSectionHeading ||
       DEFAULT_SETTINGS.dailyNoteSectionHeading!
@@ -367,7 +634,7 @@ export default class GranolaSync extends Plugin {
         });
 
         if (allNotesUpToDate && existingNotes.size === notesForDay.length) {
-          // All notes are present and up-to-date, skip this date
+          log.debug(`Daily notes for ${dateKey} — all ${notesForDay.length} note(s) up-to-date, skipping`);
           processedCount += notesForDay.length;
           this.updateSyncStatus("Note", processedCount, documents.length);
           continue;
@@ -430,7 +697,8 @@ export default class GranolaSync extends Plugin {
   private async syncNotesToIndividualFiles(
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
-    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null
+    transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
+    docFolders: Record<string, string[]> = {}
   ): Promise<{
     syncedCount: number;
     syncedNotes: Array<{ doc: GranolaDoc; notePath: string }>;
@@ -452,6 +720,7 @@ export default class GranolaSync extends Plugin {
         typeof contentToParse === "string" ||
         contentToParse.type !== "doc"
       ) {
+        log.debug(`Skipping doc ${doc.id} — no parseable content (type=${typeof contentToParse === "object" && contentToParse ? (contentToParse as { type?: string }).type : typeof contentToParse})`);
         continue;
       }
 
@@ -472,7 +741,7 @@ export default class GranolaSync extends Plugin {
               isCombinedMode ? "combined" : "note"
             )
           ) {
-            // Note is up-to-date, skip syncing (and don't add to syncedNotes for daily note linking)
+            log.debug(`Skipping doc ${doc.id} — local copy is up-to-date`);
             continue;
           }
         }
@@ -480,6 +749,9 @@ export default class GranolaSync extends Plugin {
 
       processedCount++;
       this.updateSyncStatus("Note", processedCount, documents.length);
+
+      const folders = docFolders[doc.id];
+      log.debug(`Syncing doc ${doc.id} — folders=${folders ? JSON.stringify(folders) : "none"}`);
 
       // Handle combined mode: save note and transcript together
       if (isCombinedMode && transcriptDataMap) {
@@ -491,7 +763,8 @@ export default class GranolaSync extends Plugin {
               doc,
               this.documentProcessor,
               transcriptBody,
-              forceOverwrite
+              forceOverwrite,
+              folders
             )
           ) {
             syncedCount++;
@@ -503,7 +776,9 @@ export default class GranolaSync extends Plugin {
             await this.fileSyncService.saveNoteToDisk(
               doc,
               this.documentProcessor,
-              forceOverwrite
+              forceOverwrite,
+              undefined,
+              folders
             )
           ) {
             syncedCount++;
@@ -527,7 +802,8 @@ export default class GranolaSync extends Plugin {
             doc,
             this.documentProcessor,
             forceOverwrite,
-            transcriptPath ?? undefined
+            transcriptPath ?? undefined,
+            folders
           )
         ) {
           syncedCount++;
@@ -572,6 +848,7 @@ export default class GranolaSync extends Plugin {
                 isCombinedMode ? "combined" : "transcript"
               )
             ) {
+              log.debug(`Skipping transcript for doc ${docId} — local copy is up-to-date`);
               continue;
             }
           }
@@ -582,6 +859,7 @@ export default class GranolaSync extends Plugin {
           docId
         );
         if (transcriptData.length === 0) {
+          log.debug(`Skipping transcript for doc ${docId} — API returned empty transcript`);
           continue;
         }
 

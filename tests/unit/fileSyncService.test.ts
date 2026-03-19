@@ -730,6 +730,7 @@ describe("FileSyncService", () => {
       expect(result).toBe(true);
       expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
         doc,
+        undefined,
         undefined
       );
       expect(saveFileSpy).toHaveBeenCalledWith(
@@ -763,7 +764,8 @@ describe("FileSyncService", () => {
       expect(result).toBe(true);
       expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
         doc,
-        "Transcripts/note-transcript.md"
+        "Transcripts/note-transcript.md",
+        undefined
       );
     });
 
@@ -820,6 +822,7 @@ describe("FileSyncService", () => {
 
       expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
         doc,
+        undefined,
         undefined
       );
       expect(requestUrlSpy).toHaveBeenCalledTimes(1);
@@ -2007,7 +2010,8 @@ describe("FileSyncService", () => {
       expect(result).toBe(true);
       expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalledWith(
         mockDoc,
-        "## Transcript\n\nTranscript content"
+        "## Transcript\n\nTranscript content",
+        undefined
       );
       expect(mockApp.vault.create).toHaveBeenCalled();
       expect(fileSyncService.findByGranolaId("doc-123", "combined")).toBe(mockFile);

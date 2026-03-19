@@ -114,4 +114,131 @@ describe("logger", () => {
     });
   });
 
+  describe("file logging integration", () => {
+    it("should append a formatted line when debug logging is enabled", () => {
+      process.env.NODE_ENV = "production";
+      jest.resetModules();
+      const { log: prodLog, configureLogger } = require("../../src/utils/logger");
+      const appendLine = jest.fn();
+
+      configureLogger({
+        isDebugEnabled: () => true,
+        appendLine,
+      });
+
+      prodLog.debug("Debug message", { foo: "bar" });
+
+      expect(appendLine).toHaveBeenCalledTimes(1);
+      const line = appendLine.mock.calls[0][0] as string;
+      expect(line).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO timestamp prefix
+      expect(line).toContain("[DEBUG]");
+      expect(line).toContain("Debug message");
+      expect(line).toContain('"foo":"bar"');
+      expect(line.endsWith("\n")).toBe(true);
+
+      configureLogger(null);
+    });
+
+    it("should not append when debug logging is disabled", () => {
+      process.env.NODE_ENV = "production";
+      jest.resetModules();
+      const { log: prodLog, configureLogger } = require("../../src/utils/logger");
+      const appendLine = jest.fn();
+
+      configureLogger({
+        isDebugEnabled: () => false,
+        appendLine,
+      });
+
+      prodLog.info("Info message");
+
+      expect(appendLine).not.toHaveBeenCalled();
+
+      configureLogger(null);
+    });
+
+    it("should log debug to console when isDebugEnabled returns true in production", () => {
+      process.env.NODE_ENV = "production";
+      jest.resetModules();
+      const { log: prodLog, configureLogger } = require("../../src/utils/logger");
+      const appendLine = jest.fn();
+
+      configureLogger({
+        isDebugEnabled: () => true,
+        appendLine,
+      });
+
+      prodLog.debug("Debug visible in prod");
+
+      expect(consoleDebugSpy).toHaveBeenCalledWith(
+        "[Granola Sync]",
+        "Debug visible in prod"
+      );
+
+      configureLogger(null);
+    });
+
+    it("should log info to console when isDebugEnabled returns true in production", () => {
+      process.env.NODE_ENV = "production";
+      jest.resetModules();
+      const { log: prodLog, configureLogger } = require("../../src/utils/logger");
+      const appendLine = jest.fn();
+
+      configureLogger({
+        isDebugEnabled: () => true,
+        appendLine,
+      });
+
+      prodLog.info("Info visible in prod");
+
+      expect(consoleInfoSpy).toHaveBeenCalledWith(
+        "[Granola Sync]",
+        "Info visible in prod"
+      );
+
+      configureLogger(null);
+    });
+
+    it("should not log debug to console when isDebugEnabled returns false in production", () => {
+      process.env.NODE_ENV = "production";
+      jest.resetModules();
+      const { log: prodLog, configureLogger } = require("../../src/utils/logger");
+      const appendLine = jest.fn();
+
+      configureLogger({
+        isDebugEnabled: () => false,
+        appendLine,
+      });
+
+      prodLog.debug("Should not appear");
+
+      expect(consoleDebugSpy).not.toHaveBeenCalled();
+
+      configureLogger(null);
+    });
+
+    it("should serialize Error instances in file logs", () => {
+      process.env.NODE_ENV = "production";
+      jest.resetModules();
+      const { log: prodLog, configureLogger } = require("../../src/utils/logger");
+      const appendLine = jest.fn();
+
+      configureLogger({
+        isDebugEnabled: () => true,
+        appendLine,
+      });
+
+      const error = new Error("Something went wrong");
+      prodLog.error("Error occurred", error);
+
+      expect(appendLine).toHaveBeenCalledTimes(1);
+      const line = appendLine.mock.calls[0][0] as string;
+      expect(line).toContain("[ERROR]");
+      expect(line).toContain("Error occurred");
+      expect(line).toContain("Something went wrong");
+
+      configureLogger(null);
+    });
+  });
+
 });

@@ -5,7 +5,10 @@ import {
   resolveFilenamePattern,
 } from "../utils/filenameUtils";
 import { PathResolver } from "./pathResolver";
-import { formatAttendeesAsYaml } from "../utils/yamlUtils";
+import {
+  formatAttendeesAsYaml,
+  formatStringListAsYaml,
+} from "../utils/yamlUtils";
 
 export interface DocumentProcessorSettings {
   syncTranscripts: boolean;
@@ -23,6 +26,7 @@ export interface NoteMetadata {
   updatedAt?: string;
   attendees: string[];
   transcript?: string;
+  folders?: string[];
 }
 
 /**
@@ -31,6 +35,7 @@ export interface NoteMetadata {
 export interface MetadataOptions {
   type: "note" | "combined" | "transcript";
   transcriptPath?: string;
+  folders?: string[];
 }
 
 /**
@@ -77,6 +82,11 @@ export class DocumentProcessor {
     // Add transcript link if provided (only for individual note files)
     if (this.settings.syncTranscripts && options.transcriptPath) {
       metadata.transcript = options.transcriptPath;
+    }
+
+    // Add folder paths if provided and non-empty
+    if (options.folders && options.folders.length > 0) {
+      metadata.folders = options.folders;
     }
 
     return metadata;
@@ -131,12 +141,14 @@ export class DocumentProcessor {
    */
   prepareNote(
     doc: GranolaDoc,
-    transcriptPath?: string
+    transcriptPath?: string,
+    folders?: string[]
   ): { filename: string; content: string } {
     // Build metadata using shared builder
     const metadata = this.buildNoteMetadata(doc, {
       type: "note",
       transcriptPath,
+      folders,
     });
 
     // Build body using shared builder
@@ -157,6 +169,13 @@ export class DocumentProcessor {
     // Add transcript link to frontmatter if provided
     if (metadata.transcript) {
       frontmatterLines.push(`transcript: "[[${metadata.transcript}]]"`);
+    }
+
+    // Add folder paths if present
+    if (metadata.folders && metadata.folders.length > 0) {
+      frontmatterLines.push(
+        `folders: ${formatStringListAsYaml(metadata.folders)}`
+      );
     }
 
     frontmatterLines.push("---", "");
@@ -197,10 +216,11 @@ export class DocumentProcessor {
    */
   prepareCombinedNote(
     doc: GranolaDoc,
-    transcriptContent: string
+    transcriptContent: string,
+    folders?: string[]
   ): { filename: string; content: string } {
     // Build metadata using shared builder
-    const metadata = this.buildNoteMetadata(doc, { type: "combined" });
+    const metadata = this.buildNoteMetadata(doc, { type: "combined", folders });
 
     // Build body using shared builder
     const body = this.buildNoteBody(doc, { headingLevel: 2 });
@@ -218,6 +238,14 @@ export class DocumentProcessor {
     frontmatterLines.push(`attendees: ${formatAttendeesAsYaml(metadata.attendees)}`);
 
     // Note: Combined files do NOT include transcript or note link fields in frontmatter
+
+    // Add folder paths if present
+    if (metadata.folders && metadata.folders.length > 0) {
+      frontmatterLines.push(
+        `folders: ${formatStringListAsYaml(metadata.folders)}`
+      );
+    }
+
     frontmatterLines.push("---", "");
 
     let finalMarkdown = frontmatterLines.join("\n");
@@ -255,7 +283,8 @@ export class DocumentProcessor {
    */
   extractNoteForDailyNote(
     doc: GranolaDoc,
-    transcriptLink?: string
+    transcriptLink?: string,
+    folders?: string[]
   ): {
     title: string;
     docId: string;
@@ -264,6 +293,7 @@ export class DocumentProcessor {
     updatedAt?: string;
     attendees: string[];
     transcript?: string;
+    folders?: string[];
     markdown: string;
   } | null {
     try {
@@ -271,6 +301,7 @@ export class DocumentProcessor {
       const metadata = this.buildNoteMetadata(doc, {
         type: "note",
         transcriptPath: transcriptLink,
+        folders,
       });
 
       // Build body using shared builder with heading level 3
@@ -285,6 +316,7 @@ export class DocumentProcessor {
         updatedAt: metadata.updatedAt,
         attendees: metadata.attendees,
         transcript: metadata.transcript,
+        folders: metadata.folders,
         markdown: body,
       };
     } catch {
