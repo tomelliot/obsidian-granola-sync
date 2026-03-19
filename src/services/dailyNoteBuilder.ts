@@ -136,6 +136,7 @@ export class DailyNoteBuilder {
         folders
       );
       if (!noteData) {
+        log.debug(`Skipping doc ${doc.id} in daily notes — no parseable content`);
         continue;
       }
 

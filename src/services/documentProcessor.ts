@@ -1,6 +1,7 @@
 import { stringifyYaml } from "obsidian";
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
+import { convertHtmlToMarkdown } from "./htmlMarkdown";
 import {
   getTitleOrDefault,
   resolveFilenamePattern,
@@ -100,17 +101,22 @@ export class DocumentProcessor {
    * @param options - Body options including heading level
    * @returns The formatted markdown body
    */
-  buildNoteBody(doc: GranolaDoc, options: BodyOptions): string {
+  buildNoteBody(doc: GranolaDoc, options: BodyOptions): string | null {
     const contentToParse = doc.last_viewed_panel?.content;
-    if (
-      !contentToParse ||
-      typeof contentToParse === "string" ||
-      contentToParse.type !== "doc"
-    ) {
-      throw new Error("Document has no valid content to parse");
+    if (!contentToParse) {
+      return null;
     }
 
-    const markdownContent = convertProsemirrorToMarkdown(contentToParse);
+    // The Granola API may return content as either a ProseMirror JSON document
+    // or an HTML string. Handle both formats.
+    let markdownContent: string;
+    if (typeof contentToParse === "string") {
+      markdownContent = convertHtmlToMarkdown(contentToParse);
+    } else if (contentToParse.type === "doc") {
+      markdownContent = convertProsemirrorToMarkdown(contentToParse);
+    } else {
+      return null;
+    }
     const headingPrefix = "#".repeat(options.headingLevel);
 
     // Add private notes section if enabled and content exists
@@ -144,16 +150,19 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     transcriptPath?: string,
     folders?: string[]
-  ): { filename: string; content: string } {
+  ): { filename: string; content: string } | null {
+    // Build body first — if there's no parseable content, bail out early
+    const body = this.buildNoteBody(doc, { headingLevel: 2 });
+    if (body === null) {
+      return null;
+    }
+
     // Build metadata using shared builder
     const metadata = this.buildNoteMetadata(doc, {
       type: "note",
       transcriptPath,
       folders,
     });
-
-    // Build body using shared builder
-    const body = this.buildNoteBody(doc, { headingLevel: 2 });
 
     // Prepare frontmatter
     const frontmatterLines = [
@@ -218,12 +227,15 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     transcriptContent: string,
     folders?: string[]
-  ): { filename: string; content: string } {
+  ): { filename: string; content: string } | null {
+    // Build body first — if there's no parseable content, bail out early
+    const body = this.buildNoteBody(doc, { headingLevel: 2 });
+    if (body === null) {
+      return null;
+    }
+
     // Build metadata using shared builder
     const metadata = this.buildNoteMetadata(doc, { type: "combined", folders });
-
-    // Build body using shared builder
-    const body = this.buildNoteBody(doc, { headingLevel: 2 });
 
     // Prepare frontmatter with type: combined
     const frontmatterLines = [
@@ -295,32 +307,29 @@ export class DocumentProcessor {
     folders?: string[];
     markdown: string;
   } | null {
-    try {
-      // Build metadata using shared builder
-      const metadata = this.buildNoteMetadata(doc, {
-        type: "note",
-        transcriptPath: transcriptLink,
-        folders,
-      });
-
-      // Build body using shared builder with heading level 3
-      // (one level deeper than the note title heading added by buildDailyNoteSectionContent)
-      const body = this.buildNoteBody(doc, { headingLevel: 3 });
-
-      return {
-        title: metadata.title,
-        docId: metadata.granolaId,
-        type: metadata.type,
-        createdAt: metadata.createdAt,
-        updatedAt: metadata.updatedAt,
-        attendees: metadata.attendees,
-        transcript: metadata.transcript,
-        folders: metadata.folders,
-        markdown: body,
-      };
-    } catch {
-      // If buildNoteBody throws an error (no valid content), return null
+    // Build body first — if there's no parseable content, bail out early
+    const body = this.buildNoteBody(doc, { headingLevel: 3 });
+    if (body === null) {
       return null;
     }
+
+    // Build metadata using shared builder
+    const metadata = this.buildNoteMetadata(doc, {
+      type: "note",
+      transcriptPath: transcriptLink,
+      folders,
+    });
+
+    return {
+      title: metadata.title,
+      docId: metadata.granolaId,
+      type: metadata.type,
+      createdAt: metadata.createdAt,
+      updatedAt: metadata.updatedAt,
+      attendees: metadata.attendees,
+      transcript: metadata.transcript,
+      folders: metadata.folders,
+      markdown: body,
+    };
   }
 }

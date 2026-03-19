@@ -25,6 +25,12 @@ When contributing to this plugin, please keep these core principles in mind:
    - PRs should never reduce test coverage
    - New functionality should come with new tests
 
+4. **Never silently skip data:**
+   - If a document or record is skipped during sync, always log the reason with `log.debug`
+   - Use `null` returns (not exceptions) for expected "no content" cases — throwing and catching for control flow hides failures
+   - Functions that may have nothing to process should return `null` and let the caller decide how to handle it
+   - See `documentProcessor.buildNoteBody()` for the canonical example: returns `string | null`, callers check and log
+
 ## Testing Strategy
 
 The plugin uses a combination of unit and integration tests:
