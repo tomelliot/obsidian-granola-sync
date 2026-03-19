@@ -714,15 +714,6 @@ export default class GranolaSync extends Plugin {
       this.settings.transcriptHandling === "combined";
 
     for (const doc of documents) {
-      const contentToParse = doc.last_viewed_panel?.content;
-      if (
-        !contentToParse ||
-        (typeof contentToParse !== "string" && contentToParse.type !== "doc")
-      ) {
-        log.debug(`Skipping doc ${doc.id} — no parseable content (type=${typeof contentToParse === "object" && contentToParse ? (contentToParse as { type?: string }).type : typeof contentToParse})`);
-        continue;
-      }
-
       const notePath = this.pathResolver.computeNotePath(doc);
 
       // Skip processing if note already exists locally and is up-to-date (unless forceOverwrite is true)

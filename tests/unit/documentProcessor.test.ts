@@ -311,18 +311,16 @@ describe("DocumentProcessor", () => {
       );
     });
 
-    it("should throw error when document has no valid content", () => {
+    it("should return null when document has no valid content", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Invalid Note",
       };
 
-      expect(() => documentProcessor.prepareNote(doc)).toThrow(
-        "Document has no valid content to parse"
-      );
+      expect(documentProcessor.prepareNote(doc)).toBeNull();
     });
 
-    it("should throw error when content type is not doc", () => {
+    it("should return null when content type is not doc", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Invalid Note",
@@ -334,9 +332,7 @@ describe("DocumentProcessor", () => {
         },
       };
 
-      expect(() => documentProcessor.prepareNote(doc)).toThrow(
-        "Document has no valid content to parse"
-      );
+      expect(documentProcessor.prepareNote(doc)).toBeNull();
     });
 
     it("should use PathResolver's getNoteFilenamePattern for filename generation", () => {
@@ -725,7 +721,7 @@ describe("DocumentProcessor", () => {
       expect(transcriptIndex).toBeLessThan(transcriptContentIndex);
     });
 
-    it("should throw error when document has no valid content", () => {
+    it("should return null when document has no valid content", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Invalid Note",
@@ -733,9 +729,9 @@ describe("DocumentProcessor", () => {
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
 
-      expect(() =>
+      expect(
         documentProcessor.prepareCombinedNote(doc, transcriptContent)
-      ).toThrow("Document has no valid content to parse");
+      ).toBeNull();
     });
 
     it("should use default title when title is missing", () => {

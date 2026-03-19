@@ -426,11 +426,16 @@ export class FileSyncService {
       log.error("Document missing required id field:", doc);
       return false;
     }
-    const { filename, content } = documentProcessor.prepareCombinedNote(
+    const prepared = documentProcessor.prepareCombinedNote(
       doc,
       transcriptContent,
       folders
     );
+    if (!prepared) {
+      log.debug(`Skipping combined doc ${doc.id} — no parseable content`);
+      return false;
+    }
+    const { filename, content } = prepared;
     const noteDate = getNoteDate(doc);
 
     // Resolve folder path (combined files use note folder path, not transcript folder)
@@ -482,11 +487,16 @@ export class FileSyncService {
       log.error("Document missing required id field:", doc);
       return false;
     }
-    const { filename, content } = documentProcessor.prepareNote(
+    const prepared = documentProcessor.prepareNote(
       doc,
       transcriptPath,
       folders
     );
+    if (!prepared) {
+      log.debug(`Skipping doc ${doc.id} — no parseable content`);
+      return false;
+    }
+    const { filename, content } = prepared;
     const noteDate = getNoteDate(doc);
 
     const folderPath = this.resolveFolderPath(noteDate, false);
