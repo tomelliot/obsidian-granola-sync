@@ -15,6 +15,7 @@ import { formatTranscriptBySpeaker } from "../../src/services/transcriptFormatte
 import { buildFolderMap, diffFolderMaps } from "../../src/services/folderMapBuilder";
 import { getNoteDate } from "../../src/utils/dateUtils";
 import { showStatusBar, hideStatusBar, showStatusBarTemporary } from "../../src/utils/statusBar";
+import { log } from "../../src/utils/logger";
 import { Notice, App } from "obsidian";
 import moment from "moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
@@ -527,6 +528,87 @@ describe("GranolaSync", () => {
       expect(showStatusBarTemporary).toHaveBeenCalledWith(
         plugin,
         "Granola sync: Complete"
+      );
+    });
+  });
+
+  describe("syncNotesToIndividualFiles transcript linking", () => {
+    const docWithContent: GranolaDoc = {
+      id: "doc-link-1",
+      title: "Transcript Link Test",
+      created_at: "2024-01-15T10:00:00Z",
+      updated_at: "2024-01-15T12:00:00Z",
+      last_viewed_panel: {
+        content: {
+          type: "doc",
+          content: [],
+        },
+      },
+    };
+
+    beforeEach(() => {
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        syncNotes: true,
+        syncTranscripts: true,
+        saveAsIndividualFiles: true,
+        transcriptHandling: "custom-location",
+      };
+      (plugin as any).initializeServices();
+      mockPathResolver.computeNotePath.mockReturnValue("daily-notes/Transcript Link Test.md");
+      mockFileSyncService.saveNoteToDisk.mockResolvedValue(true);
+    });
+
+    it("should prefer transcriptPathMap path when linking notes", async () => {
+      mockFileSyncService.findByGranolaId.mockImplementation((granolaId, type) => {
+        if (granolaId === "doc-link-1" && type === "transcript") {
+          return { path: "Transcripts/2024/01/wrong-transcript.md" } as any;
+        }
+        return null;
+      });
+      const transcriptPathMap = new Map<string, string>([
+        ["doc-link-1", "Transcripts/2024/01/collision-transcript-2024-01-15_10-00-00.md"],
+      ]);
+
+      await (plugin as any).syncNotesToIndividualFiles(
+        [docWithContent],
+        true,
+        null,
+        {},
+        transcriptPathMap
+      );
+
+      expect(mockFileSyncService.saveNoteToDisk).toHaveBeenCalledWith(
+        docWithContent,
+        mockDocumentProcessor,
+        true,
+        "Transcripts/2024/01/collision-transcript-2024-01-15_10-00-00.md",
+        undefined
+      );
+    });
+
+    it("should not link transcript and should log error when unresolved", async () => {
+      mockFileSyncService.findByGranolaId.mockReturnValue(null);
+
+      await (plugin as any).syncNotesToIndividualFiles(
+        [docWithContent],
+        true,
+        null,
+        {},
+        null
+      );
+
+      expect(log.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Granola sync: transcript path not resolved for doc doc-link-1"
+        )
+      );
+      expect(mockFileSyncService.saveNoteToDisk).toHaveBeenCalledWith(
+        docWithContent,
+        mockDocumentProcessor,
+        true,
+        undefined,
+        undefined
       );
     });
   });

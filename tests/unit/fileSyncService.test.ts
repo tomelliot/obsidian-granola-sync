@@ -1515,6 +1515,41 @@ describe("FileSyncService", () => {
         "transcript content"
       );
     });
+
+    it("should return cached transcript path after save when rename target conflicts", async () => {
+      const doc = { id: "doc-1" } as GranolaDoc;
+      const noteDate = new Date("2024-01-03T09:15:00Z");
+      mockDocumentProcessor.prepareTranscript.mockReturnValue({
+        filename: "note-transcript.md",
+        content: "transcript content",
+      });
+      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
+      jest
+        .spyOn(fileSyncService, "saveFile" as any)
+        .mockResolvedValue(true);
+      jest
+        .spyOn(fileSyncService, "findByGranolaId")
+        .mockImplementation((granolaId, type) => {
+          if (granolaId === "doc-1" && type === "transcript") {
+            return {
+              path: "granola-transcripts/note-transcript-2024-01-03_09-15-00.md",
+              extension: "md",
+            } as TFile;
+          }
+          return null;
+        });
+
+      const result = await fileSyncService.saveTranscriptToDisk(
+        doc,
+        "transcript content",
+        mockDocumentProcessor
+      );
+
+      expect(result).toEqual({
+        saved: true,
+        path: "granola-transcripts/note-transcript-2024-01-03_09-15-00.md",
+      });
+    });
   });
 
   describe("saveFile", () => {
