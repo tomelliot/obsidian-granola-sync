@@ -540,10 +540,10 @@ export class FileSyncService {
     transcriptContent: string,
     documentProcessor: DocumentProcessor,
     forceOverwrite: boolean = false
-  ): Promise<boolean> {
+  ): Promise<{ saved: boolean; path: string | null }> {
     if (!doc.id) {
       log.error("Document missing required id field:", doc);
-      return false;
+      return { saved: false, path: null };
     }
     const { filename, content } = documentProcessor.prepareTranscript(
       doc,
@@ -551,14 +551,43 @@ export class FileSyncService {
     );
     const noteDate = getNoteDate(doc);
 
-    return this.saveToDisk(
-      filename,
+    const folderPath = this.resolveFolderPath(noteDate, true);
+    if (!folderPath) {
+      log.debug(`Cannot resolve folder path for ${filename} (granolaId=${doc.id}, isTranscript=true)`);
+      return { saved: false, path: null };
+    }
+
+    if (!(await this.ensureFolder(folderPath))) {
+      log.debug(`Failed to create folder: ${folderPath} — skipping ${filename}`);
+      new Notice(
+        `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
+        7000
+      );
+      return { saved: false, path: null };
+    }
+
+    const filePath = this.resolveFilePath(filename, noteDate, doc.id, true);
+    if (!filePath) {
+      log.debug(`Cannot resolve file path for ${filename} (granolaId=${doc.id})`);
+      return { saved: false, path: null };
+    }
+
+    const saved = await this.saveFile(
+      filePath,
       content,
-      noteDate,
       doc.id,
-      true,
+      "transcript",
       forceOverwrite
     );
+
+    // Return the actual on-disk path. When we try to rename to the "ideal"
+    // collision-free filename and `vault.rename()` fails, we must not return
+    // the attempted destination path (which would break note frontmatter).
+    const savedFile = this.findByGranolaId(doc.id, "transcript");
+    const actualPath =
+      savedFile?.path ? normalizePath(savedFile.path) : filePath;
+
+    return { saved, path: actualPath };
   }
 
   /**

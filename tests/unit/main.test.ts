@@ -82,7 +82,7 @@ describe("GranolaSync", () => {
       findByGranolaId: jest.fn().mockReturnValue(null),
       isRemoteNewer: jest.fn().mockReturnValue(true),
       saveNoteToDisk: jest.fn().mockResolvedValue(true),
-      saveTranscriptToDisk: jest.fn().mockResolvedValue(true),
+      saveTranscriptToDisk: jest.fn().mockResolvedValue({ saved: true, path: "Transcripts/test-transcript.md" }),
       saveCombinedNoteToDisk: jest.fn().mockResolvedValue(true),
     } as any;
 
@@ -103,7 +103,6 @@ describe("GranolaSync", () => {
 
     mockPathResolver = {
       computeNotePath: jest.fn(),
-      computeTranscriptPath: jest.fn(),
       getNoteFilenamePattern: jest.fn(),
       computeTranscriptFilenamePattern: jest.fn(),
     } as any;
@@ -462,7 +461,11 @@ describe("GranolaSync", () => {
         syncTranscripts: true,
       };
       const mockTranscriptMap = new Map([["doc-1", []]]);
-      (plugin as any).syncTranscripts = jest.fn().mockResolvedValue(mockTranscriptMap);
+      const mockTranscriptPathMap = new Map([["doc-1", "Transcripts/test-transcript.md"]]);
+      (plugin as any).syncTranscripts = jest.fn().mockResolvedValue({
+        transcriptDataMap: mockTranscriptMap,
+        transcriptPathMap: mockTranscriptPathMap,
+      });
       (plugin as any).syncNotes = jest.fn().mockResolvedValue(undefined);
 
       await plugin.sync();
@@ -476,7 +479,8 @@ describe("GranolaSync", () => {
         [mockDoc],
         false,
         mockTranscriptMap,
-        {}
+        {},
+        mockTranscriptPathMap
       );
     });
 
@@ -487,7 +491,11 @@ describe("GranolaSync", () => {
         syncTranscripts: true,
       };
       const mockTranscriptMap = new Map([["doc-1", []]]);
-      (plugin as any).syncTranscripts = jest.fn().mockResolvedValue(mockTranscriptMap);
+      const mockTranscriptPathMap = new Map([["doc-1", "Transcripts/test-transcript.md"]]);
+      (plugin as any).syncTranscripts = jest.fn().mockResolvedValue({
+        transcriptDataMap: mockTranscriptMap,
+        transcriptPathMap: mockTranscriptPathMap,
+      });
       (plugin as any).syncNotes = jest.fn().mockResolvedValue(undefined);
 
       await plugin.sync({ mode: "full" });
@@ -501,7 +509,8 @@ describe("GranolaSync", () => {
         [mockDoc],
         true,
         mockTranscriptMap,
-        {}
+        {},
+        mockTranscriptPathMap
       );
     });
 

@@ -47,7 +47,6 @@ describe("FileSyncService", () => {
 
     mockPathResolver = {
       computeDailyNoteFolderPath: jest.fn().mockReturnValue("daily-folder"),
-      computeTranscriptPath: jest.fn(),
       computeNoteFolderPath: jest.fn().mockReturnValue("granola-folder"),
       computeTranscriptFolderPath: jest.fn().mockReturnValue("granola-transcripts"),
       computeNotePath: jest.fn(),
@@ -1478,7 +1477,7 @@ describe("FileSyncService", () => {
       } as unknown as jest.Mocked<DocumentProcessor>;
     });
 
-    it("should return false when doc id is missing", async () => {
+    it("should return saved:false and path:null when doc id is missing", async () => {
       const doc = { title: "No ID" } as GranolaDoc;
 
       const result = await fileSyncService.saveTranscriptToDisk(
@@ -1487,11 +1486,11 @@ describe("FileSyncService", () => {
         mockDocumentProcessor
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
       expect(mockDocumentProcessor.prepareTranscript).not.toHaveBeenCalled();
     });
 
-    it("should prepare transcript and delegate to saveToDisk", async () => {
+    it("should prepare transcript and return saved status with actual path", async () => {
       const doc = { id: "doc-1" } as GranolaDoc;
       const noteDate = new Date("2024-01-03T09:15:00Z");
       mockDocumentProcessor.prepareTranscript.mockReturnValue({
@@ -1499,8 +1498,8 @@ describe("FileSyncService", () => {
         content: "transcript content",
       });
       jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-      const saveToDiskSpy = jest
-        .spyOn(fileSyncService, "saveToDisk")
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile" as any)
         .mockResolvedValue(true);
 
       const result = await fileSyncService.saveTranscriptToDisk(
@@ -1509,18 +1508,11 @@ describe("FileSyncService", () => {
         mockDocumentProcessor
       );
 
-      expect(result).toBe(true);
+      expect(result.saved).toBe(true);
+      expect(result.path).toBe("granola-transcripts/note-transcript.md");
       expect(mockDocumentProcessor.prepareTranscript).toHaveBeenCalledWith(
         doc,
         "transcript content"
-      );
-      expect(saveToDiskSpy).toHaveBeenCalledWith(
-        "note-transcript.md",
-        "transcript content",
-        noteDate,
-        "doc-1",
-        true,
-        false
       );
     });
   });
@@ -1748,12 +1740,12 @@ describe("FileSyncService", () => {
       );
     });
 
-    it("should pass forceOverwrite through saveTranscriptToDisk to saveToDisk", async () => {
+    it("should pass forceOverwrite through saveTranscriptToDisk to saveFile", async () => {
       const mockDocumentProcessor = {
         prepareNote: jest.fn(),
         prepareTranscript: jest.fn(),
       } as unknown as jest.Mocked<DocumentProcessor>;
-      
+
       const doc = { id: "doc-1" } as GranolaDoc;
       const noteDate = new Date("2024-01-03T09:15:00Z");
       mockDocumentProcessor.prepareTranscript.mockReturnValue({
@@ -1761,8 +1753,8 @@ describe("FileSyncService", () => {
         content: "transcript content",
       });
       jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-      const saveToDiskSpy = jest
-        .spyOn(fileSyncService, "saveToDisk")
+      const saveFileSpy = jest
+        .spyOn(fileSyncService, "saveFile" as any)
         .mockResolvedValue(true);
 
       await fileSyncService.saveTranscriptToDisk(
@@ -1772,12 +1764,11 @@ describe("FileSyncService", () => {
         true // forceOverwrite
       );
 
-      expect(saveToDiskSpy).toHaveBeenCalledWith(
-        "note-transcript.md",
+      expect(saveFileSpy).toHaveBeenCalledWith(
+        "granola-transcripts/note-transcript.md",
         "transcript content",
-        noteDate,
         "doc-1",
-        true,
+        "transcript",
         true // forceOverwrite should be passed through
       );
     });

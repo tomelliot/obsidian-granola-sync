@@ -48,9 +48,7 @@ describe("DocumentProcessor", () => {
       transcriptSubfolderPattern: "none",
       transcriptFilenamePattern: "{title}-transcript",
     });
-    jest
-      .spyOn(mockPathResolver, "computeTranscriptPath")
-      .mockReturnValue("Transcripts/Test Note-transcript.md");
+
     jest
       .spyOn(mockPathResolver, "computeTranscriptFilenamePattern")
       .mockReturnValue("{title}-transcript");

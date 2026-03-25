@@ -530,15 +530,18 @@ export default class GranolaSync extends Plugin {
     // Always sync transcripts first if enabled, so notes can link to them
     const forceOverwrite = mode === "full";
     let transcriptDataMap: Map<string, TranscriptEntry[]> | null = null;
+    let transcriptPathMap: Map<string, string> | null = null;
     if (this.settings.syncTranscripts) {
-      transcriptDataMap = await this.syncTranscripts(
+      const transcriptResult = await this.syncTranscripts(
         documents,
         accessToken,
         forceOverwrite
       );
+      transcriptDataMap = transcriptResult.transcriptDataMap;
+      transcriptPathMap = transcriptResult.transcriptPathMap;
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(documents, forceOverwrite, transcriptDataMap, docFolders);
+      await this.syncNotes(documents, forceOverwrite, transcriptDataMap, docFolders, transcriptPathMap);
     }
 
     // Show success message
@@ -549,7 +552,8 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
-    docFolders: Record<string, string[]> = {}
+    docFolders: Record<string, string[]> = {},
+    transcriptPathMap: Map<string, string> | null = null
   ): Promise<void> {
     let syncedCount: number;
     log.debug(`syncNotes — mode=${this.settings.saveAsIndividualFiles ? "individual" : "daily-notes"}, docs=${documents.length}`);
@@ -566,7 +570,8 @@ export default class GranolaSync extends Plugin {
         documents,
         forceOverwrite,
         transcriptDataMap,
-        docFolders
+        docFolders,
+        transcriptPathMap
       );
       syncedCount = result.syncedCount;
 
@@ -698,7 +703,8 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
-    docFolders: Record<string, string[]> = {}
+    docFolders: Record<string, string[]> = {},
+    transcriptPathMap: Map<string, string> | null = null
   ): Promise<{
     syncedCount: number;
     syncedNotes: Array<{ doc: GranolaDoc; notePath: string }>;
@@ -777,14 +783,23 @@ export default class GranolaSync extends Plugin {
         }
       } else {
         // Regular mode: save note separately (with optional transcript link)
-        // Compute transcript path before preparing note (for frontmatter linking)
-        // Only add transcript link when syncing transcripts and not in combined mode
+        // Use actual transcript path (from save or cache) to handle collision-resolved filenames.
+        // If we cannot resolve the transcript path, we intentionally do not link it.
         let transcriptPath: string | null = null;
         if (
           this.settings.syncTranscripts &&
           this.settings.transcriptHandling !== "combined"
         ) {
-          transcriptPath = this.pathResolver.computeTranscriptPath(doc);
+          transcriptPath =
+            transcriptPathMap?.get(doc.id) ??
+            this.fileSyncService.findByGranolaId(doc.id, "transcript")?.path ??
+            null;
+
+          if (!transcriptPath) {
+            log.error(
+              `Granola sync: transcript path not resolved for doc ${doc.id} — skipping transcript frontmatter link (will not write a stale/incorrect path).`
+            );
+          }
         }
 
         if (
@@ -812,8 +827,9 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     accessToken: string,
     forceOverwrite: boolean = false
-  ): Promise<Map<string, TranscriptEntry[]>> {
+  ): Promise<{ transcriptDataMap: Map<string, TranscriptEntry[]>; transcriptPathMap: Map<string, string> }> {
     const transcriptDataMap = new Map<string, TranscriptEntry[]>();
+    const transcriptPathMap = new Map<string, string>();
     const isCombinedMode = this.settings.transcriptHandling === "combined";
 
     let processedCount = 0;
@@ -898,14 +914,16 @@ export default class GranolaSync extends Plugin {
         );
         processedCount++;
         this.updateSyncStatus("Transcript", processedCount, documents.length);
-        if (
-          await this.fileSyncService.saveTranscriptToDisk(
-            doc,
-            transcriptMd,
-            this.documentProcessor,
-            forceOverwrite
-          )
-        ) {
+        const transcriptResult = await this.fileSyncService.saveTranscriptToDisk(
+          doc,
+          transcriptMd,
+          this.documentProcessor,
+          forceOverwrite
+        );
+        if (transcriptResult.path) {
+          transcriptPathMap.set(docId, transcriptResult.path);
+        }
+        if (transcriptResult.saved) {
           syncedCount++;
         }
       } catch (e) {
@@ -919,6 +937,6 @@ export default class GranolaSync extends Plugin {
     log.debug(
       `syncTranscripts - Completed: ${syncedCount} saved out of ${processedCount} processed`
     );
-    return transcriptDataMap;
+    return { transcriptDataMap, transcriptPathMap };
   }
 }

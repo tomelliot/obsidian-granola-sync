@@ -179,18 +179,4 @@ export class PathResolver {
       return "{title}-transcript";
     }
   }
-
-  /**
-   * Computes the full path for a transcript file based on settings.
-   *
-   * @param doc - The Granola document
-   * @returns The full file path for the transcript
-   */
-  computeTranscriptPath(doc: GranolaDoc): string {
-    const noteDate = getNoteDate(doc);
-    const folderPath = this.computeTranscriptFolderPath(noteDate);
-    const filenamePattern = this.computeTranscriptFilenamePattern();
-    const filename = resolveFilenamePattern(doc, filenamePattern);
-    return normalizePath(`${folderPath}/${filename}`);
-  }
 }
