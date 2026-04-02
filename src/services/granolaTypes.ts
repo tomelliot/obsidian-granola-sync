@@ -3,6 +3,7 @@ import {
   TranscriptEntrySchema,
   DocumentListMetadataEntrySchema,
   DocumentListWithDocsResponseSchema,
+  DocumentSetResponseSchema,
 } from "./validationSchemas";
 
 // ProseMirror types (defined explicitly due to recursive nature)
@@ -64,3 +65,12 @@ export type DocumentListMetadata = v.InferOutput<
 export type DocumentListWithDocs = v.InferOutput<
   typeof DocumentListWithDocsResponseSchema
 >;
+
+// Document set entry as returned by get-document-set
+export type DocumentSetEntry = {
+  updated_at: string;
+  owner?: true;
+  shared?: true;
+};
+
+export type DocumentSet = v.InferOutput<typeof DocumentSetResponseSchema>;

@@ -87,6 +87,23 @@ export const DocumentListsMetadataResponseSchema = v.object({
   lists: v.record(v.string(), DocumentListMetadataEntrySchema),
 });
 
+// Document set (get-document-set) validation schemas
+const DocumentSetEntrySchema = v.object({
+  updated_at: v.string(),
+  owner: v.optional(v.literal(true)),
+  shared: v.optional(v.literal(true)),
+  has_shareable_link: v.optional(v.boolean()),
+});
+
+export const DocumentSetResponseSchema = v.object({
+  documents: v.record(v.string(), DocumentSetEntrySchema),
+});
+
+// Batch document fetch (get-documents-batch) — returns same shape as get-documents
+export const DocumentsBatchResponseSchema = v.object({
+  docs: v.array(GranolaDocSchema),
+});
+
 // For get-document-list response, we only need document IDs from the documents array
 const DocumentListDocRefSchema = v.object({
   id: v.string(),

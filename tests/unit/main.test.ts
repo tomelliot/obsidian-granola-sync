@@ -1,8 +1,8 @@
 import GranolaSync from "../../src/main";
 import { DEFAULT_SETTINGS, migrateSettingsToNewFormat } from "../../src/settings";
 import {
-  fetchAllGranolaDocuments,
-  fetchGranolaDocumentsByDaysBack,
+  getAllDocuments,
+  getRecentDocuments,
   fetchGranolaTranscript,
   GranolaDoc,
 } from "../../src/services/granolaApi";
@@ -324,8 +324,8 @@ describe("GranolaSync", () => {
         accessToken: mockAccessToken,
         error: null,
       });
-      (fetchGranolaDocumentsByDaysBack as jest.Mock).mockResolvedValue([mockDoc]);
-      (fetchAllGranolaDocuments as jest.Mock).mockResolvedValue([mockDoc]);
+      (getRecentDocuments as jest.Mock).mockResolvedValue([mockDoc]);
+      (getAllDocuments as jest.Mock).mockResolvedValue([mockDoc]);
       (plugin as any).initializeServices();
     });
 
@@ -342,12 +342,12 @@ describe("GranolaSync", () => {
         10000
       );
       expect(hideStatusBar).toHaveBeenCalledWith(plugin);
-      expect(fetchGranolaDocumentsByDaysBack).not.toHaveBeenCalled();
+      expect(getRecentDocuments).not.toHaveBeenCalled();
     });
 
     it("should handle 401 authentication error", async () => {
       const error = { status: 401 };
-      (fetchGranolaDocumentsByDaysBack as jest.Mock).mockRejectedValue(error);
+      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
 
       await plugin.sync();
 
@@ -360,7 +360,7 @@ describe("GranolaSync", () => {
 
     it("should handle 403 forbidden error", async () => {
       const error = { status: 403 };
-      (fetchGranolaDocumentsByDaysBack as jest.Mock).mockRejectedValue(error);
+      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
 
       await plugin.sync();
 
@@ -372,7 +372,7 @@ describe("GranolaSync", () => {
 
     it("should handle 404 not found error", async () => {
       const error = { status: 404 };
-      (fetchGranolaDocumentsByDaysBack as jest.Mock).mockRejectedValue(error);
+      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
 
       await plugin.sync();
 
@@ -384,7 +384,7 @@ describe("GranolaSync", () => {
 
     it("should handle 500+ server errors", async () => {
       const error = { status: 500 };
-      (fetchGranolaDocumentsByDaysBack as jest.Mock).mockRejectedValue(error);
+      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
 
       await plugin.sync();
 
@@ -396,7 +396,7 @@ describe("GranolaSync", () => {
 
     it("should handle network errors", async () => {
       const error = new Error("Network error");
-      (fetchGranolaDocumentsByDaysBack as jest.Mock).mockRejectedValue(error);
+      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
 
       await plugin.sync();
 
@@ -407,7 +407,7 @@ describe("GranolaSync", () => {
     });
 
     it("should handle empty document responses in standard mode", async () => {
-      (fetchGranolaDocumentsByDaysBack as jest.Mock).mockResolvedValue([]);
+      (getRecentDocuments as jest.Mock).mockResolvedValue([]);
 
       await plugin.sync();
 
@@ -419,7 +419,7 @@ describe("GranolaSync", () => {
     });
 
     it("should handle empty document responses in full mode", async () => {
-      (fetchAllGranolaDocuments as jest.Mock).mockResolvedValue([]);
+      (getAllDocuments as jest.Mock).mockResolvedValue([]);
 
       await plugin.sync({ mode: "full" });
 
@@ -434,8 +434,8 @@ describe("GranolaSync", () => {
 
       await plugin.sync({ mode: "full" });
 
-      expect(fetchAllGranolaDocuments).toHaveBeenCalledWith(mockAccessToken);
-      expect(fetchGranolaDocumentsByDaysBack).not.toHaveBeenCalled();
+      expect(getAllDocuments).toHaveBeenCalledWith(mockAccessToken);
+      expect(getRecentDocuments).not.toHaveBeenCalled();
     });
 
     it("should use standard mode by default", async () => {
@@ -448,11 +448,11 @@ describe("GranolaSync", () => {
 
       await plugin.sync();
 
-      expect(fetchGranolaDocumentsByDaysBack).toHaveBeenCalledWith(
+      expect(getRecentDocuments).toHaveBeenCalledWith(
         mockAccessToken,
         7
       );
-      expect(fetchAllGranolaDocuments).not.toHaveBeenCalled();
+      expect(getAllDocuments).not.toHaveBeenCalled();
     });
 
     it("should sync both notes and transcripts when both enabled", async () => {

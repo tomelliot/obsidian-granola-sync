@@ -12,8 +12,8 @@ import {
   migrateSettingsToNewFormat,
 } from "./settings";
 import {
-  fetchAllGranolaDocuments,
-  fetchGranolaDocumentsByDaysBack,
+  getAllDocuments,
+  getRecentDocuments,
   fetchGranolaTranscript,
   GranolaDoc,
   TranscriptEntry,
@@ -437,9 +437,9 @@ export default class GranolaSync extends Plugin {
     let documents: GranolaDoc[] = [];
     try {
       if (mode === "full") {
-        documents = await fetchAllGranolaDocuments(accessToken);
+        documents = await getAllDocuments(accessToken);
       } else {
-        documents = await fetchGranolaDocumentsByDaysBack(
+        documents = await getRecentDocuments(
           accessToken,
           this.settings.syncDaysBack
         );

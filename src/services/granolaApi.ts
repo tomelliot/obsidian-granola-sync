@@ -5,6 +5,8 @@ import {
   TranscriptResponseSchema,
   DocumentListsMetadataResponseSchema,
   DocumentListWithDocsResponseSchema,
+  DocumentSetResponseSchema,
+  DocumentsBatchResponseSchema,
 } from "./validationSchemas";
 import { log } from "../utils/logger";
 
@@ -17,6 +19,7 @@ export type {
   TranscriptEntry,
   DocumentListMetadata,
   DocumentListWithDocs,
+  DocumentSetEntry,
 } from "./granolaTypes";
 
 import type {
@@ -24,6 +27,7 @@ import type {
   TranscriptEntry,
   DocumentListMetadata,
   DocumentListWithDocs,
+  DocumentSetEntry,
 } from "./granolaTypes";
 
 /**
@@ -305,4 +309,160 @@ export async function fetchDocumentList(
     `Fetched document list "${result.output.title}" with ${result.output.documents?.length ?? 0} document(s)`
   );
   return result.output as DocumentListWithDocs;
+}
+
+// ---------------------------------------------------------------------------
+// Document set & batch endpoints (for shared document support)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches the full set of document IDs the user has access to, including
+ * documents shared with them. Returns a record keyed by document ID.
+ */
+export async function fetchDocumentSet(
+  accessToken: string
+): Promise<Record<string, DocumentSetEntry>> {
+  log.debug("Fetching document set");
+  const response = await requestUrl({
+    url: "https://api.granola.ai/v1/get-document-set",
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+    },
+    body: JSON.stringify({}),
+  });
+
+  const result = v.safeParse(DocumentSetResponseSchema, response.json);
+  if (!result.success) {
+    log.error("Validation failed for DocumentSetResponseSchema:");
+    log.error(JSON.stringify(result.issues, null, 2));
+    throw new Error("Invalid response from Granola API (DocumentSetResponseSchema)");
+  }
+
+  const count = Object.keys(result.output.documents).length;
+  log.debug(`Fetched document set with ${count} document(s)`);
+  return result.output.documents as Record<string, DocumentSetEntry>;
+}
+
+/**
+ * Fetches full document data for a batch of document IDs.
+ * Uses the v1/get-documents-batch endpoint.
+ */
+export async function fetchDocumentsBatch(
+  accessToken: string,
+  documentIds: string[]
+): Promise<GranolaDoc[]> {
+  if (documentIds.length === 0) return [];
+
+  log.debug(`Fetching documents batch — ${documentIds.length} ID(s)`);
+  const response = await requestUrl({
+    url: "https://api.granola.ai/v1/get-documents-batch",
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+    },
+    body: JSON.stringify({ document_ids: documentIds }),
+  });
+
+  const result = v.safeParse(DocumentsBatchResponseSchema, response.json);
+  if (!result.success) {
+    log.error("Validation failed for DocumentsBatchResponseSchema:");
+    printValidationIssuePaths(result);
+    log.error(JSON.stringify(result.issues, null, 2));
+    throw new Error("Invalid response from Granola API (DocumentsBatchResponseSchema)");
+  }
+
+  log.debug(`Fetched ${result.output.docs.length} document(s) in batch`);
+  return result.output.docs as GranolaDoc[];
+}
+
+// ---------------------------------------------------------------------------
+// Public API — high-level functions used by the sync orchestrator
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches all documents the user has access to, including shared documents.
+ *
+ * 1. Paginates through v2/get-documents (owned docs with full data)
+ * 2. Fetches the document set to discover shared doc IDs
+ * 3. Batch-fetches any documents present in the set but missing from step 1
+ */
+export async function getAllDocuments(
+  accessToken: string,
+  pageSize: number = 100
+): Promise<GranolaDoc[]> {
+  const ownedDocs = await fetchAllGranolaDocuments(accessToken, pageSize);
+  return mergeSharedDocuments(accessToken, ownedDocs);
+}
+
+/**
+ * Fetches recent documents (within daysBack), including shared documents.
+ * Pass daysBack=0 for a full sync.
+ */
+export async function getRecentDocuments(
+  accessToken: string,
+  daysBack: number,
+  pageSize: number = 100
+): Promise<GranolaDoc[]> {
+  const ownedDocs = await fetchGranolaDocumentsByDaysBack(accessToken, daysBack, pageSize);
+
+  const cutoffDate = daysBack > 0 ? new Date() : null;
+  if (cutoffDate) cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+
+  return mergeSharedDocuments(accessToken, ownedDocs, cutoffDate);
+}
+
+/**
+ * Discovers shared documents via the document set and fetches their full data.
+ * Merges them into the provided owned documents list.
+ *
+ * When a cutoffDate is provided, only shared documents updated after that date
+ * are included.
+ */
+async function mergeSharedDocuments(
+  accessToken: string,
+  ownedDocs: GranolaDoc[],
+  cutoffDate?: Date | null
+): Promise<GranolaDoc[]> {
+  let documentSet: Record<string, DocumentSetEntry>;
+  try {
+    documentSet = await fetchDocumentSet(accessToken);
+  } catch (error) {
+    log.error("Failed to fetch document set, continuing with owned docs only:", error);
+    return ownedDocs;
+  }
+
+  const ownedIds = new Set(ownedDocs.map((d) => d.id));
+  let missingIds = Object.keys(documentSet).filter((id) => !ownedIds.has(id));
+
+  if (cutoffDate) {
+    missingIds = missingIds.filter((id) => {
+      const entry = documentSet[id];
+      return new Date(entry.updated_at) >= cutoffDate;
+    });
+  }
+
+  if (missingIds.length === 0) {
+    log.debug("No additional shared documents to fetch");
+    return ownedDocs;
+  }
+
+  log.debug(`Found ${missingIds.length} document(s) missing from owned set, fetching via batch`);
+
+  try {
+    const sharedDocs = await fetchDocumentsBatch(accessToken, missingIds);
+    log.debug(`Merged ${sharedDocs.length} shared document(s)`);
+    return [...ownedDocs, ...sharedDocs];
+  } catch (error) {
+    log.error("Failed to fetch shared documents batch, continuing with owned docs only:", error);
+    return ownedDocs;
+  }
 }
