@@ -37,6 +37,7 @@ export interface GranolaDoc {
   title: string | null;
   created_at?: string;
   updated_at?: string;
+  deleted_at?: string | null;
   attendees?: string[];
   people?: {
     attendees?: Array<{
