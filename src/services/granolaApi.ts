@@ -459,8 +459,14 @@ async function mergeSharedDocuments(
 
   try {
     const sharedDocs = await fetchDocumentsBatch(accessToken, missingIds);
-    log.debug(`Merged ${sharedDocs.length} shared document(s)`);
-    return [...ownedDocs, ...sharedDocs];
+    const activeDocs = sharedDocs.filter((doc) => !doc.deleted_at);
+    if (activeDocs.length < sharedDocs.length) {
+      log.debug(
+        `Filtered out ${sharedDocs.length - activeDocs.length} deleted document(s) from batch`
+      );
+    }
+    log.debug(`Merged ${activeDocs.length} shared document(s)`);
+    return [...ownedDocs, ...activeDocs];
   } catch (error) {
     log.error("Failed to fetch shared documents batch, continuing with owned docs only:", error);
     return ownedDocs;

@@ -798,6 +798,76 @@ describe("getAllDocuments", () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("owned-1");
   });
+
+  it("should exclude deleted documents from batch results", async () => {
+    const deletedDoc = {
+      id: "deleted-1",
+      title: null,
+      deleted_at: "2024-01-14T10:00:00Z",
+      last_viewed_panel: { content: { type: "doc", content: [] } },
+    };
+    const activeSharedDoc = {
+      id: "shared-1",
+      title: "Active Shared Note",
+      deleted_at: null,
+      last_viewed_panel: { content: { type: "doc", content: [] } },
+    };
+
+    (requestUrl as jest.Mock)
+      .mockResolvedValueOnce({ json: { docs: [makeDoc("owned-1")] } })
+      .mockResolvedValueOnce({
+        json: {
+          documents: {
+            "owned-1": { updated_at: "2024-01-15T10:00:00Z", owner: true },
+            "shared-1": { updated_at: "2024-01-16T10:00:00Z", shared: true },
+            "deleted-1": { updated_at: "2024-01-14T10:00:00Z", shared: true },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        json: { docs: [activeSharedDoc, deletedDoc] },
+      });
+
+    const result = await getAllDocuments(mockAccessToken);
+
+    expect(result).toHaveLength(2);
+    const ids = result.map((d) => d.id).sort();
+    expect(ids).toEqual(["owned-1", "shared-1"]);
+    expect(result.find((d) => d.id === "deleted-1")).toBeUndefined();
+  });
+
+  it("should exclude all batch docs when all are deleted", async () => {
+    const deletedDoc1 = {
+      id: "deleted-1",
+      title: null,
+      deleted_at: "2024-01-14T10:00:00Z",
+    };
+    const deletedDoc2 = {
+      id: "deleted-2",
+      title: null,
+      deleted_at: "2024-01-13T10:00:00Z",
+    };
+
+    (requestUrl as jest.Mock)
+      .mockResolvedValueOnce({ json: { docs: [makeDoc("owned-1")] } })
+      .mockResolvedValueOnce({
+        json: {
+          documents: {
+            "owned-1": { updated_at: "2024-01-15T10:00:00Z", owner: true },
+            "deleted-1": { updated_at: "2024-01-14T10:00:00Z" },
+            "deleted-2": { updated_at: "2024-01-13T10:00:00Z" },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        json: { docs: [deletedDoc1, deletedDoc2] },
+      });
+
+    const result = await getAllDocuments(mockAccessToken);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("owned-1");
+  });
 });
 
 describe("getRecentDocuments", () => {
@@ -846,6 +916,36 @@ describe("getRecentDocuments", () => {
     expect(result).toHaveLength(2);
     const ids = result.map((d) => d.id).sort();
     expect(ids).toEqual(["owned-1", "shared-recent"]);
+  });
+
+  it("should exclude deleted shared docs from recent results", async () => {
+    const ownedDoc = makeDoc("owned-1", "2024-01-18T10:00:00Z");
+
+    (requestUrl as jest.Mock)
+      .mockResolvedValueOnce({ json: { docs: [ownedDoc] } })
+      .mockResolvedValueOnce({
+        json: {
+          documents: {
+            "owned-1": { updated_at: "2024-01-18T10:00:00Z", owner: true },
+            "shared-active": { updated_at: "2024-01-19T10:00:00Z", shared: true },
+            "shared-deleted": { updated_at: "2024-01-19T10:00:00Z", shared: true },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        json: {
+          docs: [
+            { ...makeDoc("shared-active", "2024-01-19T10:00:00Z"), deleted_at: null },
+            { ...makeDoc("shared-deleted", "2024-01-19T10:00:00Z"), deleted_at: "2024-01-19T12:00:00Z" },
+          ],
+        },
+      });
+
+    const result = await getRecentDocuments(mockAccessToken, 7);
+
+    expect(result).toHaveLength(2);
+    const ids = result.map((d) => d.id).sort();
+    expect(ids).toEqual(["owned-1", "shared-active"]);
   });
 
   it("should delegate to getAllDocuments when daysBack is 0", async () => {
