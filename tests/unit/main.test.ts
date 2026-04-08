@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, migrateSettingsToNewFormat } from "../../src/settings
 import {
   getAllDocuments,
   getRecentDocuments,
+  fetchDocumentSet,
   fetchGranolaTranscript,
   GranolaDoc,
 } from "../../src/services/granolaApi";
@@ -512,6 +513,67 @@ describe("GranolaSync", () => {
         mockTranscriptMap,
         {},
         mockTranscriptPathMap
+      );
+    });
+
+    it("should filter out shared documents when excludeSharedNotes is enabled", async () => {
+      const ownedDoc: GranolaDoc = {
+        id: "owned-1",
+        title: "My Note",
+        created_at: "2024-01-15T10:00:00Z",
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      };
+      const sharedDoc: GranolaDoc = {
+        id: "shared-1",
+        title: "Shared Note",
+        created_at: "2024-01-15T11:00:00Z",
+        last_viewed_panel: { content: { type: "doc", content: [] } },
+      };
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        syncNotes: true,
+        syncTranscripts: false,
+        excludeSharedNotes: true,
+      };
+      (getRecentDocuments as jest.Mock).mockResolvedValue([ownedDoc, sharedDoc]);
+      (fetchDocumentSet as jest.Mock).mockResolvedValue({
+        "owned-1": { updated_at: "2024-01-15T10:00:00Z", owner: true },
+        "shared-1": { updated_at: "2024-01-15T11:00:00Z", shared: true },
+      });
+      (plugin as any).syncNotes = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.sync();
+
+      // syncNotes should only receive the owned document
+      expect((plugin as any).syncNotes).toHaveBeenCalledWith(
+        [ownedDoc],
+        false,
+        null,
+        {},
+        null
+      );
+    });
+
+    it("should not filter documents when excludeSharedNotes is disabled", async () => {
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        syncNotes: true,
+        syncTranscripts: false,
+        excludeSharedNotes: false,
+      };
+      (plugin as any).syncNotes = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.sync();
+
+      // fetchDocumentSet should not be called at all
+      expect(fetchDocumentSet).not.toHaveBeenCalled();
+      // syncNotes receives the full doc list unchanged
+      expect((plugin as any).syncNotes).toHaveBeenCalledWith(
+        [mockDoc],
+        false,
+        null,
+        {},
+        null
       );
     });
 
