@@ -435,13 +435,16 @@ export default class GranolaSync extends Plugin {
 
     // Fetch documents
     let documents: GranolaDoc[] = [];
+    const includeShared = !this.settings.onlySyncPrivateNotes;
     try {
       if (mode === "full") {
-        documents = await getAllDocuments(accessToken);
+        documents = await getAllDocuments(accessToken, 100, includeShared);
       } else {
         documents = await getRecentDocuments(
           accessToken,
-          this.settings.syncDaysBack
+          this.settings.syncDaysBack,
+          100,
+          includeShared
         );
       }
     } catch (error: unknown) {
