@@ -15,6 +15,9 @@ module.exports = {
   ],
   coverageDirectory: "coverage",
   coverageReporters: ["text", "lcov"],
+  moduleNameMapper: {
+    "\\.svg$": "<rootDir>/tests/__mocks__/svgMock.js",
+  },
   transform: {
     "^.+\\.ts$": "ts-jest",
   },
