@@ -868,6 +868,19 @@ describe("getAllDocuments", () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("owned-1");
   });
+
+  it("should skip shared documents when includeSharedDocuments is false", async () => {
+    (requestUrl as jest.Mock).mockResolvedValueOnce({
+      json: { docs: [makeDoc("owned-1")] },
+    });
+
+    const result = await getAllDocuments("token", 100, false);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("owned-1");
+    // Only one requestUrl call: first page (1 doc < pageSize 100 stops pagination).
+    // No fetchDocumentSet call because includeSharedDocuments is false.
+    expect(requestUrl).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("getRecentDocuments", () => {
@@ -968,5 +981,20 @@ describe("getRecentDocuments", () => {
 
     // daysBack=0 means no cutoff — all shared docs included
     expect(result).toHaveLength(2);
+  });
+
+  it("should skip shared documents when includeSharedDocuments is false", async () => {
+    // Fake time is 2024-01-20; a doc from 2024-01-18 is within the 7-day window
+    const ownedDoc = makeDoc("owned-1", "2024-01-18T10:00:00Z");
+    (requestUrl as jest.Mock).mockResolvedValueOnce({
+      json: { docs: [ownedDoc] },
+    });
+
+    const result = await getRecentDocuments("token", 7, 100, false);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("owned-1");
+    // Only one requestUrl call: owned docs fetch (1 doc < pageSize 100 stops pagination).
+    // No fetchDocumentSet call because includeSharedDocuments is false.
+    expect(requestUrl).toHaveBeenCalledTimes(1);
   });
 });

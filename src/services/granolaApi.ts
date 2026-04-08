@@ -397,9 +397,11 @@ export async function fetchDocumentsBatch(
  */
 export async function getAllDocuments(
   accessToken: string,
-  pageSize: number = 100
+  pageSize: number = 100,
+  includeSharedDocuments: boolean = true
 ): Promise<GranolaDoc[]> {
   const ownedDocs = await fetchAllGranolaDocuments(accessToken, pageSize);
+  if (!includeSharedDocuments) return ownedDocs;
   return mergeSharedDocuments(accessToken, ownedDocs);
 }
 
@@ -410,9 +412,12 @@ export async function getAllDocuments(
 export async function getRecentDocuments(
   accessToken: string,
   daysBack: number,
-  pageSize: number = 100
+  pageSize: number = 100,
+  includeSharedDocuments: boolean = true
 ): Promise<GranolaDoc[]> {
   const ownedDocs = await fetchGranolaDocumentsByDaysBack(accessToken, daysBack, pageSize);
+
+  if (!includeSharedDocuments) return ownedDocs;
 
   const cutoffDate = daysBack > 0 ? new Date() : null;
   if (cutoffDate) cutoffDate.setDate(cutoffDate.getDate() - daysBack);
