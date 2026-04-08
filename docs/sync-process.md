@@ -32,12 +32,6 @@ flowchart TD
     P --> H
 ```
 
-## Shared Document Filtering
-
-When the **"Exclude shared notes"** setting is enabled, the plugin filters out documents that have been shared with the user by others. After fetching all documents (owned and shared), it calls the document set API (`/v1/get-document-set`) to determine ownership. Only documents where the user is the owner are kept; shared-only documents are discarded before syncing notes or transcripts.
-
-If the document set API call fails, the plugin logs the error and continues with all fetched documents unfiltered.
-
 ## Credentials Loading
 
 The plugin loads credentials by reading directly from the filesystem. This approach provides secure access to credentials stored in the Granola application's data directory without requiring a temporary HTTP server.
@@ -124,6 +118,12 @@ The plugin handles various HTTP error codes:
 - **404**: API endpoint not found
 - **500+**: Server errors
 - **Other**: Network or connection errors
+
+## Shared Document Filtering
+
+When the **"Exclude shared notes"** setting is enabled, the plugin filters out documents that have been shared with the user by others. After fetching all documents (owned and shared), it calls the document set API (`/v1/get-document-set`) to determine ownership. Only documents where the user is the owner are kept; shared-only documents are discarded before syncing notes or transcripts.
+
+If the document set API call fails, the plugin logs the error and continues with all fetched documents unfiltered.
 
 ## Granola ID Cache
 
