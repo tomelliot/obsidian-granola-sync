@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@tomelliot/obsidian-logger':
+        specifier: github:tomelliot/obsidian-logger
+        version: https://codeload.github.com/tomelliot/obsidian-logger/tar.gz/7804a951c8bec74afe1950016ee4fc551bceda11
       '@types/moment':
         specifier: ^2.11.29
         version: 2.13.0
@@ -707,6 +710,10 @@ packages:
 
   '@sinonjs/fake-timers@10.3.0':
     resolution: {integrity: sha512-V4BG07kuYSUkTCSBHG8G8TNhM+F19jXFWnQtzj+we8DrkpSBCee9Z3Ms8yiGer/dlmhe35/Xdgyo3/0rQKg7YA==}
+
+  '@tomelliot/obsidian-logger@https://codeload.github.com/tomelliot/obsidian-logger/tar.gz/7804a951c8bec74afe1950016ee4fc551bceda11':
+    resolution: {tarball: https://codeload.github.com/tomelliot/obsidian-logger/tar.gz/7804a951c8bec74afe1950016ee4fc551bceda11}
+    version: 1.0.0
 
   '@tootallnate/once@2.0.0':
     resolution: {integrity: sha512-XCuKFP5PS55gnMVu3dty8KPatLqUoy/ZYzDzAGCQ8JNFCkLXzmI7vNHCR+XpbZaMWQK/vQubr7PkYq8g470J/A==}
@@ -2819,6 +2826,8 @@ snapshots:
   '@sinonjs/fake-timers@10.3.0':
     dependencies:
       '@sinonjs/commons': 3.0.1
+
+  '@tomelliot/obsidian-logger@https://codeload.github.com/tomelliot/obsidian-logger/tar.gz/7804a951c8bec74afe1950016ee4fc551bceda11': {}
 
   '@tootallnate/once@2.0.0': {}
 
