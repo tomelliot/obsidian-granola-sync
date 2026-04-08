@@ -77,6 +77,7 @@ export interface AutomaticSyncSettings {
   syncInterval: number;
   latestSyncTime: number;
   syncDaysBack: number;
+  excludeSharedNotes: boolean;
 }
 
 export type GranolaSyncSettings = NoteSettings &
@@ -101,6 +102,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   isSyncEnabled: false,
   syncInterval: 30 * 60, // every 30 minutes
   syncDaysBack: 7, // sync notes from last 7 days
+  excludeSharedNotes: false,
   // NoteSettings
   syncNotes: true,
   includePrivateNotes: false,
@@ -289,6 +291,20 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             } else {
               new Notice("Please enter a valid number for sync days.");
             }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Exclude shared notes")
+      .setDesc(
+        "Skip notes that have been shared with you by others. When enabled, only notes you own will be synced."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.excludeSharedNotes)
+          .onChange(async (value) => {
+            this.plugin.settings.excludeSharedNotes = value;
+            await this.plugin.saveSettings();
           })
       );
 

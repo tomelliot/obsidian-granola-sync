@@ -14,6 +14,7 @@ import {
 import {
   getAllDocuments,
   getRecentDocuments,
+  fetchDocumentSet,
   fetchGranolaTranscript,
   GranolaDoc,
   TranscriptEntry,
@@ -486,6 +487,20 @@ export default class GranolaSync extends Plugin {
       );
       hideStatusBar(this);
       return;
+    }
+
+    // Filter out shared documents if setting is enabled
+    if (this.settings.excludeSharedNotes) {
+      try {
+        const documentSet = await fetchDocumentSet(accessToken);
+        documents = documents.filter((doc) => {
+          const entry = documentSet[doc.id];
+          return !entry || entry.owner === true;
+        });
+        log.debug(`Filtered to ${documents.length} owned document(s)`);
+      } catch (error) {
+        log.error("Failed to fetch document set for filtering, continuing with all docs:", error);
+      }
     }
 
     showStatusBar(this, `Granola sync: Syncing ${documents.length} documents`);
