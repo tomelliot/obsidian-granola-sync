@@ -294,6 +294,20 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName("Only sync private notes")
+      .setDesc(
+        'Only sync notes from your private "My notes" space in Granola. When enabled, shared notes and notes from shared spaces will not be synced.'
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.onlySyncPrivateNotes)
+          .onChange(async (value) => {
+            this.plugin.settings.onlySyncPrivateNotes = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
     // Notes Section
     new Setting(containerEl).setName("Notes").setHeading();
 
