@@ -77,6 +77,7 @@ export interface AutomaticSyncSettings {
   syncInterval: number;
   latestSyncTime: number;
   syncDaysBack: number;
+  onlySyncPrivateNotes: boolean;
 }
 
 export type GranolaSyncSettings = NoteSettings &
@@ -101,6 +102,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   isSyncEnabled: false,
   syncInterval: 30 * 60, // every 30 minutes
   syncDaysBack: 7, // sync notes from last 7 days
+  onlySyncPrivateNotes: false,
   // NoteSettings
   syncNotes: true,
   includePrivateNotes: false,
