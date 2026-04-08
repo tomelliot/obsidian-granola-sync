@@ -106,6 +106,7 @@ const context = await esbuild.context({
   treeShaking: true,
   outfile: "output/main.js",
   minify: prod,
+  loader: { ".svg": "text" },
   plugins: [copyPlugin],
 });
 

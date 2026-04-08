@@ -1,6 +1,10 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
 import type { FolderMapData } from "./services/folderMapBuilder";
+// @ts-expect-error esbuild loads .svg as text
+import bmcButtonSvg from "../assets/bmc-button.svg";
+// @ts-expect-error esbuild loads .svg as text
+import githubLogoSvg from "../assets/github-logo.svg";
 
 /**
  * @deprecated These enums will be removed in version 3.0.0.
@@ -691,5 +695,42 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             }
           })
       );
+
+    // Support Section
+    new Setting(containerEl).setName("Support").setHeading();
+
+    new Setting(containerEl)
+      .setName("Need support?")
+      .setDesc("File an issue on Github. PRs are even better.")
+      .addButton((button) => {
+        button.buttonEl.empty();
+        button.buttonEl.innerHTML = githubLogoSvg;
+        const svgEl = button.buttonEl.querySelector("svg");
+        if (svgEl) {
+          svgEl.style.height = "16px";
+          svgEl.style.width = "auto";
+          svgEl.style.display = "block";
+        }
+        button.onClick(() => {
+          window.open("https://github.com/tomelliot/obsidian-granola-sync/");
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Show your support")
+      .addButton((button) => {
+      button.buttonEl.addClass("mod-cta");
+      button.buttonEl.empty();
+      button.buttonEl.innerHTML = bmcButtonSvg;
+      const svgEl = button.buttonEl.querySelector("svg");
+      if (svgEl) {
+        svgEl.style.height = "24px";
+        svgEl.style.width = "auto";
+        svgEl.style.display = "block";
+      }
+      button.onClick(() => {
+        window.open("https://buymeacoffee.com/tomelliot");
+      });
+    });
   }
 }
