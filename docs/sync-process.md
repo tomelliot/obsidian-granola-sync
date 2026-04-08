@@ -17,7 +17,10 @@ flowchart TD
     E --> F[Fetch Documents from API]
     F --> G{Documents Found?}
     G -->|No| H[End Sync]
-    G -->|Yes| I{Transcripts Enabled?}
+    G -->|Yes| G2{Exclude Shared Notes?}
+    G2 -->|Yes| G3[Filter to Owned Documents]
+    G2 -->|No| I
+    G3 --> I{Transcripts Enabled?}
     I -->|Yes| J[Sync Transcripts]
     I -->|No| K[Skip Transcripts]
     J --> L{Notes Enabled?}
@@ -28,6 +31,12 @@ flowchart TD
     O --> P[Update Status Bar]
     P --> H
 ```
+
+## Shared Document Filtering
+
+When the **"Exclude shared notes"** setting is enabled, the plugin filters out documents that have been shared with the user by others. After fetching all documents (owned and shared), it calls the document set API (`/v1/get-document-set`) to determine ownership. Only documents where the user is the owner are kept; shared-only documents are discarded before syncing notes or transcripts.
+
+If the document set API call fails, the plugin logs the error and continues with all fetched documents unfiltered.
 
 ## Credentials Loading
 

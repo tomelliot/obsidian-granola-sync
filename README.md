@@ -16,6 +16,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 - Automatic bidirectional linking between notes and transcripts when using individual files
 - Periodic automatic syncing with customizable interval
 - Granular settings for notes and transcripts
+- Option to exclude shared notes and only sync notes you own
 - Customizable sync settings and destinations
 - **Platform support:** This plugin only works on desktop. It is not supported on mobile.
 
@@ -36,7 +37,8 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 2. Configure transcript syncing:
    - Choose whether to sync transcripts
    - Select the destination: a dedicated transcripts folder or daily note folder structure
-3. Set up periodic sync and adjust the interval as desired
+3. Optionally enable "Exclude shared notes" to only sync notes you own
+4. Set up periodic sync and adjust the interval as desired
 
 ## Frontmatter Structure
 
