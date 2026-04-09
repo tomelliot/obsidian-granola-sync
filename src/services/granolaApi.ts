@@ -389,30 +389,39 @@ export async function fetchDocumentsBatch(
 // ---------------------------------------------------------------------------
 
 /**
- * Fetches all documents the user has access to, including shared documents.
+ * Fetches all documents the user has access to.
  *
+ * When includeShared is true (default):
  * 1. Paginates through v2/get-documents (owned docs with full data)
  * 2. Fetches the document set to discover shared doc IDs
  * 3. Batch-fetches any documents present in the set but missing from step 1
+ *
+ * When includeShared is false, only owned documents are returned.
  */
 export async function getAllDocuments(
   accessToken: string,
-  pageSize: number = 100
+  pageSize: number = 100,
+  includeShared: boolean = true
 ): Promise<GranolaDoc[]> {
   const ownedDocs = await fetchAllGranolaDocuments(accessToken, pageSize);
+  if (!includeShared) return ownedDocs;
   return mergeSharedDocuments(accessToken, ownedDocs);
 }
 
 /**
- * Fetches recent documents (within daysBack), including shared documents.
+ * Fetches recent documents (within daysBack).
  * Pass daysBack=0 for a full sync.
+ *
+ * When includeShared is false, only owned documents are returned.
  */
 export async function getRecentDocuments(
   accessToken: string,
   daysBack: number,
-  pageSize: number = 100
+  pageSize: number = 100,
+  includeShared: boolean = true
 ): Promise<GranolaDoc[]> {
   const ownedDocs = await fetchGranolaDocumentsByDaysBack(accessToken, daysBack, pageSize);
+  if (!includeShared) return ownedDocs;
 
   const cutoffDate = daysBack > 0 ? new Date() : null;
   if (cutoffDate) cutoffDate.setDate(cutoffDate.getDate() - daysBack);
