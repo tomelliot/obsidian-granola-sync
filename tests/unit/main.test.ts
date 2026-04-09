@@ -434,7 +434,7 @@ describe("GranolaSync", () => {
 
       await plugin.sync({ mode: "full" });
 
-      expect(getAllDocuments).toHaveBeenCalledWith(mockAccessToken);
+      expect(getAllDocuments).toHaveBeenCalledWith(mockAccessToken, 100, true);
       expect(getRecentDocuments).not.toHaveBeenCalled();
     });
 
@@ -450,7 +450,9 @@ describe("GranolaSync", () => {
 
       expect(getRecentDocuments).toHaveBeenCalledWith(
         mockAccessToken,
-        7
+        7,
+        100,
+        true
       );
       expect(getAllDocuments).not.toHaveBeenCalled();
     });

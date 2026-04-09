@@ -31,6 +31,7 @@ export enum TranscriptDestination {
 export interface NoteSettings {
   syncNotes: boolean;
   includePrivateNotes: boolean;
+  includeSharedNotes: boolean;
   saveAsIndividualFiles: boolean; // true = files, false = sections
 
   // Only if saveAsIndividualFiles = true:
@@ -104,6 +105,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   // NoteSettings
   syncNotes: true,
   includePrivateNotes: false,
+  includeSharedNotes: true,
   saveAsIndividualFiles: false, // Default to daily notes (sections)
   baseFolderType: "custom",
   customBaseFolder: "Granola",
@@ -326,6 +328,21 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               await this.plugin.saveSettings();
             })
         );
+
+      new Setting(containerEl)
+        .setName("Include shared notes")
+        .setDesc(
+          "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.includeSharedNotes)
+            .onChange(async (value) => {
+              this.plugin.settings.includeSharedNotes = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
       // How to package notes: individual files or sections in daily notes
       new Setting(containerEl)
         .setName("Save notes as")
