@@ -28,10 +28,16 @@ export enum TranscriptDestination {
   COMBINED_WITH_NOTE = "combined_with_note",
 }
 
+export interface FilterSettings {
+  syncDaysBack: number;
+  includeSharedNotes: boolean;
+  titleFilterMode: "disabled" | "include" | "exclude";
+  titleFilterKeyword: string;
+}
+
 export interface NoteSettings {
   syncNotes: boolean;
   includePrivateNotes: boolean;
-  includeSharedNotes: boolean;
   saveAsIndividualFiles: boolean; // true = files, false = sections
 
   // Only if saveAsIndividualFiles = true:
@@ -77,12 +83,12 @@ export interface AutomaticSyncSettings {
   isSyncEnabled: boolean;
   syncInterval: number;
   latestSyncTime: number;
-  syncDaysBack: number;
 }
 
 export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
-  AutomaticSyncSettings & {
+  AutomaticSyncSettings &
+  FilterSettings & {
     enableDebugLogging: boolean;
     // Persisted folder map for detecting renames across syncs
     _folderMapCache?: FolderMapData;
@@ -101,11 +107,14 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   latestSyncTime: 0,
   isSyncEnabled: false,
   syncInterval: 30 * 60, // every 30 minutes
+  // FilterSettings
   syncDaysBack: 7, // sync notes from last 7 days
+  includeSharedNotes: true,
+  titleFilterMode: "disabled",
+  titleFilterKeyword: "",
   // NoteSettings
   syncNotes: true,
   includePrivateNotes: false,
-  includeSharedNotes: true,
   saveAsIndividualFiles: false, // Default to daily notes (sections)
   baseFolderType: "custom",
   customBaseFolder: "Granola",
@@ -221,7 +230,6 @@ export function migrateSettingsToNewFormat(
 
 export class GranolaSyncSettingTab extends PluginSettingTab {
   plugin: GranolaSync;
-
   constructor(app: App, plugin: GranolaSync) {
     super(app, plugin);
     this.plugin = plugin;
@@ -274,26 +282,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         );
     }
 
-    new Setting(containerEl)
-      .setName("Sync history (days)")
-      .setDesc(
-        "How far back to sync notes and transcripts from Granola, in days. For example, setting this to 7 will only sync notes from the last 7 days. Set to 0 to sync all notes (max 100 notes)."
-      )
-      .addText((text) =>
-        text
-          .setPlaceholder("Enter number of days")
-          .setValue(this.plugin.settings.syncDaysBack.toString())
-          .onChange(async (value) => {
-            const numValue = parseInt(value);
-            if (!isNaN(numValue) && numValue >= 0) {
-              this.plugin.settings.syncDaysBack = numValue;
-              await this.plugin.saveSettings();
-            } else {
-              new Notice("Please enter a valid number for sync days.");
-            }
-          })
-      );
-
     // Notes Section
     new Setting(containerEl).setName("Notes").setHeading();
 
@@ -325,20 +313,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             .setValue(this.plugin.settings.includePrivateNotes)
             .onChange(async (value) => {
               this.plugin.settings.includePrivateNotes = value;
-              await this.plugin.saveSettings();
-            })
-        );
-
-      new Setting(containerEl)
-        .setName("Include shared notes")
-        .setDesc(
-          "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
-        )
-        .addToggle((toggle) =>
-          toggle
-            .setValue(this.plugin.settings.includeSharedNotes)
-            .onChange(async (value) => {
-              this.plugin.settings.includeSharedNotes = value;
               await this.plugin.saveSettings();
             })
         );
@@ -636,6 +610,81 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               })
           );
       }
+    }
+
+    // Filtering Section
+    new Setting(containerEl).setName("Filtering").setHeading();
+
+    new Setting(containerEl)
+      .setName("Sync history (days)")
+      .setDesc(
+        "How far back to sync notes and transcripts from Granola, in days. For example, setting this to 7 will only sync notes from the last 7 days. Set to 0 to sync all notes (max 100 notes)."
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder("Enter number of days")
+          .setValue(this.plugin.settings.syncDaysBack.toString())
+          .onChange(async (value) => {
+            const numValue = parseInt(value);
+            if (!isNaN(numValue) && numValue >= 0) {
+              this.plugin.settings.syncDaysBack = numValue;
+              await this.plugin.saveSettings();
+            } else {
+              new Notice("Please enter a valid number for sync days.");
+            }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Include shared notes")
+      .setDesc(
+        "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.includeSharedNotes)
+          .onChange(async (value) => {
+            this.plugin.settings.includeSharedNotes = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Title filter")
+      .setDesc(
+        "Filter which notes are synced based on their title."
+      )
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("disabled", "Disabled")
+          .addOption("include", "Only sync notes where the title includes...")
+          .addOption("exclude", "Never sync notes where the title includes...")
+          .setValue(this.plugin.settings.titleFilterMode)
+          .onChange(async (value) => {
+            this.plugin.settings.titleFilterMode = value as
+              | "disabled"
+              | "include"
+              | "exclude";
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (this.plugin.settings.titleFilterMode !== "disabled") {
+      new Setting(containerEl)
+        .setName("Title filter keyword")
+        .setDesc(
+          "Documents will be filtered based on whether their title contains this text (case-insensitive)."
+        )
+        .addText((text) =>
+          text
+            .setPlaceholder("Enter keyword...")
+            .setValue(this.plugin.settings.titleFilterKeyword)
+            .onChange(async (value) => {
+              this.plugin.settings.titleFilterKeyword = value;
+              await this.plugin.saveSettings();
+            })
+        );
     }
 
     // Advanced Section (Full sync + Export settings)

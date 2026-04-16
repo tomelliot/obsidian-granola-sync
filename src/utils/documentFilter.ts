@@ -25,3 +25,28 @@ export function filterDocumentsByDate(
     return docDate >= cutoffDate;
   });
 }
+
+/**
+ * Filters documents based on title matching.
+ *
+ * @param documents - Array of Granola documents to filter
+ * @param mode - "disabled" (no filtering), "include" (only matching), or "exclude" (skip matching)
+ * @param keyword - The keyword to match against document titles (case-insensitive)
+ * @returns Filtered array of documents
+ */
+export function filterDocumentsByTitle(
+  documents: GranolaDoc[],
+  mode: "disabled" | "include" | "exclude",
+  keyword: string
+): GranolaDoc[] {
+  if (mode === "disabled" || !keyword.trim()) {
+    return documents;
+  }
+
+  const lower = keyword.toLowerCase();
+  return documents.filter((doc) => {
+    const title = (doc.title || "").toLowerCase();
+    const matches = title.includes(lower);
+    return mode === "include" ? matches : !matches;
+  });
+}

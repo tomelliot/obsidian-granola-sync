@@ -1,4 +1,7 @@
-import { filterDocumentsByDate } from "../../src/utils/documentFilter";
+import {
+  filterDocumentsByDate,
+  filterDocumentsByTitle,
+} from "../../src/utils/documentFilter";
 import { GranolaDoc } from "../../src/services/granolaApi";
 
 // Mock dateUtils
@@ -174,6 +177,64 @@ describe("documentFilter", () => {
       const result = filterDocumentsByDate(documents, 365 * 10); // 10 years
 
       expect(result.length).toBe(1);
+    });
+  });
+
+  describe("filterDocumentsByTitle", () => {
+    const documents: GranolaDoc[] = [
+      { id: "doc-1", title: "Daily Standup" },
+      { id: "doc-2", title: "1:1 with Manager" },
+      { id: "doc-3", title: "Sprint Planning" },
+      { id: "doc-4", title: null },
+    ];
+
+    it("should return all documents when mode is disabled", () => {
+      const result = filterDocumentsByTitle(documents, "disabled", "standup");
+      expect(result).toEqual(documents);
+    });
+
+    it("should return all documents when keyword is empty", () => {
+      const result = filterDocumentsByTitle(documents, "include", "");
+      expect(result).toEqual(documents);
+    });
+
+    it("should return all documents when keyword is whitespace", () => {
+      const result = filterDocumentsByTitle(documents, "include", "   ");
+      expect(result).toEqual(documents);
+    });
+
+    it("should return only matching documents in include mode", () => {
+      const result = filterDocumentsByTitle(documents, "include", "standup");
+      expect(result).toEqual([{ id: "doc-1", title: "Daily Standup" }]);
+    });
+
+    it("should exclude matching documents in exclude mode", () => {
+      const result = filterDocumentsByTitle(documents, "exclude", "standup");
+      expect(result).toEqual([
+        { id: "doc-2", title: "1:1 with Manager" },
+        { id: "doc-3", title: "Sprint Planning" },
+        { id: "doc-4", title: null },
+      ]);
+    });
+
+    it("should be case-insensitive", () => {
+      const result = filterDocumentsByTitle(documents, "include", "STANDUP");
+      expect(result).toEqual([{ id: "doc-1", title: "Daily Standup" }]);
+    });
+
+    it("should not match null titles in include mode", () => {
+      const result = filterDocumentsByTitle(documents, "include", "anything");
+      expect(result.find((d) => d.id === "doc-4")).toBeUndefined();
+    });
+
+    it("should keep null titles in exclude mode", () => {
+      const result = filterDocumentsByTitle(documents, "exclude", "anything");
+      expect(result.find((d) => d.id === "doc-4")).toBeDefined();
+    });
+
+    it("should handle empty array", () => {
+      const result = filterDocumentsByTitle([], "include", "test");
+      expect(result).toEqual([]);
     });
   });
 });

@@ -33,6 +33,7 @@ import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { DailyNoteBuilder } from "./services/dailyNoteBuilder";
+import { filterDocumentsByTitle } from "./utils/documentFilter";
 import { configureLogger, log } from "./utils/logger";
 import { formatStringListAsYaml } from "./utils/yamlUtils";
 import {
@@ -479,6 +480,13 @@ export default class GranolaSync extends Plugin {
       hideStatusBar(this);
       return;
     }
+
+    // Apply title filter
+    documents = filterDocumentsByTitle(
+      documents,
+      this.settings.titleFilterMode,
+      this.settings.titleFilterKeyword
+    );
 
     if (documents.length === 0) {
       new Notice(
