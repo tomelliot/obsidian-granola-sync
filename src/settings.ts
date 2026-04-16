@@ -230,6 +230,8 @@ export function migrateSettingsToNewFormat(
 
 export class GranolaSyncSettingTab extends PluginSettingTab {
   plugin: GranolaSync;
+  private showAdvanced = false;
+
   constructor(app: App, plugin: GranolaSync) {
     super(app, plugin);
     this.plugin = plugin;
@@ -240,9 +242,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
-    // Automatic Sync Section
-    new Setting(containerEl).setName("Automatic sync").setHeading();
-
+    // General settings (no heading per Obsidian conventions)
     new Setting(containerEl)
       .setName("Periodic sync enabled")
       .setDesc(
@@ -254,12 +254,10 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.isSyncEnabled = value;
             await this.plugin.saveSettings();
-            // Refresh the display to show/hide sync interval
             this.display();
           })
       );
 
-    // Only show sync interval when periodic sync is enabled
     if (this.plugin.settings.isSyncEnabled) {
       new Setting(containerEl)
         .setName("Sync interval")
@@ -282,9 +280,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         );
     }
 
-    // Notes Section
-    new Setting(containerEl).setName("Notes").setHeading();
-
     new Setting(containerEl)
       .setName("Sync notes")
       .setDesc(
@@ -296,13 +291,29 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.syncNotes = value;
             await this.plugin.saveSettings();
-            // Refresh display to show/hide note-related settings
             this.display();
           })
       );
 
-    // Only show note-related settings when sync notes is enabled
+    new Setting(containerEl)
+      .setName("Sync transcripts")
+      .setDesc(
+        "Enable syncing of meeting transcripts from Granola. Transcripts are saved with speaker-by-speaker formatting."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.syncTranscripts)
+          .onChange(async (value) => {
+            this.plugin.settings.syncTranscripts = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    // Notes Section
     if (this.plugin.settings.syncNotes) {
+      new Setting(containerEl).setName("Notes").setHeading();
+
       new Setting(containerEl)
         .setName("Include Private Notes")
         .setDesc(
@@ -317,7 +328,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             })
         );
 
-      // How to package notes: individual files or sections in daily notes
       new Setting(containerEl)
         .setName("Save notes as")
         .setDesc("Choose how to package your Granola notes")
@@ -336,7 +346,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         );
 
       if (this.plugin.settings.saveAsIndividualFiles) {
-        // Individual files mode
         new Setting(containerEl)
           .setName("Base folder")
           .setDesc("Choose where to save your note files")
@@ -426,7 +435,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               })
           );
 
-        // Daily note linking option (only for individual files mode)
         new Setting(containerEl)
           .setName("Link from daily notes")
           .setDesc(
@@ -462,7 +470,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             );
         }
       } else {
-        // Sections in daily notes mode
         new Setting(containerEl)
           .setName("Daily note section heading")
           .setDesc(
@@ -484,24 +491,9 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     }
 
     // Transcripts Section
-    new Setting(containerEl).setName("Transcripts").setHeading();
-
-    new Setting(containerEl)
-      .setName("Sync transcripts")
-      .setDesc(
-        "Enable syncing of meeting transcripts from Granola. Transcripts are saved with speaker-by-speaker formatting."
-      )
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.syncTranscripts)
-          .onChange(async (value) => {
-            this.plugin.settings.syncTranscripts = value;
-            await this.plugin.saveSettings();
-            this.display();
-          })
-      );
-
     if (this.plugin.settings.syncTranscripts) {
+      new Setting(containerEl).setName("Transcripts").setHeading();
+
       new Setting(containerEl)
         .setName("Transcript handling")
         .setDesc("Choose how to save transcripts")
@@ -509,7 +501,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           dropdown
             .addOption("custom-location", "Custom location")
             .addOption("same-location", "Same location as notes");
-          // Only show combined option when notes are also being synced as individual files
           if (
             this.plugin.settings.syncNotes &&
             this.plugin.settings.saveAsIndividualFiles
@@ -612,155 +603,170 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       }
     }
 
-    // Filtering Section
-    new Setting(containerEl).setName("Filtering").setHeading();
+    // Advanced Section (toggle to show/hide contents)
+    new Setting(containerEl).setName("Advanced").setHeading().addToggle(
+      (toggle) =>
+        toggle.setValue(this.showAdvanced).onChange((value) => {
+          this.showAdvanced = value;
+          this.display();
+        })
+    );
 
-    new Setting(containerEl)
-      .setName("Sync history (days)")
-      .setDesc(
-        "How far back to sync notes and transcripts from Granola, in days. For example, setting this to 7 will only sync notes from the last 7 days. Set to 0 to sync all notes (max 100 notes)."
-      )
-      .addText((text) =>
-        text
-          .setPlaceholder("Enter number of days")
-          .setValue(this.plugin.settings.syncDaysBack.toString())
-          .onChange(async (value) => {
-            const numValue = parseInt(value);
-            if (!isNaN(numValue) && numValue >= 0) {
-              this.plugin.settings.syncDaysBack = numValue;
-              await this.plugin.saveSettings();
-            } else {
-              new Notice("Please enter a valid number for sync days.");
-            }
-          })
-      );
+    new Setting(containerEl).setDesc(
+      "Full sync, filtering, and debugging options."
+    );
 
-    new Setting(containerEl)
-      .setName("Include shared notes")
-      .setDesc(
-        "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
-      )
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.includeSharedNotes)
-          .onChange(async (value) => {
-            this.plugin.settings.includeSharedNotes = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Title filter")
-      .setDesc(
-        "Filter which notes are synced based on their title."
-      )
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("disabled", "Disabled")
-          .addOption("include", "Only sync notes where the title includes...")
-          .addOption("exclude", "Never sync notes where the title includes...")
-          .setValue(this.plugin.settings.titleFilterMode)
-          .onChange(async (value) => {
-            this.plugin.settings.titleFilterMode = value as
-              | "disabled"
-              | "include"
-              | "exclude";
-            await this.plugin.saveSettings();
-            this.display();
-          })
-      );
-
-    if (this.plugin.settings.titleFilterMode !== "disabled") {
+    if (this.showAdvanced) {
+      // Full sync
       new Setting(containerEl)
-        .setName("Title filter keyword")
+        .setName("Full sync")
         .setDesc(
-          "Documents will be filtered based on whether their title contains this text (case-insensitive)."
+          "Re-syncs all files from Granola 🚨 overwriting any local modifications 🚨. Use this to force refresh your notes and transcripts."
+        )
+        .addButton((button) =>
+          button
+            .setButtonText("Full sync")
+            .setCta()
+            .onClick(async () => {
+              new Notice("Granola sync: Starting full sync.");
+              await this.plugin.sync({ mode: "full" });
+              new Notice("Granola sync: Full sync complete.");
+            })
+        );
+
+      // Filtering
+      new Setting(containerEl).setName("Filtering").setHeading();
+
+      new Setting(containerEl)
+        .setName("Sync history (days)")
+        .setDesc(
+          "How far back to sync notes and transcripts from Granola, in days. For example, setting this to 7 will only sync notes from the last 7 days. Set to 0 to sync all notes (max 100 notes)."
         )
         .addText((text) =>
           text
-            .setPlaceholder("Enter keyword...")
-            .setValue(this.plugin.settings.titleFilterKeyword)
+            .setPlaceholder("Enter number of days")
+            .setValue(this.plugin.settings.syncDaysBack.toString())
             .onChange(async (value) => {
-              this.plugin.settings.titleFilterKeyword = value;
+              const numValue = parseInt(value);
+              if (!isNaN(numValue) && numValue >= 0) {
+                this.plugin.settings.syncDaysBack = numValue;
+                await this.plugin.saveSettings();
+              } else {
+                new Notice("Please enter a valid number for sync days.");
+              }
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Include shared notes")
+        .setDesc(
+          "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.includeSharedNotes)
+            .onChange(async (value) => {
+              this.plugin.settings.includeSharedNotes = value;
               await this.plugin.saveSettings();
             })
         );
-    }
 
-    // Advanced Section (Full sync + Export settings)
-    new Setting(containerEl).setName("Advanced").setHeading();
+      new Setting(containerEl)
+        .setName("Title filter")
+        .setDesc(
+          "Filter which notes are synced based on their title."
+        )
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("disabled", "Disabled")
+            .addOption("include", "Only sync notes where the title includes...")
+            .addOption("exclude", "Never sync notes where the title includes...")
+            .setValue(this.plugin.settings.titleFilterMode)
+            .onChange(async (value) => {
+              this.plugin.settings.titleFilterMode = value as
+                | "disabled"
+                | "include"
+                | "exclude";
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        );
 
-    new Setting(containerEl)
-      .setName("Full sync")
-      .setDesc(
-        "Re-syncs all files from Granola 🚨 overwriting any local modifications 🚨. Use this to force refresh your notes and transcripts."
-      )
-      .addButton((button) =>
-        button
-          .setButtonText("Full sync")
-          .setCta()
-          .onClick(async () => {
-            new Notice("Granola sync: Starting full sync.");
-            await this.plugin.sync({ mode: "full" });
-            new Notice("Granola sync: Full sync complete.");
-          })
-      );
+      if (this.plugin.settings.titleFilterMode !== "disabled") {
+        new Setting(containerEl)
+          .setName("Title filter keyword")
+          .setDesc(
+            "Documents will be filtered based on whether their title contains this text (case-insensitive)."
+          )
+          .addText((text) =>
+            text
+              .setPlaceholder("Enter keyword...")
+              .setValue(this.plugin.settings.titleFilterKeyword)
+              .onChange(async (value) => {
+                this.plugin.settings.titleFilterKeyword = value;
+                await this.plugin.saveSettings();
+              })
+          );
+      }
 
-    new Setting(containerEl)
-      .setName("Export settings as JSON")
-      .setDesc(
-        "Copy the current plugin settings as formatted JSON to the clipboard."
-      )
-      .addButton((button) =>
-        button.setButtonText("Export").onClick(async () => {
-          try {
-            const json = JSON.stringify(this.plugin.settings, null, 2);
-            await navigator.clipboard.writeText(json);
-            new Notice("Settings copied to clipboard");
-          } catch (err) {
-            new Notice(
-              "Failed to copy settings: " +
-                (err instanceof Error ? err.message : String(err))
-            );
-          }
-        })
-      );
+      // Debugging
+      new Setting(containerEl).setName("Debugging").setHeading();
 
-    new Setting(containerEl)
-      .setName("Enable debug logging")
-      .setDesc(
-        "When enabled, writes detailed plugin logs to a granola-sync-debug.log file in the plugin folder. Disable when not needed."
-      )
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.enableDebugLogging)
-          .onChange(async (value) => {
-            this.plugin.settings.enableDebugLogging = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Copy logs to clipboard")
-      .setDesc(
-        "Copy the current contents of the debug log file to your clipboard for debugging or bug reports."
-      )
-      .addButton((button) =>
-        button
-          .setButtonText("Copy logs to clipboard")
-          .onClick(async () => {
-            // Delegate to plugin so it can handle filesystem access and error handling
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const pluginWithMethod = this.plugin as any;
-            if (typeof pluginWithMethod.copyDebugLogsToClipboard === "function") {
-              await pluginWithMethod.copyDebugLogsToClipboard();
-            } else {
+      new Setting(containerEl)
+        .setName("Export settings as JSON")
+        .setDesc(
+          "Copy the current plugin settings as formatted JSON to the clipboard."
+        )
+        .addButton((button) =>
+          button.setButtonText("Export").onClick(async () => {
+            try {
+              const json = JSON.stringify(this.plugin.settings, null, 2);
+              await navigator.clipboard.writeText(json);
+              new Notice("Settings copied to clipboard");
+            } catch (err) {
               new Notice(
-                "Copying debug logs is not available in this environment."
+                "Failed to copy settings: " +
+                  (err instanceof Error ? err.message : String(err))
               );
             }
           })
-      );
+        );
+
+      new Setting(containerEl)
+        .setName("Enable debug logging")
+        .setDesc(
+          "When enabled, writes detailed plugin logs to a granola-sync-debug.log file in the plugin folder. Disable when not needed."
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.enableDebugLogging)
+            .onChange(async (value) => {
+              this.plugin.settings.enableDebugLogging = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Copy logs to clipboard")
+        .setDesc(
+          "Copy the current contents of the debug log file to your clipboard for debugging or bug reports."
+        )
+        .addButton((button) =>
+          button
+            .setButtonText("Copy logs to clipboard")
+            .onClick(async () => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const pluginWithMethod = this.plugin as any;
+              if (typeof pluginWithMethod.copyDebugLogsToClipboard === "function") {
+                await pluginWithMethod.copyDebugLogsToClipboard();
+              } else {
+                new Notice(
+                  "Copying debug logs is not available in this environment."
+                );
+              }
+            })
+        );
+    }
 
     // Support Section
     new Setting(containerEl).setName("Support").setHeading();
