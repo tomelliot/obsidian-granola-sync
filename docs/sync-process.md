@@ -15,7 +15,8 @@ flowchart TD
     C -->|No| D[Show Error Notice]
     C -->|Yes| E[Build Granola ID Cache]
     E --> F[Fetch Documents from API]
-    F --> G{Documents Found?}
+    F --> FA[Apply Title Filter]
+    FA --> G{Documents Found?}
     G -->|No| H[End Sync]
     G -->|Yes| I{Transcripts Enabled?}
     I -->|Yes| J[Sync Transcripts]
@@ -115,6 +116,20 @@ The plugin handles various HTTP error codes:
 - **404**: API endpoint not found
 - **500+**: Server errors
 - **Other**: Network or connection errors
+
+## Title Filtering
+
+After documents are fetched from the API, an optional title filter is applied. This step runs before folder mapping, transcript syncing, and note syncing — so all downstream steps only see documents that passed the filter.
+
+The filter operates in three modes:
+
+- **Disabled**: All documents pass through (default)
+- **Include**: Only documents whose title contains the keyword are kept
+- **Exclude**: Documents whose title contains the keyword are removed
+
+Matching is case-insensitive substring matching. Documents with null titles are treated as having an empty title. If the keyword is empty or whitespace-only, filtering is skipped regardless of mode.
+
+Because transcripts and notes both receive the same filtered document list, the title filter effectively controls which transcripts get synced too — there is no separate filtering step for transcripts.
 
 ## Granola ID Cache
 
