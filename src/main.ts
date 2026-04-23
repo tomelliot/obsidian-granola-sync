@@ -775,7 +775,12 @@ export default class GranolaSync extends Plugin {
             )
           ) {
             syncedCount++;
-            syncedNotes.push({ doc, notePath });
+            // Use the actual on-disk path to handle collision-resolved filenames
+            // (recurring meetings share a title, so later saves get a date suffix).
+            const actualPath =
+              this.fileSyncService.findByGranolaId(doc.id, "combined")?.path ??
+              notePath;
+            syncedNotes.push({ doc, notePath: actualPath });
           }
         } else {
           // No transcript available, save as regular note
@@ -789,7 +794,10 @@ export default class GranolaSync extends Plugin {
             )
           ) {
             syncedCount++;
-            syncedNotes.push({ doc, notePath });
+            const actualPath =
+              this.fileSyncService.findByGranolaId(doc.id, "note")?.path ??
+              notePath;
+            syncedNotes.push({ doc, notePath: actualPath });
           }
         }
       } else {
@@ -823,7 +831,10 @@ export default class GranolaSync extends Plugin {
           )
         ) {
           syncedCount++;
-          syncedNotes.push({ doc, notePath });
+          const actualPath =
+            this.fileSyncService.findByGranolaId(doc.id, "note")?.path ??
+            notePath;
+          syncedNotes.push({ doc, notePath: actualPath });
         }
       }
     }

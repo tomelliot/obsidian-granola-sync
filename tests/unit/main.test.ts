@@ -615,4 +615,81 @@ describe("GranolaSync", () => {
     });
   });
 
+  describe("syncNotesToIndividualFiles synced note paths", () => {
+    const docWithContent: GranolaDoc = {
+      id: "doc-recurring-1",
+      title: "Daily Scrum",
+      created_at: "2024-01-15T10:00:00Z",
+      updated_at: "2024-01-15T12:00:00Z",
+      last_viewed_panel: {
+        content: {
+          type: "doc",
+          content: [],
+        },
+      },
+    };
+
+    beforeEach(() => {
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        syncNotes: true,
+        syncTranscripts: false,
+        saveAsIndividualFiles: true,
+      };
+      (plugin as any).initializeServices();
+      mockPathResolver.computeNotePath.mockReturnValue(
+        "Granola/Notes/2024-01/Daily Scrum.md"
+      );
+      mockFileSyncService.saveNoteToDisk.mockResolvedValue(true);
+    });
+
+    // Simulates a recurring meeting: a prior occurrence in the month already
+    // owns the clean filename, so this save was collision-resolved with a
+    // date suffix. syncedNotes must carry the actual saved path so daily-note
+    // links resolve to this note and not the earlier one.
+    it("should use the actual on-disk path for collision-resolved note filenames", async () => {
+      const actualSavedPath =
+        "Granola/Notes/2024-01/Daily Scrum-2024-01-15_10-00-00.md";
+      mockFileSyncService.findByGranolaId.mockImplementation(
+        (granolaId, type) => {
+          if (granolaId === "doc-recurring-1" && type === "note") {
+            return { path: actualSavedPath } as any;
+          }
+          return null;
+        }
+      );
+
+      const result = await (plugin as any).syncNotesToIndividualFiles(
+        [docWithContent],
+        true,
+        null,
+        {},
+        null
+      );
+
+      expect(result.syncedNotes).toEqual([
+        { doc: docWithContent, notePath: actualSavedPath },
+      ]);
+    });
+
+    it("should fall back to the computed path when the note is not yet in the cache", async () => {
+      mockFileSyncService.findByGranolaId.mockReturnValue(null);
+
+      const result = await (plugin as any).syncNotesToIndividualFiles(
+        [docWithContent],
+        true,
+        null,
+        {},
+        null
+      );
+
+      expect(result.syncedNotes).toEqual([
+        {
+          doc: docWithContent,
+          notePath: "Granola/Notes/2024-01/Daily Scrum.md",
+        },
+      ]);
+    });
+  });
+
 });
