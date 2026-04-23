@@ -697,7 +697,7 @@ describe("FileSyncService", () => {
       } as unknown as jest.Mocked<DocumentProcessor>;
     });
 
-    it("should return false when doc id is missing", async () => {
+    it("should return saved:false and path:null when doc id is missing", async () => {
       const doc = { title: "No ID" } as GranolaDoc;
 
       const result = await fileSyncService.saveNoteToDisk(
@@ -705,8 +705,40 @@ describe("FileSyncService", () => {
         mockDocumentProcessor
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
       expect(mockDocumentProcessor.prepareNote).not.toHaveBeenCalled();
+    });
+
+    it("should return cached note path after save when rename target conflicts", async () => {
+      const doc = { id: "doc-1" } as GranolaDoc;
+      const noteDate = new Date("2024-01-15T10:00:00Z");
+      mockDocumentProcessor.prepareNote.mockReturnValue({
+        filename: "Daily Scrum.md",
+        content: "content",
+      });
+      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
+      jest.spyOn(fileSyncService, "saveFile" as any).mockResolvedValue(true);
+      jest
+        .spyOn(fileSyncService, "findByGranolaId")
+        .mockImplementation((granolaId, type) => {
+          if (granolaId === "doc-1" && type === "note") {
+            return {
+              path: "granola-folder/Daily Scrum-2024-01-15_10-00-00.md",
+              extension: "md",
+            } as TFile;
+          }
+          return null;
+        });
+
+      const result = await fileSyncService.saveNoteToDisk(
+        doc,
+        mockDocumentProcessor
+      );
+
+      expect(result).toEqual({
+        saved: true,
+        path: "granola-folder/Daily Scrum-2024-01-15_10-00-00.md",
+      });
     });
 
     it("should prepare note and delegate to saveToDisk", async () => {
@@ -726,7 +758,7 @@ describe("FileSyncService", () => {
         mockDocumentProcessor
       );
 
-      expect(result).toBe(true);
+      expect(result.saved).toBe(true);
       expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
         doc,
         undefined,
@@ -749,9 +781,7 @@ describe("FileSyncService", () => {
         content: "content",
       });
       jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-      const saveToDiskSpy = jest
-        .spyOn(fileSyncService, "saveToDisk")
-        .mockResolvedValue(true);
+      jest.spyOn(fileSyncService, "saveFile" as any).mockResolvedValue(true);
 
       const result = await fileSyncService.saveNoteToDisk(
         doc,
@@ -760,7 +790,7 @@ describe("FileSyncService", () => {
         "Transcripts/note-transcript.md"
       );
 
-      expect(result).toBe(true);
+      expect(result.saved).toBe(true);
       expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
         doc,
         "Transcripts/note-transcript.md",
@@ -1381,7 +1411,7 @@ describe("FileSyncService", () => {
       expect(savedContent).toMatch(/att-gif\.gif/);
     });
 
-    it("should return false when folder path cannot be resolved", async () => {
+    it("should return saved:false and path:null when folder path cannot be resolved", async () => {
       const doc: GranolaDoc = {
         id: "doc-no-folder",
         title: "Note Without Folder",
@@ -1404,10 +1434,10 @@ describe("FileSyncService", () => {
         undefined
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
     });
 
-    it("should return false when folder creation fails", async () => {
+    it("should return saved:false and path:null when folder creation fails", async () => {
       const doc: GranolaDoc = {
         id: "doc-folder-fail",
         title: "Note With Folder Creation Failure",
@@ -1433,10 +1463,10 @@ describe("FileSyncService", () => {
         undefined
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
     });
 
-    it("should return false when file path cannot be resolved", async () => {
+    it("should return saved:false and path:null when file path cannot be resolved", async () => {
       const doc: GranolaDoc = {
         id: "doc-no-filepath",
         title: "Note Without File Path",
@@ -1463,7 +1493,7 @@ describe("FileSyncService", () => {
         undefined
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
     });
   });
 
@@ -2033,7 +2063,8 @@ describe("FileSyncService", () => {
         false
       );
 
-      expect(result).toBe(true);
+      expect(result.saved).toBe(true);
+      expect(result.path).toBe("granola-folder/Test Note.md");
       expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalledWith(
         mockDoc,
         "## Transcript\n\nTranscript content",
@@ -2082,7 +2113,7 @@ describe("FileSyncService", () => {
         false
       );
 
-      expect(result).toBe(true);
+      expect(result.saved).toBe(true);
       expect(mockApp.vault.modify).toHaveBeenCalled();
       expect(fileSyncService.findByGranolaId("doc-123", "combined")).toBe(mockFile);
     });
@@ -2107,11 +2138,11 @@ describe("FileSyncService", () => {
         true // forceOverwrite
       );
 
-      expect(result).toBe(true);
+      expect(result.saved).toBe(true);
       expect(mockApp.vault.modify).toHaveBeenCalled();
     });
 
-    it("should return false when document has no id", async () => {
+    it("should return saved:false and path:null when document has no id", async () => {
       const docWithoutId = { ...mockDoc, id: undefined };
 
       const result = await fileSyncService.saveCombinedNoteToDisk(
@@ -2121,7 +2152,7 @@ describe("FileSyncService", () => {
         false
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
       expect(mockDocumentProcessor.prepareCombinedNote).not.toHaveBeenCalled();
     });
 
@@ -2173,7 +2204,7 @@ describe("FileSyncService", () => {
       // This test mainly verifies that saveCombinedNoteToDisk works with the collision logic
     });
 
-    it("should return false when resolveFolderPath returns null", async () => {
+    it("should return saved:false and path:null when resolveFolderPath returns null", async () => {
       // Set up a scenario where resolveFolderPath would return null
       // This happens when saveAsIndividualFiles is false (invalid for individual files)
       mockSettings.saveAsIndividualFiles = false;
@@ -2185,11 +2216,11 @@ describe("FileSyncService", () => {
         false
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
       expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalled();
     });
 
-    it("should return false when ensureFolder fails", async () => {
+    it("should return saved:false and path:null when ensureFolder fails", async () => {
       jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(false);
 
       const result = await fileSyncService.saveCombinedNoteToDisk(
@@ -2199,11 +2230,11 @@ describe("FileSyncService", () => {
         false
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
       expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalled();
     });
 
-    it("should return false when resolveFilePath returns null", async () => {
+    it("should return saved:false and path:null when resolveFilePath returns null", async () => {
       jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
       jest.spyOn(fileSyncService, "resolveFilePath").mockReturnValue(null);
 
@@ -2214,7 +2245,7 @@ describe("FileSyncService", () => {
         false
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ saved: false, path: null });
       expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalled();
     });
   });
