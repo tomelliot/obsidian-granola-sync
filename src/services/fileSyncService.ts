@@ -421,10 +421,10 @@ export class FileSyncService {
     transcriptContent: string,
     forceOverwrite: boolean = false,
     folders?: string[]
-  ): Promise<boolean> {
+  ): Promise<{ saved: boolean; path: string | null }> {
     if (!doc.id) {
       log.error("Document missing required id field:", doc);
-      return false;
+      return { saved: false, path: null };
     }
     const prepared = documentProcessor.prepareCombinedNote(
       doc,
@@ -433,7 +433,7 @@ export class FileSyncService {
     );
     if (!prepared) {
       log.debug(`Skipping combined doc ${doc.id} — no parseable content`);
-      return false;
+      return { saved: false, path: null };
     }
     const { filename, content } = prepared;
     const noteDate = getNoteDate(doc);
@@ -441,7 +441,7 @@ export class FileSyncService {
     // Resolve folder path (combined files use note folder path, not transcript folder)
     const folderPath = this.resolveFolderPath(noteDate, false);
     if (!folderPath) {
-      return false;
+      return { saved: false, path: null };
     }
 
     if (!(await this.ensureFolder(folderPath))) {
@@ -449,12 +449,12 @@ export class FileSyncService {
         `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
         7000
       );
-      return false;
+      return { saved: false, path: null };
     }
 
     const filePath = this.resolveFilePath(filename, noteDate, doc.id, false);
     if (!filePath) {
-      return false;
+      return { saved: false, path: null };
     }
 
     const contentWithAttachments = await this.appendImageEmbedsForAttachments(
@@ -464,13 +464,22 @@ export class FileSyncService {
     );
 
     // Save with type "combined"
-    return this.saveFile(
+    const saved = await this.saveFile(
       filePath,
       contentWithAttachments,
       doc.id,
       "combined",
       forceOverwrite
     );
+
+    // Return the actual on-disk path. When we try to rename to the "ideal"
+    // collision-free filename and `vault.rename()` fails, we must not return
+    // the attempted destination path (which would break daily-note links).
+    const savedFile = this.findByGranolaId(doc.id, "combined");
+    const actualPath =
+      savedFile?.path ? normalizePath(savedFile.path) : filePath;
+
+    return { saved, path: actualPath };
   }
 
   /**
@@ -482,10 +491,10 @@ export class FileSyncService {
     forceOverwrite: boolean = false,
     transcriptPath?: string,
     folders?: string[]
-  ): Promise<boolean> {
+  ): Promise<{ saved: boolean; path: string | null }> {
     if (!doc.id) {
       log.error("Document missing required id field:", doc);
-      return false;
+      return { saved: false, path: null };
     }
     const prepared = documentProcessor.prepareNote(
       doc,
@@ -494,14 +503,14 @@ export class FileSyncService {
     );
     if (!prepared) {
       log.debug(`Skipping doc ${doc.id} — no parseable content`);
-      return false;
+      return { saved: false, path: null };
     }
     const { filename, content } = prepared;
     const noteDate = getNoteDate(doc);
 
     const folderPath = this.resolveFolderPath(noteDate, false);
     if (!folderPath) {
-      return false;
+      return { saved: false, path: null };
     }
 
     if (!(await this.ensureFolder(folderPath))) {
@@ -509,12 +518,12 @@ export class FileSyncService {
         `Error creating folder: ${folderPath}. Skipping file: ${filename}`,
         7000
       );
-      return false;
+      return { saved: false, path: null };
     }
 
     const filePath = this.resolveFilePath(filename, noteDate, doc.id, false);
     if (!filePath) {
-      return false;
+      return { saved: false, path: null };
     }
 
     const contentWithAttachments = await this.appendImageEmbedsForAttachments(
@@ -523,13 +532,22 @@ export class FileSyncService {
       filePath
     );
 
-    return this.saveFile(
+    const saved = await this.saveFile(
       filePath,
       contentWithAttachments,
       doc.id,
       "note",
       forceOverwrite
     );
+
+    // Return the actual on-disk path. When we try to rename to the "ideal"
+    // collision-free filename and `vault.rename()` fails, we must not return
+    // the attempted destination path (which would break daily-note links).
+    const savedFile = this.findByGranolaId(doc.id, "note");
+    const actualPath =
+      savedFile?.path ? normalizePath(savedFile.path) : filePath;
+
+    return { saved, path: actualPath };
   }
 
   /**

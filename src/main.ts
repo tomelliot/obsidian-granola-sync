@@ -765,31 +765,31 @@ export default class GranolaSync extends Plugin {
         const transcriptData = transcriptDataMap.get(doc.id || "");
         if (transcriptData && transcriptData.length > 0) {
           const transcriptBody = formatTranscriptBody(transcriptData);
-          if (
-            await this.fileSyncService.saveCombinedNoteToDisk(
-              doc,
-              this.documentProcessor,
-              transcriptBody,
-              forceOverwrite,
-              folders
-            )
-          ) {
+          const result = await this.fileSyncService.saveCombinedNoteToDisk(
+            doc,
+            this.documentProcessor,
+            transcriptBody,
+            forceOverwrite,
+            folders
+          );
+          if (result.saved) {
             syncedCount++;
-            syncedNotes.push({ doc, notePath });
+            // Use the actual on-disk path to handle collision-resolved filenames
+            // (recurring meetings share a title, so later saves get a date suffix).
+            syncedNotes.push({ doc, notePath: result.path ?? notePath });
           }
         } else {
           // No transcript available, save as regular note
-          if (
-            await this.fileSyncService.saveNoteToDisk(
-              doc,
-              this.documentProcessor,
-              forceOverwrite,
-              undefined,
-              folders
-            )
-          ) {
+          const result = await this.fileSyncService.saveNoteToDisk(
+            doc,
+            this.documentProcessor,
+            forceOverwrite,
+            undefined,
+            folders
+          );
+          if (result.saved) {
             syncedCount++;
-            syncedNotes.push({ doc, notePath });
+            syncedNotes.push({ doc, notePath: result.path ?? notePath });
           }
         }
       } else {
@@ -813,17 +813,16 @@ export default class GranolaSync extends Plugin {
           }
         }
 
-        if (
-          await this.fileSyncService.saveNoteToDisk(
-            doc,
-            this.documentProcessor,
-            forceOverwrite,
-            transcriptPath ?? undefined,
-            folders
-          )
-        ) {
+        const result = await this.fileSyncService.saveNoteToDisk(
+          doc,
+          this.documentProcessor,
+          forceOverwrite,
+          transcriptPath ?? undefined,
+          folders
+        );
+        if (result.saved) {
           syncedCount++;
-          syncedNotes.push({ doc, notePath });
+          syncedNotes.push({ doc, notePath: result.path ?? notePath });
         }
       }
     }
