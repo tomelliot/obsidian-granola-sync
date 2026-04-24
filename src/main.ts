@@ -538,10 +538,8 @@ export default class GranolaSync extends Plugin {
       }
     }
 
-    // Always sync transcripts first if enabled, so notes can link to them
     const forceOverwrite = mode === "full";
     let transcriptDataMap: Map<string, TranscriptEntry[]> | null = null;
-    let transcriptPathMap: Map<string, string> | null = null;
     if (this.settings.syncTranscripts) {
       const transcriptResult = await this.syncTranscripts(
         documents,
@@ -549,11 +547,14 @@ export default class GranolaSync extends Plugin {
         forceOverwrite
       );
       transcriptDataMap = transcriptResult.transcriptDataMap;
-      transcriptPathMap = transcriptResult.transcriptPathMap;
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(documents, forceOverwrite, transcriptDataMap, docFolders, transcriptPathMap);
+      await this.syncNotes(documents, forceOverwrite, transcriptDataMap, docFolders);
     }
+
+    // Update frontmatter cross-links between notes and transcripts using
+    // actual on-disk paths (after collision resolution).
+    await this.updateCrossLinks(documents);
 
     // Show success message
     showStatusBarTemporary(this, "Granola sync: Complete");
@@ -563,8 +564,7 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
-    docFolders: Record<string, string[]> = {},
-    transcriptPathMap: Map<string, string> | null = null
+    docFolders: Record<string, string[]> = {}
   ): Promise<void> {
     let syncedCount: number;
     log.debug(`syncNotes — mode=${this.settings.saveAsIndividualFiles ? "individual" : "daily-notes"}, docs=${documents.length}`);
@@ -581,8 +581,7 @@ export default class GranolaSync extends Plugin {
         documents,
         forceOverwrite,
         transcriptDataMap,
-        docFolders,
-        transcriptPathMap
+        docFolders
       );
       syncedCount = result.syncedCount;
 
@@ -714,8 +713,7 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
-    docFolders: Record<string, string[]> = {},
-    transcriptPathMap: Map<string, string> | null = null
+    docFolders: Record<string, string[]> = {}
   ): Promise<{
     syncedCount: number;
     syncedNotes: Array<{ doc: GranolaDoc; notePath: string }>;
@@ -793,31 +791,13 @@ export default class GranolaSync extends Plugin {
           }
         }
       } else {
-        // Regular mode: save note separately (with optional transcript link)
-        // Use actual transcript path (from save or cache) to handle collision-resolved filenames.
-        // If we cannot resolve the transcript path, we intentionally do not link it.
-        let transcriptPath: string | null = null;
-        if (
-          this.settings.syncTranscripts &&
-          this.settings.transcriptHandling !== "combined"
-        ) {
-          transcriptPath =
-            transcriptPathMap?.get(doc.id) ??
-            this.fileSyncService.findByGranolaId(doc.id, "transcript")?.path ??
-            null;
-
-          if (!transcriptPath) {
-            log.error(
-              `Granola sync: transcript path not resolved for doc ${doc.id} — skipping transcript frontmatter link (will not write a stale/incorrect path).`
-            );
-          }
-        }
-
+        // Save note without cross-links; frontmatter linking is done
+        // in updateCrossLinks() after both notes and transcripts are saved.
         const result = await this.fileSyncService.saveNoteToDisk(
           doc,
           this.documentProcessor,
           forceOverwrite,
-          transcriptPath ?? undefined,
+          undefined,
           folders
         );
         if (result.saved) {
@@ -833,13 +813,115 @@ export default class GranolaSync extends Plugin {
     return { syncedCount, syncedNotes };
   }
 
+  /**
+   * After both notes and transcripts are saved, update frontmatter cross-links
+   * using the actual on-disk paths (which may differ from computed paths due to
+   * collision resolution with date suffixes).
+   */
+  private async updateCrossLinks(documents: GranolaDoc[]): Promise<void> {
+    // Cross-links only apply when both notes and transcripts are synced, and
+    // transcripts are saved as separate files (not combined mode).
+    if (
+      !this.settings.syncNotes ||
+      !this.settings.syncTranscripts ||
+      this.settings.transcriptHandling === "combined"
+    ) {
+      return;
+    }
+
+    let updatedCount = 0;
+    for (const doc of documents) {
+      const transcriptFile = this.fileSyncService.findByGranolaId(doc.id, "transcript");
+      if (!transcriptFile) continue;
+
+      // Resolve the note path for transcript→note linking
+      let noteLinkPath: string | null = null;
+      if (this.settings.saveAsIndividualFiles) {
+        // Individual files: use actual on-disk path from cache
+        const noteFile = this.fileSyncService.findByGranolaId(doc.id, "note");
+        if (noteFile) {
+          noteLinkPath = noteFile.path;
+
+          // Update note frontmatter with transcript link
+          const noteContent = await this.app.vault.read(noteFile);
+          const updatedNote = this.upsertFrontmatterField(
+            noteContent,
+            "transcript",
+            `"[[${transcriptFile.path}]]"`
+          );
+          if (updatedNote !== noteContent) {
+            await this.app.vault.modify(noteFile, updatedNote);
+          }
+        }
+      } else {
+        // Daily notes mode: link to the daily note heading
+        const noteDate = getNoteDate(doc);
+        const noteMoment = moment(noteDate);
+        const dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
+        if (dailyNoteFile) {
+          const title = getTitleOrDefault(doc);
+          noteLinkPath = `${dailyNoteFile.basename}#${title}`;
+        }
+      }
+
+      // Update transcript frontmatter with note link
+      if (noteLinkPath) {
+        const transcriptContent = await this.app.vault.read(transcriptFile);
+        const updatedTranscript = this.upsertFrontmatterField(
+          transcriptContent,
+          "note",
+          `"[[${noteLinkPath}]]"`
+        );
+        if (updatedTranscript !== transcriptContent) {
+          await this.app.vault.modify(transcriptFile, updatedTranscript);
+        }
+      }
+
+      updatedCount++;
+    }
+
+    if (updatedCount > 0) {
+      log.debug(`Updated cross-links in ${updatedCount} note/transcript pair(s)`);
+    }
+  }
+
+  /**
+   * Adds or updates a single YAML frontmatter field. If the field already
+   * exists, its value is replaced; otherwise it is inserted before the
+   * closing `---` delimiter.
+   */
+  private upsertFrontmatterField(
+    content: string,
+    field: string,
+    value: string
+  ): string {
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!frontmatterMatch) return content;
+
+    const frontmatter = frontmatterMatch[1];
+    const fieldRegex = new RegExp(`^${field}:.*$`, "m");
+
+    let updatedFrontmatter: string;
+    if (fieldRegex.test(frontmatter)) {
+      updatedFrontmatter = frontmatter.replace(fieldRegex, `${field}: ${value}`);
+    } else {
+      updatedFrontmatter = frontmatter + `\n${field}: ${value}`;
+    }
+
+    if (updatedFrontmatter === frontmatter) return content;
+
+    return content.replace(
+      /^---\n[\s\S]*?\n---/,
+      `---\n${updatedFrontmatter}\n---`
+    );
+  }
+
   private async syncTranscripts(
     documents: GranolaDoc[],
     accessToken: string,
     forceOverwrite: boolean = false
-  ): Promise<{ transcriptDataMap: Map<string, TranscriptEntry[]>; transcriptPathMap: Map<string, string> }> {
+  ): Promise<{ transcriptDataMap: Map<string, TranscriptEntry[]> }> {
     const transcriptDataMap = new Map<string, TranscriptEntry[]>();
-    const transcriptPathMap = new Map<string, string>();
     const isCombinedMode = this.settings.transcriptHandling === "combined";
 
     let processedCount = 0;
@@ -891,26 +973,9 @@ export default class GranolaSync extends Plugin {
           continue;
         }
 
-        // Compute note path before formatting transcript (for frontmatter linking)
-        // Always add note link when notes are being synced
-        let notePath: string | null = null;
-        if (this.settings.syncNotes) {
-          if (!this.settings.saveAsIndividualFiles) {
-            // For daily notes, link to the daily note file with a heading anchor
-            const noteDate = getNoteDate(doc);
-            const noteMoment = moment(noteDate);
-            const dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
-            if (dailyNoteFile) {
-              // Link to the daily note with the note title as the heading
-              notePath = `${dailyNoteFile.basename}#${title}`;
-            }
-          } else {
-            // For individual files, use the resolved file path
-            notePath = this.pathResolver.computeNotePath(doc);
-          }
-        }
-
-        // Use the extracted formatting function
+        // Save transcript without cross-links; frontmatter linking is done
+        // in updateCrossLinks() after both notes and transcripts are saved,
+        // so the paths reflect any collision-resolved filenames.
         const transcriptMd = formatTranscriptBySpeaker(
           transcriptData,
           title,
@@ -920,7 +985,7 @@ export default class GranolaSync extends Plugin {
           doc.people?.attendees
             ?.map((attendee) => attendee.name || attendee.email || "Unknown")
             .filter((name) => name !== "Unknown"),
-          notePath ?? undefined
+          undefined
         );
         processedCount++;
         this.updateSyncStatus("Transcript", processedCount, documents.length);
@@ -930,9 +995,6 @@ export default class GranolaSync extends Plugin {
           this.documentProcessor,
           forceOverwrite
         );
-        if (transcriptResult.path) {
-          transcriptPathMap.set(docId, transcriptResult.path);
-        }
         if (transcriptResult.saved) {
           syncedCount++;
         }
@@ -947,6 +1009,6 @@ export default class GranolaSync extends Plugin {
     log.debug(
       `syncTranscripts - Completed: ${syncedCount} saved out of ${processedCount} processed`
     );
-    return { transcriptDataMap, transcriptPathMap };
+    return { transcriptDataMap };
   }
 }
