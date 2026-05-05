@@ -77,6 +77,9 @@ describe("GranolaSync", () => {
       workspace: {
         iterateAllLeaves: jest.fn(),
       },
+      fileManager: {
+        processFrontMatter: jest.fn(),
+      },
     } as any;
 
     // Create mock services
@@ -531,6 +534,37 @@ describe("GranolaSync", () => {
         "Granola sync: Complete"
       );
     });
+
+    it("should not call saveSettings during sync (would clear FileSyncService cache mid-flight)", async () => {
+      // Regression: saveSettings() rebuilds services and creates a fresh
+      // FileSyncService with empty cache. If called between syncNotes and
+      // updateCrossLinks, every cache lookup in updateCrossLinks misses.
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        syncNotes: true,
+        syncTranscripts: false,
+      };
+      const saveSettingsSpy = jest.spyOn(plugin, "saveSettings");
+
+      await plugin.sync();
+
+      expect(saveSettingsSpy).not.toHaveBeenCalled();
+    });
+
+    it("should keep the same FileSyncService instance throughout a sync", async () => {
+      // Regression: replacing this.fileSyncService mid-sync drops the cache,
+      // so updateCrossLinks finds no transcripts and writes no cross-links.
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        syncNotes: true,
+        syncTranscripts: false,
+      };
+      const before = (plugin as any).fileSyncService;
+
+      await plugin.sync();
+
+      expect((plugin as any).fileSyncService).toBe(before);
+    });
   });
 
   describe("syncNotesToIndividualFiles no longer embeds transcript links", () => {
@@ -581,85 +615,6 @@ describe("GranolaSync", () => {
     });
   });
 
-  describe("upsertFrontmatterField", () => {
-    beforeEach(() => {
-      plugin.settings = { ...DEFAULT_SETTINGS };
-      (plugin as any).initializeServices();
-    });
-
-    it("should add a new field before the closing ---", () => {
-      const content = [
-        "---",
-        "granola_id: doc-1",
-        "title: Test",
-        "type: note",
-        "---",
-        "",
-        "Body content",
-      ].join("\n");
-
-      const result = (plugin as any).upsertFrontmatterField(
-        content,
-        "transcript",
-        '"[[Transcripts/test.md]]"'
-      );
-
-      expect(result).toContain('transcript: "[[Transcripts/test.md]]"');
-      expect(result).toMatch(/transcript:.*\n---/);
-      expect(result).toContain("Body content");
-    });
-
-    it("should update an existing field value", () => {
-      const content = [
-        "---",
-        "granola_id: doc-1",
-        'transcript: "[[old-path.md]]"',
-        "type: note",
-        "---",
-        "",
-        "Body",
-      ].join("\n");
-
-      const result = (plugin as any).upsertFrontmatterField(
-        content,
-        "transcript",
-        '"[[new-path.md]]"'
-      );
-
-      expect(result).toContain('transcript: "[[new-path.md]]"');
-      expect(result).not.toContain("old-path.md");
-    });
-
-    it("should return content unchanged when no frontmatter exists", () => {
-      const content = "No frontmatter here";
-      const result = (plugin as any).upsertFrontmatterField(
-        content,
-        "transcript",
-        '"[[path.md]]"'
-      );
-      expect(result).toBe(content);
-    });
-
-    it("should return content unchanged when field already has the target value", () => {
-      const content = [
-        "---",
-        "granola_id: doc-1",
-        'transcript: "[[path.md]]"',
-        "---",
-        "",
-        "Body",
-      ].join("\n");
-
-      const result = (plugin as any).upsertFrontmatterField(
-        content,
-        "transcript",
-        '"[[path.md]]"'
-      );
-
-      expect(result).toBe(content);
-    });
-  });
-
   describe("updateCrossLinks", () => {
     const doc: GranolaDoc = {
       id: "doc-cross-1",
@@ -671,25 +626,9 @@ describe("GranolaSync", () => {
       },
     };
 
-    const noteFrontmatter = [
-      "---",
-      "granola_id: doc-cross-1",
-      "title: Cross Link Test",
-      "type: note",
-      "---",
-      "",
-      "Note body",
-    ].join("\n");
-
-    const transcriptFrontmatter = [
-      "---",
-      "granola_id: doc-cross-1",
-      "title: Cross Link Test - Transcript",
-      "type: transcript",
-      "---",
-      "",
-      "Transcript body",
-    ].join("\n");
+    // Captures `processFrontMatter` calls as `{ file, fm }` after the callback ran.
+    type FmCall = { file: any; fm: Record<string, unknown> };
+    let fmCalls: FmCall[];
 
     beforeEach(() => {
       plugin.settings = {
@@ -700,62 +639,61 @@ describe("GranolaSync", () => {
         transcriptHandling: "custom-location",
       };
       (plugin as any).initializeServices();
-      mockApp.vault.read = jest.fn();
-      mockApp.vault.modify = jest.fn().mockResolvedValue(undefined);
+      fmCalls = [];
+      (mockApp.fileManager.processFrontMatter as jest.Mock).mockImplementation(
+        async (file: any, fn: (fm: Record<string, unknown>) => void) => {
+          // Seed with whatever is set on file.__fm if a test wants pre-existing fields
+          const fm: Record<string, unknown> = { ...(file.__fm ?? {}) };
+          fn(fm);
+          fmCalls.push({ file, fm });
+        }
+      );
     });
 
     it("should update both note and transcript frontmatter with cross-links", async () => {
       const noteFile = { path: "Notes/Cross Link Test.md" };
-      const transcriptFile = { path: "Transcripts/Cross Link Test - Transcript.md" };
+      const transcriptFile = {
+        path: "Transcripts/Cross Link Test - Transcript.md",
+      };
 
       mockFileSyncService.findByGranolaId.mockImplementation((id, type) => {
         if (id === "doc-cross-1" && type === "note") return noteFile as any;
         if (id === "doc-cross-1" && type === "transcript") return transcriptFile as any;
         return null;
       });
-      (mockApp.vault.read as jest.Mock)
-        .mockResolvedValueOnce(noteFrontmatter)
-        .mockResolvedValueOnce(transcriptFrontmatter);
 
       await (plugin as any).updateCrossLinks([doc]);
 
-      expect(mockApp.vault.modify).toHaveBeenCalledTimes(2);
-      // Note should get transcript link
-      const noteCall = (mockApp.vault.modify as jest.Mock).mock.calls[0];
-      expect(noteCall[0]).toBe(noteFile);
-      expect(noteCall[1]).toContain(
-        'transcript: "[[Transcripts/Cross Link Test - Transcript.md]]"'
+      expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalledTimes(2);
+      const noteEdit = fmCalls.find((c) => c.file === noteFile)!;
+      const transcriptEdit = fmCalls.find((c) => c.file === transcriptFile)!;
+      expect(noteEdit.fm.transcript).toBe(
+        "[[Transcripts/Cross Link Test - Transcript.md]]"
       );
-      // Transcript should get note link
-      const transcriptCall = (mockApp.vault.modify as jest.Mock).mock.calls[1];
-      expect(transcriptCall[0]).toBe(transcriptFile);
-      expect(transcriptCall[1]).toContain(
-        'note: "[[Notes/Cross Link Test.md]]"'
-      );
+      expect(transcriptEdit.fm.note).toBe("[[Notes/Cross Link Test.md]]");
     });
 
     it("should use collision-resolved paths from cache", async () => {
       const noteFile = { path: "Notes/Daily Scrum-2024-01-15_10-00-00.md" };
-      const transcriptFile = { path: "Transcripts/Daily Scrum-2024-01-15_10-00-00 - Transcript.md" };
+      const transcriptFile = {
+        path: "Transcripts/Daily Scrum-2024-01-15_10-00-00 - Transcript.md",
+      };
 
       mockFileSyncService.findByGranolaId.mockImplementation((id, type) => {
         if (id === "doc-cross-1" && type === "note") return noteFile as any;
         if (id === "doc-cross-1" && type === "transcript") return transcriptFile as any;
         return null;
       });
-      (mockApp.vault.read as jest.Mock)
-        .mockResolvedValueOnce(noteFrontmatter)
-        .mockResolvedValueOnce(transcriptFrontmatter);
 
       await (plugin as any).updateCrossLinks([doc]);
 
-      const noteCall = (mockApp.vault.modify as jest.Mock).mock.calls[0];
-      expect(noteCall[1]).toContain(
-        'transcript: "[[Transcripts/Daily Scrum-2024-01-15_10-00-00 - Transcript.md]]"'
+      const noteEdit = fmCalls.find((c) => c.file === noteFile)!;
+      const transcriptEdit = fmCalls.find((c) => c.file === transcriptFile)!;
+      expect(noteEdit.fm.transcript).toBe(
+        "[[Transcripts/Daily Scrum-2024-01-15_10-00-00 - Transcript.md]]"
       );
-      const transcriptCall = (mockApp.vault.modify as jest.Mock).mock.calls[1];
-      expect(transcriptCall[1]).toContain(
-        'note: "[[Notes/Daily Scrum-2024-01-15_10-00-00.md]]"'
+      expect(transcriptEdit.fm.note).toBe(
+        "[[Notes/Daily Scrum-2024-01-15_10-00-00.md]]"
       );
     });
 
@@ -764,7 +702,7 @@ describe("GranolaSync", () => {
 
       await (plugin as any).updateCrossLinks([doc]);
 
-      expect(mockApp.vault.modify).not.toHaveBeenCalled();
+      expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
     });
 
     it("should skip when transcriptHandling is combined", async () => {
@@ -775,9 +713,15 @@ describe("GranolaSync", () => {
       expect(mockFileSyncService.findByGranolaId).not.toHaveBeenCalled();
     });
 
-    it("should not modify files when cross-links already match", async () => {
-      const noteFile = { path: "Notes/Test.md" };
-      const transcriptFile = { path: "Transcripts/Test - Transcript.md" };
+    it("should overwrite an existing cross-link value when paths change", async () => {
+      const noteFile = {
+        path: "Notes/Test.md",
+        __fm: { transcript: "[[old-transcript.md]]" },
+      };
+      const transcriptFile = {
+        path: "Transcripts/Test - Transcript.md",
+        __fm: { note: "[[old-note.md]]" },
+      };
 
       mockFileSyncService.findByGranolaId.mockImplementation((id, type) => {
         if (type === "note") return noteFile as any;
@@ -785,32 +729,14 @@ describe("GranolaSync", () => {
         return null;
       });
 
-      const noteWithLink = [
-        "---",
-        "granola_id: doc-cross-1",
-        'transcript: "[[Transcripts/Test - Transcript.md]]"',
-        "type: note",
-        "---",
-        "",
-        "Body",
-      ].join("\n");
-      const transcriptWithLink = [
-        "---",
-        "granola_id: doc-cross-1",
-        'note: "[[Notes/Test.md]]"',
-        "type: transcript",
-        "---",
-        "",
-        "Body",
-      ].join("\n");
-
-      (mockApp.vault.read as jest.Mock)
-        .mockResolvedValueOnce(noteWithLink)
-        .mockResolvedValueOnce(transcriptWithLink);
-
       await (plugin as any).updateCrossLinks([doc]);
 
-      expect(mockApp.vault.modify).not.toHaveBeenCalled();
+      const noteEdit = fmCalls.find((c) => c.file === noteFile)!;
+      const transcriptEdit = fmCalls.find((c) => c.file === transcriptFile)!;
+      expect(noteEdit.fm.transcript).toBe(
+        "[[Transcripts/Test - Transcript.md]]"
+      );
+      expect(transcriptEdit.fm.note).toBe("[[Notes/Test.md]]");
     });
 
     it("should handle daily notes mode with heading links for transcripts", async () => {
@@ -827,15 +753,42 @@ describe("GranolaSync", () => {
       (getAllDailyNotes as jest.Mock).mockReturnValue({});
       (getNoteDate as jest.Mock).mockReturnValue(new Date("2024-01-15T10:00:00Z"));
 
-      (mockApp.vault.read as jest.Mock)
-        .mockResolvedValueOnce(transcriptFrontmatter);
-
       await (plugin as any).updateCrossLinks([doc]);
 
-      expect(mockApp.vault.modify).toHaveBeenCalledTimes(1);
-      const call = (mockApp.vault.modify as jest.Mock).mock.calls[0];
-      expect(call[0]).toBe(transcriptFile);
-      expect(call[1]).toContain('note: "[[2024-01-15#Cross Link Test]]"');
+      expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalledTimes(1);
+      const call = fmCalls[0];
+      expect(call.file).toBe(transcriptFile);
+      expect(call.fm.note).toBe("[[2024-01-15#Cross Link Test]]");
+    });
+
+    it("should swallow per-doc errors and continue with the rest", async () => {
+      const noteFileA = { path: "Notes/A.md" };
+      const transcriptFileA = { path: "Transcripts/A.md" };
+      const noteFileB = { path: "Notes/B.md" };
+      const transcriptFileB = { path: "Transcripts/B.md" };
+
+      const docA = { ...doc, id: "doc-A" };
+      const docB = { ...doc, id: "doc-B" };
+
+      mockFileSyncService.findByGranolaId.mockImplementation((id, type) => {
+        if (id === "doc-A" && type === "note") return noteFileA as any;
+        if (id === "doc-A" && type === "transcript") return transcriptFileA as any;
+        if (id === "doc-B" && type === "note") return noteFileB as any;
+        if (id === "doc-B" && type === "transcript") return transcriptFileB as any;
+        return null;
+      });
+
+      // Throw on first call, succeed thereafter.
+      (mockApp.fileManager.processFrontMatter as jest.Mock).mockImplementationOnce(
+        async () => {
+          throw new Error("YAMLParseError");
+        }
+      );
+
+      await (plugin as any).updateCrossLinks([docA, docB]);
+
+      // 1 throw + 2 successful calls (note+transcript) for docB
+      expect(mockApp.fileManager.processFrontMatter).toHaveBeenCalledTimes(3);
     });
   });
 

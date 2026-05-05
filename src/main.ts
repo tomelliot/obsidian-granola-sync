@@ -603,7 +603,9 @@ export default class GranolaSync extends Plugin {
     }
 
     this.settings.latestSyncTime = Date.now();
-    await this.saveSettings();
+    // Persist directly: saveSettings() rebuilds services and would clear the
+    // FileSyncService cache mid-sync, breaking updateCrossLinks().
+    await this.saveData(this.settings);
 
     log.debug(`Saved ${syncedCount} note(s)`);
   }
@@ -831,89 +833,47 @@ export default class GranolaSync extends Plugin {
 
     let updatedCount = 0;
     for (const doc of documents) {
-      const transcriptFile = this.fileSyncService.findByGranolaId(doc.id, "transcript");
-      if (!transcriptFile) continue;
+      try {
+        const transcriptFile = this.fileSyncService.findByGranolaId(doc.id, "transcript");
+        if (!transcriptFile) continue;
 
-      // Resolve the note path for transcript→note linking
-      let noteLinkPath: string | null = null;
-      if (this.settings.saveAsIndividualFiles) {
-        // Individual files: use actual on-disk path from cache
-        const noteFile = this.fileSyncService.findByGranolaId(doc.id, "note");
-        if (noteFile) {
-          noteLinkPath = noteFile.path;
-
-          // Update note frontmatter with transcript link
-          const noteContent = await this.app.vault.read(noteFile);
-          const updatedNote = this.upsertFrontmatterField(
-            noteContent,
-            "transcript",
-            `"[[${transcriptFile.path}]]"`
-          );
-          if (updatedNote !== noteContent) {
-            await this.app.vault.modify(noteFile, updatedNote);
+        // Resolve the note path for transcript→note linking
+        let noteLinkPath: string | null = null;
+        if (this.settings.saveAsIndividualFiles) {
+          // Individual files: use actual on-disk path from cache
+          const noteFile = this.fileSyncService.findByGranolaId(doc.id, "note");
+          if (noteFile) {
+            noteLinkPath = noteFile.path;
+            await this.app.fileManager.processFrontMatter(noteFile, (fm) => {
+              fm.transcript = `[[${transcriptFile.path}]]`;
+            });
+          }
+        } else {
+          // Daily notes mode: link to the daily note heading
+          const noteDate = getNoteDate(doc);
+          const noteMoment = moment(noteDate);
+          const dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
+          if (dailyNoteFile) {
+            const title = getTitleOrDefault(doc);
+            noteLinkPath = `${dailyNoteFile.basename}#${title}`;
           }
         }
-      } else {
-        // Daily notes mode: link to the daily note heading
-        const noteDate = getNoteDate(doc);
-        const noteMoment = moment(noteDate);
-        const dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
-        if (dailyNoteFile) {
-          const title = getTitleOrDefault(doc);
-          noteLinkPath = `${dailyNoteFile.basename}#${title}`;
-        }
-      }
 
-      // Update transcript frontmatter with note link
-      if (noteLinkPath) {
-        const transcriptContent = await this.app.vault.read(transcriptFile);
-        const updatedTranscript = this.upsertFrontmatterField(
-          transcriptContent,
-          "note",
-          `"[[${noteLinkPath}]]"`
-        );
-        if (updatedTranscript !== transcriptContent) {
-          await this.app.vault.modify(transcriptFile, updatedTranscript);
+        if (noteLinkPath) {
+          await this.app.fileManager.processFrontMatter(transcriptFile, (fm) => {
+            fm.note = `[[${noteLinkPath}]]`;
+          });
         }
-      }
 
-      updatedCount++;
+        updatedCount++;
+      } catch (e) {
+        log.error(`updateCrossLinks: failed for doc ${doc.id}:`, e);
+      }
     }
 
     if (updatedCount > 0) {
       log.debug(`Updated cross-links in ${updatedCount} note/transcript pair(s)`);
     }
-  }
-
-  /**
-   * Adds or updates a single YAML frontmatter field. If the field already
-   * exists, its value is replaced; otherwise it is inserted before the
-   * closing `---` delimiter.
-   */
-  private upsertFrontmatterField(
-    content: string,
-    field: string,
-    value: string
-  ): string {
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!frontmatterMatch) return content;
-
-    const frontmatter = frontmatterMatch[1];
-    const fieldRegex = new RegExp(`^${field}:.*$`, "m");
-
-    let updatedFrontmatter: string;
-    if (fieldRegex.test(frontmatter)) {
-      updatedFrontmatter = frontmatter.replace(fieldRegex, `${field}: ${value}`);
-    } else {
-      updatedFrontmatter = frontmatter + `\n${field}: ${value}`;
-    }
-
-    if (updatedFrontmatter === frontmatter) return content;
-
-    return content.replace(
-      /^---\n[\s\S]*?\n---/,
-      `---\n${updatedFrontmatter}\n---`
-    );
   }
 
   private async syncTranscripts(
