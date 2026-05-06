@@ -18,14 +18,14 @@ export function convertProsemirrorToMarkdown(
 
     let textContent = "";
     if (node.content && Array.isArray(node.content)) {
-      if (node.type === "bulletList") {
+      if (node.type === "bulletList" || node.type === "orderedList") {
         textContent = node.content
           .map((child) => processNode(child, indentLevel, false))
           .join("");
       } else if (node.type === "listItem") {
         textContent = node.content
           .map((child) => {
-            if (child.type === "bulletList") {
+            if (child.type === "bulletList" || child.type === "orderedList") {
               return processNode(child, indentLevel + 1, false);
             } else {
               return processNode(child, indentLevel, false);
@@ -52,33 +52,43 @@ export function convertProsemirrorToMarkdown(
       case "paragraph":
         // Only add double newlines for top-level paragraphs
         return textContent + (isTopLevel ? "\n\n" : "");
-      case "bulletList": {
+      case "bulletList":
+      case "orderedList": {
         if (!node.content) return "";
+        const isOrdered = node.type === "orderedList";
+        const startIndex =
+          isOrdered && typeof node.attrs?.start === "number"
+            ? (node.attrs.start as number)
+            : 1;
         const items = node.content
-          .map((itemNode) => {
+          .map((itemNode, i) => {
             if (itemNode.type === "listItem") {
               // Gather all child content, separating paragraphs and nested lists by newlines
               const childContents = (itemNode.content || []).map((child) => {
-                if (child.type === "bulletList") {
+                if (
+                  child.type === "bulletList" ||
+                  child.type === "orderedList"
+                ) {
                   return "\n" + processNode(child, indentLevel + 1, false);
                 } else {
                   return processNode(child, indentLevel, false);
                 }
               });
-              // The first non-bulletList child is the main item text
+              // The first non-list child is the main item text
               const firstText =
                 childContents.find((c) => !c.startsWith("\n")) || "";
               // The rest (if any) are nested lists
               const rest = childContents
                 .filter((c) => c.startsWith("\n"))
                 .join("");
-              const indent = "	".repeat(Math.max(0, indentLevel));
-              return `${indent}- ${firstText.trim()}${rest}`;
+              const indent = "\t".repeat(Math.max(0, indentLevel));
+              const marker = isOrdered ? `${startIndex + i}.` : "-";
+              return `${indent}${marker} ${firstText.trim()}${rest}`;
             }
             return "";
           })
           .filter((item) => item.length > 0);
-        // Only add double newlines for top-level bullet lists
+        // Only add double newlines for top-level lists
         return items.join("\n") + (isTopLevel ? "\n\n" : "");
       }
       case "text":

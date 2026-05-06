@@ -124,6 +124,194 @@ describe("convertProsemirrorToMarkdown", () => {
     expect(result).toBe(expected);
   });
 
+  it("should convert a top-level ordered list to numbered markdown", () => {
+    const doc: ProseMirrorDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "orderedList",
+          attrs: { start: 1 },
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "First" }],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Second" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = convertProsemirrorToMarkdown(doc);
+    expect(result).toBe("1. First\n2. Second\n");
+  });
+
+  it("honours the `start` attribute on ordered lists", () => {
+    const doc: ProseMirrorDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "orderedList",
+          attrs: { start: 5 },
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Fifth" }],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Sixth" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = convertProsemirrorToMarkdown(doc);
+    expect(result).toBe("5. Fifth\n6. Sixth\n");
+  });
+
+  it("renders an ordered list nested under a bulleted item without dropping content", () => {
+    // Reproducer for the bug where bulletList → listItem → orderedList children
+    // were silently dropped because only nested bulletLists were preserved.
+    const doc: ProseMirrorDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    { type: "text", text: "Meeting agenda priorities:" },
+                  ],
+                },
+                {
+                  type: "orderedList",
+                  attrs: { start: 1 },
+                  content: [
+                    {
+                      type: "listItem",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [
+                            { type: "text", text: "Updates since last conversation" },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      type: "listItem",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [
+                            { type: "text", text: "Define 5 broad success metrics" },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Other bullet" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = convertProsemirrorToMarkdown(doc);
+    expect(result).toBe(
+      "- Meeting agenda priorities:\n" +
+        "\t1. Updates since last conversation\n" +
+        "\t2. Define 5 broad success metrics\n" +
+        "- Other bullet\n"
+    );
+  });
+
+  it("renders a bulleted list nested under an ordered item", () => {
+    const doc: ProseMirrorDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "orderedList",
+          attrs: { start: 1 },
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Step one" }],
+                },
+                {
+                  type: "bulletList",
+                  content: [
+                    {
+                      type: "listItem",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Detail" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Step two" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = convertProsemirrorToMarkdown(doc);
+    expect(result).toBe(
+      "1. Step one\n\t- Detail\n2. Step two\n"
+    );
+  });
+
   it("should convert the example JSON doc to the expected markdown from the .md file", () => {
     // Use the first doc's notes
     const doc = example as ProseMirrorDoc;
