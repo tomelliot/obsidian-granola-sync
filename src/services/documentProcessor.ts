@@ -6,6 +6,7 @@ import {
   getTitleOrDefault,
   resolveFilenamePattern,
 } from "../utils/filenameUtils";
+import { getEffectiveUpdatedAt } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
 import {
   formatAttendeesAsYaml,
@@ -77,7 +78,7 @@ export class DocumentProcessor {
       title,
       type: options.type,
       createdAt: doc.created_at,
-      updatedAt: doc.updated_at,
+      updatedAt: getEffectiveUpdatedAt(doc),
       attendees,
     };
 

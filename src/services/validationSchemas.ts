@@ -52,6 +52,9 @@ export const GranolaDocSchema = v.object({
     v.object({
       // Content can be either a ProseMirrorDoc object or an HTML string
       content: v.nullish(v.union([ProseMirrorDocSchema, v.string()])),
+      // Panel-level timestamp; advances when the AI summary content is regenerated,
+      // even when the doc-level updated_at does not change.
+      updated_at: v.nullish(v.string()),
     })
   ),
   notes_markdown: v.nullish(v.string()),

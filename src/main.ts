@@ -4,7 +4,7 @@ import path from "path";
 import moment from "moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
 import { getTitleOrDefault } from "./utils/filenameUtils";
-import { getNoteDate } from "./utils/dateUtils";
+import { getNoteDate, getEffectiveUpdatedAt } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
   DEFAULT_SETTINGS,
@@ -744,7 +744,7 @@ export default class GranolaSync extends Plugin {
           if (
             !this.fileSyncService.isRemoteNewer(
               doc.id,
-              doc.updated_at,
+              getEffectiveUpdatedAt(doc),
               isCombinedMode ? "combined" : "note"
             )
           ) {
@@ -902,7 +902,7 @@ export default class GranolaSync extends Plugin {
             if (
               !this.fileSyncService.isRemoteNewer(
                 docId,
-                doc.updated_at,
+                getEffectiveUpdatedAt(doc),
                 isCombinedMode ? "combined" : "transcript"
               )
             ) {
@@ -941,7 +941,7 @@ export default class GranolaSync extends Plugin {
           title,
           docId,
           doc.created_at,
-          doc.updated_at,
+          getEffectiveUpdatedAt(doc),
           doc.people?.attendees
             ?.map((attendee) => attendee.name || attendee.email || "Unknown")
             .filter((name) => name !== "Unknown"),

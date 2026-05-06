@@ -47,6 +47,7 @@ export interface GranolaDoc {
   };
   last_viewed_panel?: {
     content?: ProseMirrorDoc | string | null;
+    updated_at?: string | null;
   } | null;
   notes_markdown?: string;
   // Optional attachments array as returned by the Granola API. May be null when
