@@ -12,6 +12,9 @@ export default tseslint.config(
     languageOptions: {
       parser: tsparser,
       parserOptions: { project: './tsconfig.json' },
+      globals: {
+        PLUGIN_VERSION: 'readonly',
+      },
     },
     rules: {
       'obsidianmd/ui/sentence-case': [
