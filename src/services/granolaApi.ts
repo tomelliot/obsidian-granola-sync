@@ -266,7 +266,7 @@ export async function fetchDocumentListsMetadata(
 
   const listCount = Object.keys(result.output.lists).length;
   log.debug(`Fetched metadata for ${listCount} document list(s)`);
-  return result.output.lists as Record<string, DocumentListMetadata>;
+  return result.output.lists;
 }
 
 /**
@@ -345,7 +345,7 @@ export async function fetchDocumentSet(
 
   const count = Object.keys(result.output.documents).length;
   log.debug(`Fetched document set with ${count} document(s)`);
-  return result.output.documents as Record<string, DocumentSetEntry>;
+  return result.output.documents;
 }
 
 /**
