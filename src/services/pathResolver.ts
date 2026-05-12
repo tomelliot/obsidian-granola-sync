@@ -1,6 +1,6 @@
 import { normalizePath } from "obsidian";
 import { getDailyNoteSettings } from "obsidian-daily-notes-interface";
-import moment from "moment";
+import { moment } from "../utils/moment";
 import {
   resolveFilenamePattern,
   resolveSubfolderPattern,

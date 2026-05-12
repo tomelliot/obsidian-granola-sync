@@ -1,10 +1,16 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
 import type { FolderMapData } from "./services/folderMapBuilder";
-// @ts-expect-error esbuild loads .svg as text
 import bmcButtonSvg from "../assets/bmc-button.svg";
-// @ts-expect-error esbuild loads .svg as text
 import githubLogoSvg from "../assets/github-logo.svg";
+
+function appendSvg(target: HTMLElement, svgMarkup: string): void {
+  const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  const svg = doc.documentElement;
+  if (svg.tagName.toLowerCase() === "svg") {
+    target.appendChild(svg);
+  }
+}
 
 /**
  * @deprecated These enums will be removed in version 3.0.0.
@@ -85,6 +91,24 @@ export interface AutomaticSyncSettings {
   latestSyncTime: number;
 }
 
+type LegacySyncDestination =
+  | "granola_folder"
+  | "daily_notes"
+  | "daily_note_folder_structure";
+
+type LegacyTranscriptDestination =
+  | "granola_transcripts_folder"
+  | "daily_note_folder_structure"
+  | "combined_with_note";
+
+export interface LegacySettings {
+  syncDestination?: LegacySyncDestination;
+  transcriptDestination?: LegacyTranscriptDestination;
+  granolaFolder?: string;
+  granolaTranscriptsFolder?: string;
+  dailyNoteSectionHeading?: string;
+}
+
 export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
   AutomaticSyncSettings &
@@ -93,13 +117,7 @@ export type GranolaSyncSettings = NoteSettings &
     // Persisted folder map for detecting renames across syncs
     _folderMapCache?: FolderMapData;
     // Legacy settings preserved for potential rollback
-    _legacySettings?: {
-      syncDestination?: SyncDestination;
-      transcriptDestination?: TranscriptDestination;
-      granolaFolder?: string;
-      granolaTranscriptsFolder?: string;
-      dailyNoteSectionHeading?: string;
-    };
+    _legacySettings?: LegacySettings;
   };
 
 export const DEFAULT_SETTINGS: GranolaSyncSettings = {
@@ -122,7 +140,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   filenamePattern: "{title}",
   linkFromDailyNotes: false,
   dailyNoteLinkHeading: "# Meetings",
-  dailyNoteSectionHeading: "# Granola Notes",
+  dailyNoteSectionHeading: "# Granola notes",
   // TranscriptSettings
   syncTranscripts: false,
   transcriptHandling: "custom-location",
@@ -141,8 +159,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
  * @returns Migrated settings in new format
  */
 export function migrateSettingsToNewFormat(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  oldSettings: any
+  oldSettings: Partial<GranolaSyncSettings> & LegacySettings
 ): GranolaSyncSettings {
   // Check if migration is needed (old format has syncDestination)
   if (!oldSettings.syncDestination) {
@@ -151,7 +168,7 @@ export function migrateSettingsToNewFormat(
   }
 
   // Preserve old settings for potential rollback
-  const legacySettings = {
+  const legacySettings: { _legacySettings: LegacySettings } = {
     _legacySettings: {
       syncDestination: oldSettings.syncDestination,
       transcriptDestination: oldSettings.transcriptDestination,
@@ -162,13 +179,13 @@ export function migrateSettingsToNewFormat(
   };
 
   // Build new settings structure
-  const newSettings: Partial<GranolaSyncSettings> = {
+  const newSettings: Partial<GranolaSyncSettings> & LegacySettings = {
     ...oldSettings, // Preserve automatic sync settings and other unchanged fields
     ...legacySettings,
   };
 
   // Migrate note settings
-  if (oldSettings.syncDestination === SyncDestination.DAILY_NOTES) {
+  if (oldSettings.syncDestination === "daily_notes") {
     newSettings.saveAsIndividualFiles = false;
     newSettings.dailyNoteSectionHeading =
       oldSettings.dailyNoteSectionHeading ||
@@ -177,14 +194,12 @@ export function migrateSettingsToNewFormat(
     newSettings.saveAsIndividualFiles = true;
     newSettings.filenamePattern = "{title}"; // Default pattern
 
-    if (oldSettings.syncDestination === SyncDestination.GRANOLA_FOLDER) {
+    if (oldSettings.syncDestination === "granola_folder") {
       newSettings.baseFolderType = "custom";
       newSettings.customBaseFolder =
         oldSettings.granolaFolder || DEFAULT_SETTINGS.customBaseFolder;
       newSettings.subfolderPattern = "none";
-    } else if (
-      oldSettings.syncDestination === SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE
-    ) {
+    } else if (oldSettings.syncDestination === "daily_note_folder_structure") {
       // User wanted date-based organization, but unclear if they wanted custom folder or Daily Notes folder
       // Default to custom folder with day-based subfolders (preserves existing behavior)
       newSettings.baseFolderType = "custom";
@@ -195,14 +210,10 @@ export function migrateSettingsToNewFormat(
   }
 
   // Migrate transcript settings
-  if (
-    oldSettings.transcriptDestination ===
-    TranscriptDestination.COMBINED_WITH_NOTE
-  ) {
+  if (oldSettings.transcriptDestination === "combined_with_note") {
     newSettings.transcriptHandling = "combined";
   } else if (
-    oldSettings.transcriptDestination ===
-    TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE
+    oldSettings.transcriptDestination === "daily_note_folder_structure"
   ) {
     newSettings.transcriptHandling = "same-location";
     // Will use same organization as notes
@@ -216,14 +227,10 @@ export function migrateSettingsToNewFormat(
   }
 
   // Remove old enum fields
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (newSettings as any).syncDestination;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (newSettings as any).transcriptDestination;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (newSettings as any).granolaFolder;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (newSettings as any).granolaTranscriptsFolder;
+  delete newSettings.syncDestination;
+  delete newSettings.transcriptDestination;
+  delete newSettings.granolaFolder;
+  delete newSettings.granolaTranscriptsFolder;
 
   return Object.assign({}, DEFAULT_SETTINGS, newSettings);
 }
@@ -315,8 +322,9 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       new Setting(containerEl).setName("Notes").setHeading();
 
       new Setting(containerEl)
-        .setName("Include Private Notes")
+        .setName("Include private notes")
         .setDesc(
+          // eslint-disable-next-line obsidianmd/ui/sentence-case -- '## Private Notes' / '## Enhanced Notes' are literal heading labels written into the output
           "Include your raw private notes at the top of each synced note. Private notes appear in a '## Private Notes' section above the '## Enhanced Notes' section."
         )
         .addToggle((toggle) =>
@@ -352,7 +360,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           .addDropdown((dropdown) =>
             dropdown
               .addOption("custom", "Custom folder")
-              .addOption("daily-notes", "Daily Notes folder")
+              .addOption("daily-notes", "Daily notes folder")
               .setValue(this.plugin.settings.baseFolderType)
               .onChange(async (value) => {
                 this.plugin.settings.baseFolderType = value as
@@ -473,14 +481,14 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         new Setting(containerEl)
           .setName("Daily note section heading")
           .setDesc(
-            'The markdown heading for the Granola notes section. Include heading markers (e.g., "# Meeting Notes").'
+            'The markdown heading for the Granola notes section. Include heading markers (e.g., "# meeting notes").'
           )
           .addText((text) =>
             text
-              .setPlaceholder("# Granola Notes")
+              .setPlaceholder("# Granola notes")
               .setValue(
                 this.plugin.settings.dailyNoteSectionHeading ||
-                  "# Granola Notes"
+                  "# Granola notes"
               )
               .onChange(async (value) => {
                 this.plugin.settings.dailyNoteSectionHeading = value;
@@ -525,6 +533,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           .setDesc("The folder where transcripts will be saved")
           .addText((text) =>
             text
+              // eslint-disable-next-line obsidianmd/ui/sentence-case -- folder path default, not display text
               .setPlaceholder("Granola/Transcripts")
               .setValue(
                 this.plugin.settings.customTranscriptBaseFolder ||
@@ -755,15 +764,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           button
             .setButtonText("Copy logs to clipboard")
             .onClick(async () => {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const pluginWithMethod = this.plugin as any;
-              if (typeof pluginWithMethod.copyDebugLogsToClipboard === "function") {
-                await pluginWithMethod.copyDebugLogsToClipboard();
-              } else {
-                new Notice(
-                  "Copying debug logs is not available in this environment."
-                );
-              }
+              await this.plugin.copyDebugLogsToClipboard();
             })
         );
     }
@@ -773,16 +774,11 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Need support?")
-      .setDesc("File an issue on Github. PRs are even better.")
+      .setDesc("File an issue on GitHub. Pull requests are even better.")
       .addButton((button) => {
         button.buttonEl.empty();
-        button.buttonEl.innerHTML = githubLogoSvg;
-        const svgEl = button.buttonEl.querySelector("svg");
-        if (svgEl) {
-          svgEl.style.height = "16px";
-          svgEl.style.width = "auto";
-          svgEl.style.display = "block";
-        }
+        button.buttonEl.addClass("granola-sync-support-icon");
+        appendSvg(button.buttonEl, githubLogoSvg);
         button.onClick(() => {
           window.open("https://github.com/tomelliot/obsidian-granola-sync/");
         });
@@ -792,14 +788,9 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       .setName("Show your support")
       .addButton((button) => {
       button.buttonEl.addClass("mod-cta");
+      button.buttonEl.addClass("granola-sync-bmc-icon");
       button.buttonEl.empty();
-      button.buttonEl.innerHTML = bmcButtonSvg;
-      const svgEl = button.buttonEl.querySelector("svg");
-      if (svgEl) {
-        svgEl.style.height = "24px";
-        svgEl.style.width = "auto";
-        svgEl.style.display = "block";
-      }
+      appendSvg(button.buttonEl, bmcButtonSvg);
       button.onClick(() => {
         window.open("https://buymeacoffee.com/tomelliot");
       });

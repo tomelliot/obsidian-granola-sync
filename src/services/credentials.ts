@@ -128,7 +128,7 @@ export async function loadCredentials(): Promise<{
     log.debug("Successfully read credentials file");
 
     try {
-      const tokenData: TokenData = JSON.parse(fileContents);
+      const tokenData = JSON.parse(fileContents) as TokenData;
       
       // Validate that workos_tokens field exists
       if (!tokenData.workos_tokens || typeof tokenData.workos_tokens !== "string") {
@@ -137,7 +137,7 @@ export async function loadCredentials(): Promise<{
         return { accessToken, error: tokenLoadError };
       }
 
-      let workosTokens: WorkosTokens = JSON.parse(tokenData.workos_tokens);
+      let workosTokens = JSON.parse(tokenData.workos_tokens) as WorkosTokens;
 
       // Validate required fields in workosTokens
       if (!workosTokens.access_token) {

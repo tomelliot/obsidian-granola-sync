@@ -1,12 +1,13 @@
 import { FileSystemAdapter, Notice, Plugin } from "obsidian";
 import fs from "fs";
 import path from "path";
-import moment from "moment";
+import { moment } from "./utils/moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
 import { getTitleOrDefault } from "./utils/filenameUtils";
 import { getNoteDate, getEffectiveUpdatedAt } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
+  LegacySettings,
   DEFAULT_SETTINGS,
   GranolaSyncSettingTab,
   migrateSettingsToNewFormat,
@@ -88,18 +89,19 @@ export default class GranolaSync extends Plugin {
     // We handle our interval manually with setupPeriodicSync and clearPeriodicSync
   }
 
-  async onunload() {
+  onunload() {
     // Clean up status bar (includes clearing timeout)
     hideStatusBar(this);
   }
 
   async loadSettings() {
-    const loadedData = await this.loadData();
+    const loadedData = (await this.loadData()) as
+      | (Partial<GranolaSyncSettings> & LegacySettings)
+      | null;
     const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
 
     // Check if migration is needed
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((mergedSettings as any).syncDestination) {
+    if (mergedSettings.syncDestination) {
       // Migrate old settings to new format
       this.settings = migrateSettingsToNewFormat(mergedSettings);
       // Save migrated settings immediately
@@ -161,8 +163,8 @@ export default class GranolaSync extends Plugin {
   setupPeriodicSync() {
     this.clearPeriodicSync(); // Clear any existing interval first
     if (this.settings.isSyncEnabled && this.settings.syncInterval > 0) {
-      this.syncIntervalId = window.setInterval(async () => {
-        await this.sync();
+      this.syncIntervalId = window.setInterval(() => {
+        void this.sync();
       }, this.settings.syncInterval * 1000);
       this.registerInterval(this.syncIntervalId); // Register with Obsidian to auto-clear on disable
     }
@@ -844,9 +846,12 @@ export default class GranolaSync extends Plugin {
           const noteFile = this.fileSyncService.findByGranolaId(doc.id, "note");
           if (noteFile) {
             noteLinkPath = noteFile.path;
-            await this.app.fileManager.processFrontMatter(noteFile, (fm) => {
-              fm.transcript = `[[${transcriptFile.path}]]`;
-            });
+            await this.app.fileManager.processFrontMatter(
+              noteFile,
+              (fm: Record<string, unknown>) => {
+                fm.transcript = `[[${transcriptFile.path}]]`;
+              }
+            );
           }
         } else {
           // Daily notes mode: link to the daily note heading
@@ -860,9 +865,12 @@ export default class GranolaSync extends Plugin {
         }
 
         if (noteLinkPath) {
-          await this.app.fileManager.processFrontMatter(transcriptFile, (fm) => {
-            fm.note = `[[${noteLinkPath}]]`;
-          });
+          await this.app.fileManager.processFrontMatter(
+            transcriptFile,
+            (fm: Record<string, unknown>) => {
+              fm.note = `[[${noteLinkPath}]]`;
+            }
+          );
         }
 
         updatedCount++;

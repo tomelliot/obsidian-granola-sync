@@ -47,14 +47,14 @@ export function printValidationIssuePaths(
     log.error("Validation issues:");
     result.issues.forEach((issue, index) => {
       const issueObj = issue as {
-        path?: Array<{ key?: string | number | unknown }>;
+        path?: Array<{ key?: unknown }>;
       };
       if (issueObj.path && issueObj.path.length > 0) {
         const pathStr = issueObj.path
-          .map((p: { key?: string | number | unknown }) => {
+          .map((p: { key?: unknown }) => {
             if (typeof p.key === "number") return `[${p.key}]`;
             if (typeof p.key === "string") return `.${p.key}`;
-            if (p.key) return `.${String(p.key)}`;
+            if (p.key !== undefined && p.key !== null) return `.${JSON.stringify(p.key)}`;
             return "";
           })
           .join("");
@@ -104,12 +104,12 @@ export async function fetchGranolaDocuments(
     }),
   });
 
-  const jsonResponse = response.json;
+  const jsonResponse = response.json as unknown;
 
   const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
   if (!result.success) {
     log.error("Validation failed for GranolaApiResponseSchema:");
-    log.debug("Response keys:", Object.keys(jsonResponse ?? {}));
+    log.debug("Response keys:", Object.keys(jsonResponse as object ?? {}));
     printValidationIssuePaths(result);
     log.error(JSON.stringify(result.issues, null, 2));
 
@@ -228,7 +228,7 @@ export async function fetchGranolaTranscript(
     );
   }
   log.debug(`Fetched ${result.output.length} transcript entry/entries for doc ${docId}`);
-  return result.output as TranscriptEntry[];
+  return result.output;
 }
 
 /**
@@ -266,7 +266,7 @@ export async function fetchDocumentListsMetadata(
 
   const listCount = Object.keys(result.output.lists).length;
   log.debug(`Fetched metadata for ${listCount} document list(s)`);
-  return result.output.lists as Record<string, DocumentListMetadata>;
+  return result.output.lists;
 }
 
 /**
@@ -308,7 +308,7 @@ export async function fetchDocumentList(
   log.debug(
     `Fetched document list "${result.output.title}" with ${result.output.documents?.length ?? 0} document(s)`
   );
-  return result.output as DocumentListWithDocs;
+  return result.output;
 }
 
 // ---------------------------------------------------------------------------
@@ -345,7 +345,7 @@ export async function fetchDocumentSet(
 
   const count = Object.keys(result.output.documents).length;
   log.debug(`Fetched document set with ${count} document(s)`);
-  return result.output.documents as Record<string, DocumentSetEntry>;
+  return result.output.documents;
 }
 
 /**

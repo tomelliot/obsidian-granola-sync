@@ -3,7 +3,7 @@
 
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
+import { builtinModules } from "node:module";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -36,8 +36,10 @@ function copyToDevPlugin() {
 
   try {
     const outputPath = path.join(__dirname, "output/main.js");
+    const stylesPath = path.join(__dirname, "styles.css");
     const targetDir = path.dirname(DEV_PLUGIN_PATH);
     const manifestTargetPath = path.join(targetDir, "manifest.json");
+    const stylesTargetPath = path.join(targetDir, "styles.css");
 
     // Check if target directory exists
     if (!fs.existsSync(targetDir)) {
@@ -48,6 +50,12 @@ function copyToDevPlugin() {
     // Copy the built main.js
     fs.copyFileSync(outputPath, DEV_PLUGIN_PATH);
     console.log(`✓ Copied main.js to ${DEV_PLUGIN_PATH}`);
+
+    // Copy styles.css
+    if (fs.existsSync(stylesPath)) {
+      fs.copyFileSync(stylesPath, stylesTargetPath);
+      console.log(`✓ Copied styles.css to ${stylesTargetPath}`);
+    }
 
     // Write a dev manifest with a fixed version so it doesn't override production
     const devManifest = { ...manifest, version: "1.0.0" };
@@ -97,7 +105,7 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins,
+    ...builtinModules,
   ],
   format: "cjs",
   target: "es2018",

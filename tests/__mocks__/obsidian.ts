@@ -35,10 +35,10 @@ export class Plugin {
 
 export const PluginSettingTab = jest.fn();
 export const Setting = jest.fn();
-export const moment = {
-  format: jest.fn(),
-  parseZone: jest.fn(),
-};
+// Re-export the real moment package so tests get a callable moment with
+// the full API surface, matching what Obsidian provides at runtime.
+import realMoment from "moment";
+export const moment = realMoment;
 
 export const Platform = {
   isWin: false,
