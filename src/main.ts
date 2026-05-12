@@ -88,18 +88,19 @@ export default class GranolaSync extends Plugin {
     // We handle our interval manually with setupPeriodicSync and clearPeriodicSync
   }
 
-  async onunload() {
+  onunload() {
     // Clean up status bar (includes clearing timeout)
     hideStatusBar(this);
   }
 
   async loadSettings() {
-    const loadedData = await this.loadData();
-    const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+    const loadedData = (await this.loadData()) as Record<string, unknown> | null;
+    const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, loadedData) as
+      & typeof DEFAULT_SETTINGS
+      & { syncDestination?: unknown };
 
     // Check if migration is needed
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((mergedSettings as any).syncDestination) {
+    if (mergedSettings.syncDestination) {
       // Migrate old settings to new format
       this.settings = migrateSettingsToNewFormat(mergedSettings);
       // Save migrated settings immediately
@@ -161,8 +162,8 @@ export default class GranolaSync extends Plugin {
   setupPeriodicSync() {
     this.clearPeriodicSync(); // Clear any existing interval first
     if (this.settings.isSyncEnabled && this.settings.syncInterval > 0) {
-      this.syncIntervalId = window.setInterval(async () => {
-        await this.sync();
+      this.syncIntervalId = window.setInterval(() => {
+        void this.sync();
       }, this.settings.syncInterval * 1000);
       this.registerInterval(this.syncIntervalId); // Register with Obsidian to auto-clear on disable
     }

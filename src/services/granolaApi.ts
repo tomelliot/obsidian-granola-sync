@@ -47,14 +47,14 @@ export function printValidationIssuePaths(
     log.error("Validation issues:");
     result.issues.forEach((issue, index) => {
       const issueObj = issue as {
-        path?: Array<{ key?: string | number | unknown }>;
+        path?: Array<{ key?: unknown }>;
       };
       if (issueObj.path && issueObj.path.length > 0) {
         const pathStr = issueObj.path
-          .map((p: { key?: string | number | unknown }) => {
+          .map((p: { key?: unknown }) => {
             if (typeof p.key === "number") return `[${p.key}]`;
             if (typeof p.key === "string") return `.${p.key}`;
-            if (p.key) return `.${String(p.key)}`;
+            if (p.key !== undefined && p.key !== null) return `.${JSON.stringify(p.key)}`;
             return "";
           })
           .join("");
@@ -228,7 +228,7 @@ export async function fetchGranolaTranscript(
     );
   }
   log.debug(`Fetched ${result.output.length} transcript entry/entries for doc ${docId}`);
-  return result.output as TranscriptEntry[];
+  return result.output;
 }
 
 /**
@@ -308,7 +308,7 @@ export async function fetchDocumentList(
   log.debug(
     `Fetched document list "${result.output.title}" with ${result.output.documents?.length ?? 0} document(s)`
   );
-  return result.output as DocumentListWithDocs;
+  return result.output;
 }
 
 // ---------------------------------------------------------------------------

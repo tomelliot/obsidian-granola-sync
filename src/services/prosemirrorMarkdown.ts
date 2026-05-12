@@ -58,7 +58,7 @@ export function convertProsemirrorToMarkdown(
         const isOrdered = node.type === "orderedList";
         const startIndex =
           isOrdered && typeof node.attrs?.start === "number"
-            ? (node.attrs.start as number)
+            ? node.attrs.start
             : 1;
         const items = node.content
           .map((itemNode, i) => {
