@@ -1,3 +1,11 @@
+.granola-sync-support-icon {
+  color: var(--icon-color);
+}
+
+.granola-sync-support-icon:hover {
+  color: var(--icon-color-hover);
+}
+
 .granola-sync-support-icon svg {
   height: 16px;
   width: auto;
