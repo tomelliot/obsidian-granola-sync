@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+env:
+  # Opt JS actions into Node 24 now; Node 20 on runners is deprecated.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,6 +19,9 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # codecov needs full history to compute merge-base coverage diffs
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
