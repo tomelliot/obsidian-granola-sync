@@ -13,5 +13,26 @@ export default tseslint.config(
       parser: tsparser,
       parserOptions: { project: './tsconfig.json' },
     },
+    rules: {
+      'obsidianmd/ui/sentence-case': [
+        'error',
+        {
+          brands: ['Granola', 'GitHub'],
+          acronyms: [
+            'YYYY',
+            'MM',
+            'DD',
+            'HH',
+            'Q1',
+            'Q2',
+            'Q3',
+            'Q4',
+            'API',
+            'JSON',
+            'URL',
+          ],
+        },
+      ],
+    },
   },
 );

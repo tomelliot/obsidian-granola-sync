@@ -122,7 +122,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   filenamePattern: "{title}",
   linkFromDailyNotes: false,
   dailyNoteLinkHeading: "# Meetings",
-  dailyNoteSectionHeading: "# Granola Notes",
+  dailyNoteSectionHeading: "# Granola notes",
   // TranscriptSettings
   syncTranscripts: false,
   transcriptHandling: "custom-location",
@@ -315,8 +315,9 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       new Setting(containerEl).setName("Notes").setHeading();
 
       new Setting(containerEl)
-        .setName("Include Private Notes")
+        .setName("Include private notes")
         .setDesc(
+          // eslint-disable-next-line obsidianmd/ui/sentence-case -- '## Private Notes' / '## Enhanced Notes' are literal heading labels written into the output
           "Include your raw private notes at the top of each synced note. Private notes appear in a '## Private Notes' section above the '## Enhanced Notes' section."
         )
         .addToggle((toggle) =>
@@ -352,7 +353,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           .addDropdown((dropdown) =>
             dropdown
               .addOption("custom", "Custom folder")
-              .addOption("daily-notes", "Daily Notes folder")
+              .addOption("daily-notes", "Daily notes folder")
               .setValue(this.plugin.settings.baseFolderType)
               .onChange(async (value) => {
                 this.plugin.settings.baseFolderType = value as
@@ -473,14 +474,14 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         new Setting(containerEl)
           .setName("Daily note section heading")
           .setDesc(
-            'The markdown heading for the Granola notes section. Include heading markers (e.g., "# Meeting Notes").'
+            'The markdown heading for the Granola notes section. Include heading markers (e.g., "# meeting notes").'
           )
           .addText((text) =>
             text
-              .setPlaceholder("# Granola Notes")
+              .setPlaceholder("# Granola notes")
               .setValue(
                 this.plugin.settings.dailyNoteSectionHeading ||
-                  "# Granola Notes"
+                  "# Granola notes"
               )
               .onChange(async (value) => {
                 this.plugin.settings.dailyNoteSectionHeading = value;
@@ -525,6 +526,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           .setDesc("The folder where transcripts will be saved")
           .addText((text) =>
             text
+              // eslint-disable-next-line obsidianmd/ui/sentence-case -- folder path default, not display text
               .setPlaceholder("Granola/Transcripts")
               .setValue(
                 this.plugin.settings.customTranscriptBaseFolder ||
@@ -773,7 +775,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Need support?")
-      .setDesc("File an issue on Github. PRs are even better.")
+      .setDesc("File an issue on GitHub. Pull requests are even better.")
       .addButton((button) => {
         button.buttonEl.empty();
         button.buttonEl.innerHTML = githubLogoSvg;
