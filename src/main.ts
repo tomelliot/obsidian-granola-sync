@@ -7,6 +7,7 @@ import { getTitleOrDefault } from "./utils/filenameUtils";
 import { getNoteDate, getEffectiveUpdatedAt } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
+  LegacySettings,
   DEFAULT_SETTINGS,
   GranolaSyncSettingTab,
   migrateSettingsToNewFormat,
@@ -94,10 +95,10 @@ export default class GranolaSync extends Plugin {
   }
 
   async loadSettings() {
-    const loadedData = (await this.loadData()) as Record<string, unknown> | null;
-    const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, loadedData) as
-      & typeof DEFAULT_SETTINGS
-      & { syncDestination?: unknown };
+    const loadedData = (await this.loadData()) as
+      | (Partial<GranolaSyncSettings> & LegacySettings)
+      | null;
+    const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
 
     // Check if migration is needed
     if (mergedSettings.syncDestination) {

@@ -93,6 +93,24 @@ export interface AutomaticSyncSettings {
   latestSyncTime: number;
 }
 
+type LegacySyncDestination =
+  | "granola_folder"
+  | "daily_notes"
+  | "daily_note_folder_structure";
+
+type LegacyTranscriptDestination =
+  | "granola_transcripts_folder"
+  | "daily_note_folder_structure"
+  | "combined_with_note";
+
+export interface LegacySettings {
+  syncDestination?: LegacySyncDestination;
+  transcriptDestination?: LegacyTranscriptDestination;
+  granolaFolder?: string;
+  granolaTranscriptsFolder?: string;
+  dailyNoteSectionHeading?: string;
+}
+
 export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
   AutomaticSyncSettings &
@@ -101,13 +119,7 @@ export type GranolaSyncSettings = NoteSettings &
     // Persisted folder map for detecting renames across syncs
     _folderMapCache?: FolderMapData;
     // Legacy settings preserved for potential rollback
-    _legacySettings?: {
-      syncDestination?: SyncDestination;
-      transcriptDestination?: TranscriptDestination;
-      granolaFolder?: string;
-      granolaTranscriptsFolder?: string;
-      dailyNoteSectionHeading?: string;
-    };
+    _legacySettings?: LegacySettings;
   };
 
 export const DEFAULT_SETTINGS: GranolaSyncSettings = {
@@ -149,8 +161,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
  * @returns Migrated settings in new format
  */
 export function migrateSettingsToNewFormat(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  oldSettings: any
+  oldSettings: Partial<GranolaSyncSettings> & LegacySettings
 ): GranolaSyncSettings {
   // Check if migration is needed (old format has syncDestination)
   if (!oldSettings.syncDestination) {
@@ -159,7 +170,7 @@ export function migrateSettingsToNewFormat(
   }
 
   // Preserve old settings for potential rollback
-  const legacySettings = {
+  const legacySettings: { _legacySettings: LegacySettings } = {
     _legacySettings: {
       syncDestination: oldSettings.syncDestination,
       transcriptDestination: oldSettings.transcriptDestination,
@@ -170,13 +181,13 @@ export function migrateSettingsToNewFormat(
   };
 
   // Build new settings structure
-  const newSettings: Partial<GranolaSyncSettings> = {
+  const newSettings: Partial<GranolaSyncSettings> & LegacySettings = {
     ...oldSettings, // Preserve automatic sync settings and other unchanged fields
     ...legacySettings,
   };
 
   // Migrate note settings
-  if (oldSettings.syncDestination === SyncDestination.DAILY_NOTES) {
+  if (oldSettings.syncDestination === "daily_notes") {
     newSettings.saveAsIndividualFiles = false;
     newSettings.dailyNoteSectionHeading =
       oldSettings.dailyNoteSectionHeading ||
@@ -185,14 +196,12 @@ export function migrateSettingsToNewFormat(
     newSettings.saveAsIndividualFiles = true;
     newSettings.filenamePattern = "{title}"; // Default pattern
 
-    if (oldSettings.syncDestination === SyncDestination.GRANOLA_FOLDER) {
+    if (oldSettings.syncDestination === "granola_folder") {
       newSettings.baseFolderType = "custom";
       newSettings.customBaseFolder =
         oldSettings.granolaFolder || DEFAULT_SETTINGS.customBaseFolder;
       newSettings.subfolderPattern = "none";
-    } else if (
-      oldSettings.syncDestination === SyncDestination.DAILY_NOTE_FOLDER_STRUCTURE
-    ) {
+    } else if (oldSettings.syncDestination === "daily_note_folder_structure") {
       // User wanted date-based organization, but unclear if they wanted custom folder or Daily Notes folder
       // Default to custom folder with day-based subfolders (preserves existing behavior)
       newSettings.baseFolderType = "custom";
@@ -203,14 +212,10 @@ export function migrateSettingsToNewFormat(
   }
 
   // Migrate transcript settings
-  if (
-    oldSettings.transcriptDestination ===
-    TranscriptDestination.COMBINED_WITH_NOTE
-  ) {
+  if (oldSettings.transcriptDestination === "combined_with_note") {
     newSettings.transcriptHandling = "combined";
   } else if (
-    oldSettings.transcriptDestination ===
-    TranscriptDestination.DAILY_NOTE_FOLDER_STRUCTURE
+    oldSettings.transcriptDestination === "daily_note_folder_structure"
   ) {
     newSettings.transcriptHandling = "same-location";
     // Will use same organization as notes
@@ -224,14 +229,10 @@ export function migrateSettingsToNewFormat(
   }
 
   // Remove old enum fields
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (newSettings as any).syncDestination;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (newSettings as any).transcriptDestination;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (newSettings as any).granolaFolder;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (newSettings as any).granolaTranscriptsFolder;
+  delete newSettings.syncDestination;
+  delete newSettings.transcriptDestination;
+  delete newSettings.granolaFolder;
+  delete newSettings.granolaTranscriptsFolder;
 
   return Object.assign({}, DEFAULT_SETTINGS, newSettings);
 }
