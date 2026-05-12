@@ -6,6 +6,14 @@ import bmcButtonSvg from "../assets/bmc-button.svg";
 // @ts-expect-error esbuild loads .svg as text
 import githubLogoSvg from "../assets/github-logo.svg";
 
+function appendSvg(target: HTMLElement, svgMarkup: string): void {
+  const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  const svg = doc.documentElement;
+  if (svg.tagName.toLowerCase() === "svg") {
+    target.appendChild(svg);
+  }
+}
+
 /**
  * @deprecated These enums will be removed in version 3.0.0.
  * They are kept for migration purposes only.
@@ -778,13 +786,8 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       .setDesc("File an issue on GitHub. Pull requests are even better.")
       .addButton((button) => {
         button.buttonEl.empty();
-        button.buttonEl.innerHTML = githubLogoSvg;
-        const svgEl = button.buttonEl.querySelector("svg");
-        if (svgEl) {
-          svgEl.style.height = "16px";
-          svgEl.style.width = "auto";
-          svgEl.style.display = "block";
-        }
+        button.buttonEl.addClass("granola-sync-support-icon");
+        appendSvg(button.buttonEl, githubLogoSvg);
         button.onClick(() => {
           window.open("https://github.com/tomelliot/obsidian-granola-sync/");
         });
@@ -794,14 +797,9 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       .setName("Show your support")
       .addButton((button) => {
       button.buttonEl.addClass("mod-cta");
+      button.buttonEl.addClass("granola-sync-bmc-icon");
       button.buttonEl.empty();
-      button.buttonEl.innerHTML = bmcButtonSvg;
-      const svgEl = button.buttonEl.querySelector("svg");
-      if (svgEl) {
-        svgEl.style.height = "24px";
-        svgEl.style.width = "auto";
-        svgEl.style.display = "block";
-      }
+      appendSvg(button.buttonEl, bmcButtonSvg);
       button.onClick(() => {
         window.open("https://buymeacoffee.com/tomelliot");
       });

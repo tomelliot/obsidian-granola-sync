@@ -12,7 +12,6 @@ export function showStatusBar(plugin: StatusBarPlugin, message: string): void {
   }
 
   plugin.statusBarItemEl.setText(message);
-  plugin.statusBarItemEl.style.display = "";
 }
 
 export function hideStatusBar(plugin: StatusBarPlugin): void {

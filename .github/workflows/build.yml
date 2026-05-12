@@ -61,4 +61,5 @@ jobs:
           path: |
             ./output/main.js
             ./manifest.json
+            ./styles.css
           retention-days: 1
