@@ -846,9 +846,12 @@ export default class GranolaSync extends Plugin {
           const noteFile = this.fileSyncService.findByGranolaId(doc.id, "note");
           if (noteFile) {
             noteLinkPath = noteFile.path;
-            await this.app.fileManager.processFrontMatter(noteFile, (fm) => {
-              fm.transcript = `[[${transcriptFile.path}]]`;
-            });
+            await this.app.fileManager.processFrontMatter(
+              noteFile,
+              (fm: Record<string, unknown>) => {
+                fm.transcript = `[[${transcriptFile.path}]]`;
+              }
+            );
           }
         } else {
           // Daily notes mode: link to the daily note heading
@@ -862,9 +865,12 @@ export default class GranolaSync extends Plugin {
         }
 
         if (noteLinkPath) {
-          await this.app.fileManager.processFrontMatter(transcriptFile, (fm) => {
-            fm.note = `[[${noteLinkPath}]]`;
-          });
+          await this.app.fileManager.processFrontMatter(
+            transcriptFile,
+            (fm: Record<string, unknown>) => {
+              fm.note = `[[${noteLinkPath}]]`;
+            }
+          );
         }
 
         updatedCount++;

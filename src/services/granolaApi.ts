@@ -104,12 +104,12 @@ export async function fetchGranolaDocuments(
     }),
   });
 
-  const jsonResponse = response.json;
+  const jsonResponse = response.json as unknown;
 
   const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
   if (!result.success) {
     log.error("Validation failed for GranolaApiResponseSchema:");
-    log.debug("Response keys:", Object.keys(jsonResponse ?? {}));
+    log.debug("Response keys:", Object.keys(jsonResponse as object ?? {}));
     printValidationIssuePaths(result);
     log.error(JSON.stringify(result.issues, null, 2));
 

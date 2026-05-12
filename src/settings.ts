@@ -1,9 +1,7 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
 import type { FolderMapData } from "./services/folderMapBuilder";
-// @ts-expect-error esbuild loads .svg as text
 import bmcButtonSvg from "../assets/bmc-button.svg";
-// @ts-expect-error esbuild loads .svg as text
 import githubLogoSvg from "../assets/github-logo.svg";
 
 function appendSvg(target: HTMLElement, svgMarkup: string): void {
@@ -766,15 +764,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           button
             .setButtonText("Copy logs to clipboard")
             .onClick(async () => {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const pluginWithMethod = this.plugin as any;
-              if (typeof pluginWithMethod.copyDebugLogsToClipboard === "function") {
-                await pluginWithMethod.copyDebugLogsToClipboard();
-              } else {
-                new Notice(
-                  "Copying debug logs is not available in this environment."
-                );
-              }
+              await this.plugin.copyDebugLogsToClipboard();
             })
         );
     }

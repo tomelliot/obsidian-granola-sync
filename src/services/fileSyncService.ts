@@ -34,7 +34,7 @@ export class FileSyncService {
         const cache = this.app.metadataCache.getFileCache(file);
         if (cache?.frontmatter?.granola_id) {
           const granolaId = cache.frontmatter.granola_id as string;
-          const type = cache.frontmatter.type || "note"; // Default for backward compatibility
+          const type = (cache.frontmatter.type as string | undefined) || "note"; // Default for backward compatibility
           const cacheKey = `${granolaId}-${type}`;
           this.granolaIdCache.set(cacheKey, file);
         }
