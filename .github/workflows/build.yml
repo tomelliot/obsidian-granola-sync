@@ -41,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v3
 
@@ -53,6 +55,15 @@ jobs:
         run: |
           npm install
           npm run build
+
+      - name: Generate artifact attestation
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            ./output/main.js
+            ./manifest.json
+            ./styles.css
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
