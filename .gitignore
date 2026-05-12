@@ -34,3 +34,4 @@ docs/api-response/
 
 # Claude Code local settings
 .claude/settings.local.json
+.claude/skills/
