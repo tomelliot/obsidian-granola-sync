@@ -21,7 +21,7 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 
 ## Installation
 
-1. Go to [https://obsidian.md/plugins?search=granola](https://obsidian.md/plugins?search=granola)
+1. Go to [https://community.obsidian.md/plugins/granola-sync](https://community.obsidian.md/plugins/granola-sync)
 2. Click Install
 
 ## Configuration
