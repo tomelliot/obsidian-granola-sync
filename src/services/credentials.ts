@@ -14,8 +14,12 @@ interface WorkosTokens {
   external_id: string;
 }
 
-interface TokenData {
-  workos_tokens: string;
+interface StoredAccount {
+  tokens: string | WorkosTokens;
+}
+
+interface StoredAccountsData {
+  accounts: string | StoredAccount[];
 }
 
 interface RefreshTokenResponse {
@@ -32,164 +36,162 @@ function getTokenFilePath(): string {
       "AppData",
       "Roaming",
       "Granola",
-      "supabase.json"
-    );
-  } else if (Platform.isLinux) {
-    return path.join(os.homedir(), ".config", "Granola", "supabase.json");
-  } else {
-    return path.join(
-      os.homedir(),
-      "Library",
-      "Application Support",
-      "Granola",
-      "supabase.json"
+      "stored-accounts.json"
     );
   }
+  if (Platform.isLinux) {
+    return path.join(os.homedir(), ".config", "Granola", "stored-accounts.json");
+  }
+  return path.join(
+    os.homedir(),
+    "Library",
+    "Application Support",
+    "Granola",
+    "stored-accounts.json"
+  );
 }
 
 const filePath = getTokenFilePath();
 
 /**
- * Checks if the access token has expired.
- * Returns true if the token has expired or will expire in the next 5 minutes.
+ * Returns true if the access token has expired or expires within 5 minutes.
  */
 function isTokenExpired(workosTokens: WorkosTokens): boolean {
-  const currentTime = Date.now();
-  const tokenObtainedAt = workosTokens.obtained_at;
-  const expiresIn = workosTokens.expires_in * 1000; // Convert seconds to milliseconds
-  const expirationTime = tokenObtainedAt + expiresIn;
+  const expirationTime = workosTokens.obtained_at + workosTokens.expires_in * 1000;
+  const bufferMs = 5 * 60 * 1000;
+  return Date.now() >= expirationTime - bufferMs;
+}
 
-  // Add 5-minute buffer to refresh before actual expiration
-  const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+async function refreshAccessToken(workosTokens: WorkosTokens): Promise<WorkosTokens> {
+  log.debug("Attempting to refresh access token");
 
-  return currentTime >= expirationTime - bufferTime;
+  const response = await requestUrl({
+    url: "https://api.granola.ai/v1/refresh-access-token",
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${workosTokens.access_token}`,
+      "Content-Type": "application/json",
+      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
+    },
+    body: JSON.stringify({
+      refresh_token: workosTokens.refresh_token,
+      provider: "workos",
+    }),
+  });
+
+  const refreshResponse = response.json as RefreshTokenResponse;
+
+  return {
+    ...workosTokens,
+    access_token: refreshResponse.access_token,
+    expires_in: refreshResponse.expires_in,
+    token_type: refreshResponse.token_type,
+    obtained_at: Date.now(),
+    refresh_token: refreshResponse.refresh_token ?? workosTokens.refresh_token,
+  };
 }
 
 /**
- * Refreshes the access token using the refresh token.
+ * Parses stored-accounts.json. `accounts` is a JSON-encoded string holding an
+ * array; each account's `tokens` field is itself a JSON-encoded string of the
+ * token object.
  */
-async function refreshAccessToken(
-  workosTokens: WorkosTokens
-): Promise<WorkosTokens> {
-  log.debug("Attempting to refresh access token");
+function parseTokens(fileContents: string): WorkosTokens {
+  const data = JSON.parse(fileContents) as StoredAccountsData;
 
-  try {
-    const response = await requestUrl({
-      url: "https://api.granola.ai/v1/refresh-access-token",
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${workosTokens.access_token}`,
-        "Content-Type": "application/json",
-        "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-        "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-      },
-      body: JSON.stringify({
-        refresh_token: workosTokens.refresh_token,
-        provider: "workos",
-      }),
-    });
+  if (!data.accounts) {
+    throw new Error(`Missing 'accounts' field in credentials file at ${filePath}.`);
+  }
 
-    const refreshResponse = response.json as RefreshTokenResponse;
+  const accounts: StoredAccount[] =
+    typeof data.accounts === "string"
+      ? (JSON.parse(data.accounts) as StoredAccount[])
+      : data.accounts;
 
-    // Update the tokens with new values
-    const updatedTokens: WorkosTokens = {
-      ...workosTokens,
-      access_token: refreshResponse.access_token,
-      expires_in: refreshResponse.expires_in,
-      token_type: refreshResponse.token_type,
-      obtained_at: Date.now(),
-      // Keep the same refresh_token if not provided in response
-      refresh_token:
-        refreshResponse.refresh_token ?? workosTokens.refresh_token,
-    };
-
-    log.debug("Successfully refreshed access token");
-    return updatedTokens;
-  } catch (error) {
-    log.error("Failed to refresh access token:", error);
+  if (!Array.isArray(accounts) || accounts.length === 0) {
     throw new Error(
-      `Failed to refresh access token: ${
-        error instanceof Error ? error.message : String(error)
-      }`
+      `No accounts found in credentials file at ${filePath}. Please sign in via the Granola app.`
     );
   }
+
+  const account = accounts[0];
+  if (!account.tokens) {
+    throw new Error(
+      `Missing 'tokens' field on first account in credentials file at ${filePath}.`
+    );
+  }
+
+  return typeof account.tokens === "string"
+    ? (JSON.parse(account.tokens) as WorkosTokens)
+    : account.tokens;
 }
 
 export async function loadCredentials(): Promise<{
   accessToken: string | null;
   error: string | null;
 }> {
-  let accessToken: string | null = null;
-  let tokenLoadError: string | null = null;
-
+  let fileContents: string;
   try {
-    // Read credentials file directly from filesystem
-    const fileContents = await fs.promises.readFile(filePath, "utf-8");
-    log.debug("Successfully read credentials file");
-
-    try {
-      const tokenData = JSON.parse(fileContents) as TokenData;
-      
-      // Validate that workos_tokens field exists
-      if (!tokenData.workos_tokens || typeof tokenData.workos_tokens !== "string") {
-        tokenLoadError = `Missing or invalid 'workos_tokens' field in credentials file at ${filePath}. Please ensure the file contains a valid 'workos_tokens' string.`;
-        log.error("Invalid credentials file structure:", tokenLoadError);
-        return { accessToken, error: tokenLoadError };
-      }
-
-      let workosTokens = JSON.parse(tokenData.workos_tokens) as WorkosTokens;
-
-      // Validate required fields in workosTokens
-      if (!workosTokens.access_token) {
-        tokenLoadError = `Missing 'access_token' field in credentials file at ${filePath}. The token may have expired.`;
-        log.error("Missing access token:", tokenLoadError);
-        return { accessToken, error: tokenLoadError };
-      }
-
-      // Check if token has expired
-      if (isTokenExpired(workosTokens)) {
-        log.debug(
-          "Access token has expired or will expire soon, refreshing..."
-        );
-        try {
-          workosTokens = await refreshAccessToken(workosTokens);
-          log.debug("Token refresh completed successfully");
-        } catch (refreshError) {
-          log.error("Failed to refresh token:", refreshError);
-          tokenLoadError =
-            "Access token has expired and refresh failed. Please re-authenticate in the Granola app.";
-          return { accessToken, error: tokenLoadError };
-        }
-      }
-
-      accessToken = workosTokens.access_token;
-      if (!accessToken) {
-        log.debug("No access token found in credentials file");
-        tokenLoadError =
-          "No access token found in credentials file. The token may have expired.";
-      }
-    } catch (parseError) {
-      const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-      tokenLoadError = `Invalid JSON format in credentials file at ${filePath}: ${parseErrorMessage}. Please ensure the file contains valid JSON.`;
-      log.error("Failed to parse credentials file:", parseError);
-      return { accessToken, error: tokenLoadError };
-    }
+    fileContents = await fs.promises.readFile(filePath, "utf-8");
   } catch (error) {
-    // Handle filesystem errors
-    if (error instanceof Error) {
-      const errorCode = (error as NodeJS.ErrnoException).code;
-      if (errorCode === "ENOENT") {
-        tokenLoadError = `Credentials file not found at ${filePath}. Please ensure the Granola app has created the credentials file.`;
-      } else if (errorCode === "EACCES") {
-        tokenLoadError = `Permission denied reading credentials file at ${filePath}. Please check file permissions.`;
-      } else {
-        tokenLoadError = `Failed to read credentials file at ${filePath}: ${error.message}`;
-      }
-    } else {
-      tokenLoadError = `Failed to read credentials file at ${filePath}: ${String(error)}`;
-    }
+    const code = (error as NodeJS.ErrnoException).code;
     log.error("Credentials file read error:", error);
+    if (code === "ENOENT") {
+      return {
+        accessToken: null,
+        error: `Credentials file not found at ${filePath}. Please ensure the Granola app has created the credentials file.`,
+      };
+    }
+    if (code === "EACCES") {
+      return {
+        accessToken: null,
+        error: `Permission denied reading credentials file at ${filePath}. Please check file permissions.`,
+      };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      accessToken: null,
+      error: `Failed to read credentials file at ${filePath}: ${message}`,
+    };
   }
 
-  return { accessToken, error: tokenLoadError };
+  log.debug("Successfully read credentials file");
+
+  let workosTokens: WorkosTokens;
+  try {
+    workosTokens = parseTokens(fileContents);
+  } catch (parseError) {
+    const message = parseError instanceof Error ? parseError.message : String(parseError);
+    log.error("Failed to parse credentials file:", parseError);
+    return {
+      accessToken: null,
+      error: message.startsWith("Missing") || message.startsWith("No accounts")
+        ? message
+        : `Invalid JSON format in credentials file at ${filePath}: ${message}. Please ensure the file contains valid JSON.`,
+    };
+  }
+
+  if (!workosTokens.access_token) {
+    const error = `Missing 'access_token' field in credentials file at ${filePath}. The token may have expired.`;
+    log.error("Missing access token:", error);
+    return { accessToken: null, error };
+  }
+
+  if (isTokenExpired(workosTokens)) {
+    log.debug("Access token has expired or will expire soon, refreshing...");
+    try {
+      workosTokens = await refreshAccessToken(workosTokens);
+      log.debug("Token refresh completed successfully");
+    } catch (refreshError) {
+      log.error("Failed to refresh token:", refreshError);
+      return {
+        accessToken: null,
+        error:
+          "Access token has expired and refresh failed. Please re-authenticate in the Granola app.",
+      };
+    }
+  }
+
+  return { accessToken: workosTokens.access_token, error: null };
 }
