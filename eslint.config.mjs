@@ -4,6 +4,9 @@ import tsparser from '@typescript-eslint/parser';
 import obsidianmd from 'eslint-plugin-obsidianmd';
 
 export default tseslint.config(
+  {
+    ignores: ['src/services/embeddedKeyringBinaries.ts'],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   ...obsidianmd.configs.recommended,

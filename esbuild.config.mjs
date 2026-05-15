@@ -4,6 +4,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from "node:module";
+import { execFileSync } from "node:child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -31,68 +32,16 @@ const DEV_PLUGIN_PATH =
     "obsidian/Everything/.obsidian/plugins/granola-sync/main.js"
   );
 
-// External native modules that must be shipped alongside main.js so Obsidian's
-// `require()` can resolve them at runtime. esbuild treats these as `external`,
-// so they need to live in <plugin-dir>/node_modules/<name>/.
-const NATIVE_DEPENDENCIES = [
-  "@napi-rs/keyring",
-  // The platform binary subpackage for the current host. Distribution builds
-  // need the matching package for each target arch; for dev we just ship the
-  // host's.
-  `@napi-rs/keyring-${process.platform}-${process.arch}`,
-];
-
-function copyDirSync(src, dest) {
-  fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirSync(srcPath, destPath);
-    } else if (entry.isSymbolicLink()) {
-      // Follow symlinks (pnpm stores real files inside .pnpm/) so we get plain files
-      const resolved = fs.realpathSync(srcPath);
-      const stat = fs.statSync(resolved);
-      if (stat.isDirectory()) copyDirSync(resolved, destPath);
-      else fs.copyFileSync(resolved, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-}
-
-function locateModule(name) {
-  // 1. Direct symlink in node_modules (typical npm/yarn, and pnpm-symlinked deps)
-  const direct = path.join(__dirname, "node_modules", name);
-  if (fs.existsSync(direct)) return fs.realpathSync(direct);
-
-  // 2. pnpm's optional/peer deps live under node_modules/.pnpm/<name>@<ver>/node_modules/<name>
-  const pnpmRoot = path.join(__dirname, "node_modules", ".pnpm");
-  if (fs.existsSync(pnpmRoot)) {
-    const flatName = name.replace(/\//g, "+");
-    const match = fs
-      .readdirSync(pnpmRoot)
-      .find((entry) => entry.startsWith(`${flatName}@`));
-    if (match) {
-      const candidate = path.join(pnpmRoot, match, "node_modules", name);
-      if (fs.existsSync(candidate)) return fs.realpathSync(candidate);
-    }
-  }
-  return null;
-}
-
-function copyNativeDependencies(targetDir) {
-  for (const name of NATIVE_DEPENDENCIES) {
-    const resolvedPkg = locateModule(name);
-    if (!resolvedPkg) {
-      console.warn(`✗ Could not locate ${name} in node_modules; skipping copy`);
-      continue;
-    }
-    const destPkg = path.join(targetDir, "node_modules", name);
-    fs.rmSync(destPkg, { recursive: true, force: true });
-    copyDirSync(resolvedPkg, destPkg);
-    console.log(`✓ Copied ${name} to ${destPkg}`);
-  }
+// Regenerate src/services/embeddedKeyringBinaries.ts before each build so the
+// bundle picks up the current @napi-rs/keyring binaries. The TS file is large
+// (~8 MB of base64) and not committed — this keeps it fresh after `pnpm install`.
+function regenerateEmbeddedBinaries() {
+  console.log("Regenerating embedded keyring binaries…");
+  execFileSync(
+    process.execPath,
+    [path.join(__dirname, "scripts/generateEmbeddedKeyringBinaries.mjs")],
+    { stdio: "inherit" }
+  );
 }
 
 function copyToDevPlugin() {
@@ -105,23 +54,19 @@ function copyToDevPlugin() {
     const manifestTargetPath = path.join(targetDir, "manifest.json");
     const stylesTargetPath = path.join(targetDir, "styles.css");
 
-    // Check if target directory exists
     if (!fs.existsSync(targetDir)) {
       console.error(`Target directory does not exist: ${targetDir}`);
       return;
     }
 
-    // Copy the built main.js
     fs.copyFileSync(outputPath, DEV_PLUGIN_PATH);
     console.log(`✓ Copied main.js to ${DEV_PLUGIN_PATH}`);
 
-    // Copy styles.css
     if (fs.existsSync(stylesPath)) {
       fs.copyFileSync(stylesPath, stylesTargetPath);
       console.log(`✓ Copied styles.css to ${stylesTargetPath}`);
     }
 
-    // Write a dev manifest with a fixed version so it doesn't override production
     const devManifest = { ...manifest, version: "1.0.0" };
     fs.writeFileSync(
       manifestTargetPath,
@@ -130,23 +75,29 @@ function copyToDevPlugin() {
     );
     console.log(`✓ Wrote dev manifest.json to ${manifestTargetPath}`);
 
-    copyNativeDependencies(targetDir);
+    // Stale binaries previously copied via the per-platform node_modules path —
+    // remove them so we don't end up with two keyring backends in the plugin dir.
+    const staleNodeModules = path.join(targetDir, "node_modules");
+    if (fs.existsSync(staleNodeModules)) {
+      fs.rmSync(staleNodeModules, { recursive: true, force: true });
+      console.log(`✓ Removed stale ${staleNodeModules}`);
+    }
   } catch (error) {
     console.error(`Failed to copy to dev plugin directory: ${error.message}`);
   }
 }
 
-// Plugin to copy file after build in development mode
 const copyPlugin = {
   name: "copy-to-dev-plugin",
   setup(build) {
     if (prod) return;
-
     build.onEnd(() => {
       copyToDevPlugin();
     });
   },
 };
+
+regenerateEmbeddedBinaries();
 
 const context = await esbuild.context({
   banner: {
@@ -160,7 +111,6 @@ const context = await esbuild.context({
   external: [
     "obsidian",
     "electron",
-    "@napi-rs/keyring",
     "@codemirror/autocomplete",
     "@codemirror/collab",
     "@codemirror/commands",
@@ -189,9 +139,6 @@ if (prod) {
   await context.rebuild();
   process.exit(0);
 } else {
-  // Initial build (plugin will copy automatically)
   await context.rebuild();
-
-  // Watch for changes (plugin will copy on each rebuild)
   await context.watch();
 }

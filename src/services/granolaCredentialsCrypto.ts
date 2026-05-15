@@ -1,36 +1,8 @@
 import fs from "fs";
-import path from "path";
 import crypto from "crypto";
-import type { Entry as EntryClass } from "@napi-rs/keyring";
+import { loadEntry, setPluginDirectory } from "./keyringLoader";
 
-// Obsidian evaluates plugin code in a context where bare-name requires don't
-// walk up to the plugin's own node_modules (the calling module appears as
-// electron's renderer init). The plugin must set its absolute directory at
-// startup so we can resolve @napi-rs/keyring by absolute path.
-let pluginDirectory: string | null = null;
-export function setPluginDirectory(dir: string): void {
-  pluginDirectory = dir;
-}
-
-let entryCtor: typeof EntryClass | null = null;
-function getEntry(): typeof EntryClass {
-  if (entryCtor) return entryCtor;
-  if (!pluginDirectory) {
-    throw new Error(
-      "Plugin directory has not been initialised; call setPluginDirectory() in onload()."
-    );
-  }
-  const keyringPath = path.join(
-    pluginDirectory,
-    "node_modules",
-    "@napi-rs",
-    "keyring"
-  );
-  entryCtor = (
-    require(keyringPath) as { Entry: typeof EntryClass }
-  ).Entry;
-  return entryCtor;
-}
+export { setPluginDirectory };
 
 const KEYCHAIN_SERVICE = "Granola Safe Storage";
 const KEYCHAIN_ACCOUNT = "Granola Key";
@@ -118,7 +90,7 @@ export function decryptPayload(dek: Buffer, encBlob: Buffer): Buffer {
 export function getKeychainPassword(): string {
   let password: string | null;
   try {
-    const Entry = getEntry();
+    const Entry = loadEntry();
     const entry = new Entry(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
     password = entry.getPassword();
   } catch (error) {

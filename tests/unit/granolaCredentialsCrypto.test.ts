@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import fs from "fs";
-import { Entry } from "@napi-rs/keyring";
+import { loadEntry } from "../../src/services/keyringLoader";
 import {
   decryptDek,
   decryptPayload,
@@ -16,16 +16,22 @@ jest.mock("fs", () => ({
   },
 }));
 
-jest.mock("@napi-rs/keyring", () => ({
-  Entry: jest.fn(),
+jest.mock("../../src/services/keyringLoader", () => ({
+  loadEntry: jest.fn(),
+  setPluginDirectory: jest.fn(),
 }));
 
-const MockEntry = Entry as unknown as jest.Mock;
+const mockLoadEntry = loadEntry as jest.MockedFunction<typeof loadEntry>;
+const MockEntry = jest.fn();
 
 function mockEntry(getPassword: jest.Mock | (() => string | null)) {
   MockEntry.mockImplementation(() => ({
-    getPassword: typeof getPassword === "function" ? getPassword : () => getPassword,
+    getPassword:
+      typeof getPassword === "function" ? getPassword : () => getPassword,
   }));
+  mockLoadEntry.mockReturnValue(
+    MockEntry as unknown as ReturnType<typeof loadEntry>
+  );
 }
 
 const PBKDF2_SALT = "saltysalt";
@@ -123,13 +129,27 @@ describe("getKeychainPassword", () => {
     mockEntry(() => "kc-secret");
 
     expect(getKeychainPassword()).toBe("kc-secret");
-    expect(MockEntry).toHaveBeenCalledWith("Granola Safe Storage", "Granola Key");
+    expect(MockEntry).toHaveBeenCalledWith(
+      "Granola Safe Storage",
+      "Granola Key"
+    );
+  });
+
+  it("throws KeychainAccessError when loadEntry throws", () => {
+    mockLoadEntry.mockImplementation(() => {
+      throw new Error("native binary failed to load");
+    });
+
+    expect(() => getKeychainPassword()).toThrow(KeychainAccessError);
   });
 
   it("throws KeychainAccessError when Entry construction throws", () => {
     MockEntry.mockImplementation(() => {
       throw new Error("keyring backend not available");
     });
+    mockLoadEntry.mockReturnValue(
+      MockEntry as unknown as ReturnType<typeof loadEntry>
+    );
 
     expect(() => getKeychainPassword()).toThrow(KeychainAccessError);
   });
