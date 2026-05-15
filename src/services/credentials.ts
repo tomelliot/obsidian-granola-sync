@@ -105,7 +105,9 @@ function parseTokens(fileContents: string): WorkosTokens {
   }
 
   const accounts: StoredAccount[] =
-    typeof data.accounts === "string" ? JSON.parse(data.accounts) : data.accounts;
+    typeof data.accounts === "string"
+      ? (JSON.parse(data.accounts) as StoredAccount[])
+      : data.accounts;
 
   if (!Array.isArray(accounts) || accounts.length === 0) {
     throw new Error(
