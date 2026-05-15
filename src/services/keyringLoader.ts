@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { Platform } from "obsidian";
 import type { Entry as EntryClass } from "@napi-rs/keyring";
 import {
   EMBEDDED_KEYRING_BINARIES,
@@ -19,13 +20,23 @@ export function setPluginDirectory(dir: string): void {
 }
 
 export function detectPlatformTag(): string {
-  const suffix =
-    process.platform === "linux"
-      ? "-gnu"
-      : process.platform === "win32"
-      ? "-msvc"
-      : "";
-  return `${process.platform}-${process.arch}${suffix}`;
+  if (Platform.isMobile) {
+    throw new Error(
+      "Granola credentials decryption is not supported on Obsidian mobile."
+    );
+  }
+  if (Platform.isMacOS) {
+    return `darwin-${process.arch}`;
+  }
+  if (Platform.isWin) {
+    return `win32-${process.arch}-msvc`;
+  }
+  if (Platform.isLinux) {
+    return `linux-${process.arch}-gnu`;
+  }
+  throw new Error(
+    "Unsupported Obsidian platform for Granola credentials decryption."
+  );
 }
 
 let entryCtor: typeof EntryClass | null = null;
