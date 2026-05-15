@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import fs from "fs";
-import { execFile } from "child_process";
-import { Platform } from "obsidian";
+import { Entry } from "@napi-rs/keyring";
 import {
   decryptDek,
   decryptPayload,
@@ -9,12 +8,7 @@ import {
   loadEncryptedCredentials,
   KeychainAccessError,
   CredentialDecryptionError,
-  UnsupportedPlatformError,
 } from "../../src/services/granolaCredentialsCrypto";
-
-jest.mock("obsidian", () => ({
-  Platform: { isMacOS: true, isLinux: false, isWin: false },
-}));
 
 jest.mock("fs", () => ({
   promises: {
@@ -22,9 +16,17 @@ jest.mock("fs", () => ({
   },
 }));
 
-jest.mock("child_process", () => ({
-  execFile: jest.fn(),
+jest.mock("@napi-rs/keyring", () => ({
+  Entry: jest.fn(),
 }));
+
+const MockEntry = Entry as unknown as jest.Mock;
+
+function mockEntry(getPassword: jest.Mock | (() => string | null)) {
+  MockEntry.mockImplementation(() => ({
+    getPassword: typeof getPassword === "function" ? getPassword : () => getPassword,
+  }));
+}
 
 const PBKDF2_SALT = "saltysalt";
 const PBKDF2_ITERATIONS = 1003;
@@ -52,15 +54,8 @@ function encryptPayload(dek: Buffer, plaintext: Buffer): Buffer {
   return Buffer.concat([iv, ciphertext, tag]);
 }
 
-function setPlatform(platform: "macos" | "linux" | "windows" | "other") {
-  (Platform as { isMacOS: boolean }).isMacOS = platform === "macos";
-  (Platform as { isLinux: boolean }).isLinux = platform === "linux";
-  (Platform as { isWin: boolean }).isWin = platform === "windows";
-}
-
 beforeEach(() => {
   jest.clearAllMocks();
-  setPlatform("macos");
 });
 
 describe("decryptDek", () => {
@@ -124,83 +119,40 @@ describe("decryptPayload", () => {
 });
 
 describe("getKeychainPassword", () => {
-  it("invokes `security` on macOS and trims the trailing newline", async () => {
-    setPlatform("macos");
-    (execFile as unknown as jest.Mock).mockImplementation(
-      (_file, _args, _opts, cb) => cb(null, "macos-pw\n", "")
-    );
+  it("constructs Entry with the Granola service and account, returning the password", () => {
+    mockEntry(() => "kc-secret");
 
-    await expect(getKeychainPassword()).resolves.toBe("macos-pw");
-
-    const [file, args] = (execFile as unknown as jest.Mock).mock.calls[0];
-    expect(file).toBe("security");
-    expect(args).toEqual([
-      "find-generic-password",
-      "-w",
-      "-s",
-      "Granola Safe Storage",
-    ]);
+    expect(getKeychainPassword()).toBe("kc-secret");
+    expect(MockEntry).toHaveBeenCalledWith("Granola Safe Storage", "Granola Key");
   });
 
-  it("wraps macOS keychain failures in KeychainAccessError", async () => {
-    setPlatform("macos");
-    (execFile as unknown as jest.Mock).mockImplementation(
-      (_file, _args, _opts, cb) => cb(new Error("item not found"), "", "")
-    );
-
-    await expect(getKeychainPassword()).rejects.toBeInstanceOf(
-      KeychainAccessError
-    );
-  });
-
-  it("invokes `secret-tool` on Linux and returns the password", async () => {
-    setPlatform("linux");
-    (execFile as unknown as jest.Mock).mockImplementation(
-      (_file, _args, _opts, cb) => cb(null, "linux-pw\n", "")
-    );
-
-    await expect(getKeychainPassword()).resolves.toBe("linux-pw");
-
-    const [file, args] = (execFile as unknown as jest.Mock).mock.calls[0];
-    expect(file).toBe("secret-tool");
-    expect(args).toEqual(["lookup", "application", "Granola"]);
-  });
-
-  it("throws KeychainAccessError when secret-tool returns an empty password", async () => {
-    setPlatform("linux");
-    (execFile as unknown as jest.Mock).mockImplementation(
-      (_file, _args, _opts, cb) => cb(null, "", "")
-    );
-
-    await expect(getKeychainPassword()).rejects.toBeInstanceOf(
-      KeychainAccessError
-    );
-  });
-
-  it("throws KeychainAccessError pointing at libsecret-tools when secret-tool is missing", async () => {
-    setPlatform("linux");
-    const enoent = Object.assign(new Error("spawn secret-tool ENOENT"), {
-      code: "ENOENT",
+  it("throws KeychainAccessError when Entry construction throws", () => {
+    MockEntry.mockImplementation(() => {
+      throw new Error("keyring backend not available");
     });
-    (execFile as unknown as jest.Mock).mockImplementation(
-      (_file, _args, _opts, cb) => cb(enoent, "", "")
-    );
 
-    await expect(getKeychainPassword()).rejects.toThrow(/libsecret-tools/);
+    expect(() => getKeychainPassword()).toThrow(KeychainAccessError);
   });
 
-  it("throws UnsupportedPlatformError on Windows", async () => {
-    setPlatform("windows");
-
-    await expect(getKeychainPassword()).rejects.toBeInstanceOf(
-      UnsupportedPlatformError
+  it("throws KeychainAccessError when getPassword throws", () => {
+    mockEntry(
+      jest.fn(() => {
+        throw new Error("user denied");
+      })
     );
+
+    expect(() => getKeychainPassword()).toThrow(KeychainAccessError);
+  });
+
+  it("throws KeychainAccessError when the entry is empty", () => {
+    mockEntry(() => null);
+
+    expect(() => getKeychainPassword()).toThrow(KeychainAccessError);
   });
 });
 
 describe("loadEncryptedCredentials", () => {
   it("reads both files, decrypts, and returns the plaintext string", async () => {
-    setPlatform("macos");
     const password = "kc-secret";
     const dek = crypto.randomBytes(32);
     const dekBlob = encryptDek(password, dek);
@@ -212,9 +164,7 @@ describe("loadEncryptedCredentials", () => {
       if (p === "/granola/supabase.json.enc") return Promise.resolve(encBlob);
       return Promise.reject(new Error(`unexpected path: ${p}`));
     });
-    (execFile as unknown as jest.Mock).mockImplementation(
-      (_file, _args, _opts, cb) => cb(null, `${password}\n`, "")
-    );
+    mockEntry(() => password);
 
     const result = await loadEncryptedCredentials(
       "/granola/supabase.json.enc",
@@ -225,7 +175,6 @@ describe("loadEncryptedCredentials", () => {
   });
 
   it("propagates ENOENT from a missing storage.dek", async () => {
-    setPlatform("macos");
     const enoent = Object.assign(new Error("no such file"), { code: "ENOENT" });
     (fs.promises.readFile as jest.Mock).mockRejectedValue(enoent);
 
@@ -235,15 +184,16 @@ describe("loadEncryptedCredentials", () => {
   });
 
   it("propagates KeychainAccessError when the keychain lookup fails", async () => {
-    setPlatform("macos");
     const dek = crypto.randomBytes(32);
     const dekBlob = encryptDek("anything", dek);
     const encBlob = encryptPayload(dek, Buffer.from("{}", "utf8"));
     (fs.promises.readFile as jest.Mock).mockImplementation((p: string) =>
       Promise.resolve(p.endsWith(".dek") ? dekBlob : encBlob)
     );
-    (execFile as unknown as jest.Mock).mockImplementation(
-      (_file, _args, _opts, cb) => cb(new Error("denied"), "", "")
+    mockEntry(
+      jest.fn(() => {
+        throw new Error("denied");
+      })
     );
 
     await expect(

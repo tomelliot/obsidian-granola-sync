@@ -26,6 +26,7 @@ import {
 import {
   loadCredentials as loadGranolaCredentials,
 } from "./services/credentials";
+import { setPluginDirectory } from "./services/granolaCredentialsCrypto";
 import {
   formatTranscriptBySpeaker,
   formatTranscriptBody,
@@ -57,6 +58,14 @@ export default class GranolaSync extends Plugin {
     await this.loadSettings();
 
     this.initializeLogger();
+
+    // Tell the credentials crypto module where the plugin lives so it can
+    // resolve its bundled native dependency by absolute path. Obsidian's
+    // plugin require doesn't search the plugin's own node_modules.
+    const adapter = this.app.vault.adapter;
+    if (adapter instanceof FileSystemAdapter && this.manifest.dir) {
+      setPluginDirectory(path.join(adapter.getBasePath(), this.manifest.dir));
+    }
 
     // Initialize services
     this.initializeServices();

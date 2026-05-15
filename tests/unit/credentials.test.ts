@@ -4,7 +4,6 @@ import {
   loadEncryptedCredentials,
   KeychainAccessError,
   CredentialDecryptionError,
-  UnsupportedPlatformError,
 } from "../../src/services/granolaCredentialsCrypto";
 
 jest.mock("obsidian");
@@ -22,17 +21,10 @@ jest.mock("../../src/services/granolaCredentialsCrypto", () => {
       this.name = "CredentialDecryptionError";
     }
   }
-  class UnsupportedPlatformError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = "UnsupportedPlatformError";
-    }
-  }
   return {
     loadEncryptedCredentials: jest.fn(),
     KeychainAccessError,
     CredentialDecryptionError,
-    UnsupportedPlatformError,
   };
 });
 
@@ -302,21 +294,6 @@ describe("Credentials Service - Token Refresh", () => {
 
     expect(result.accessToken).toBeNull();
     expect(result.error).toContain("Failed to decrypt Granola credentials");
-  });
-
-  it("should surface unsupported platform errors verbatim", async () => {
-    mockLoadEncrypted.mockRejectedValueOnce(
-      new UnsupportedPlatformError(
-        "Encrypted Granola credentials are not yet supported on this platform"
-      )
-    );
-
-    const result = await loadCredentials();
-
-    expect(result.accessToken).toBeNull();
-    expect(result.error).toContain(
-      "Encrypted Granola credentials are not yet supported"
-    );
   });
 
   it("should handle invalid JSON format in the decrypted payload", async () => {

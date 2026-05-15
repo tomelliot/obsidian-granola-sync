@@ -1,25 +1,39 @@
-import { Platform } from "obsidian";
 import fs from "fs";
+import path from "path";
 import crypto from "crypto";
-import { execFile } from "child_process";
+import type { Entry as EntryClass } from "@napi-rs/keyring";
 
-function execFileAsync(
-  file: string,
-  args: string[]
-): Promise<{ stdout: string; stderr: string }> {
-  return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-    execFile(file, args, { encoding: "utf8" }, (error, stdout, stderr) => {
-      if (error) {
-        reject(error as Error);
-        return;
-      }
-      resolve({ stdout, stderr });
-    });
-  });
+// Obsidian evaluates plugin code in a context where bare-name requires don't
+// walk up to the plugin's own node_modules (the calling module appears as
+// electron's renderer init). The plugin must set its absolute directory at
+// startup so we can resolve @napi-rs/keyring by absolute path.
+let pluginDirectory: string | null = null;
+export function setPluginDirectory(dir: string): void {
+  pluginDirectory = dir;
 }
 
-const KEYCHAIN_ITEM = "Granola Safe Storage";
-const LINUX_SECRET_APPLICATION = "Granola";
+let entryCtor: typeof EntryClass | null = null;
+function getEntry(): typeof EntryClass {
+  if (entryCtor) return entryCtor;
+  if (!pluginDirectory) {
+    throw new Error(
+      "Plugin directory has not been initialised; call setPluginDirectory() in onload()."
+    );
+  }
+  const keyringPath = path.join(
+    pluginDirectory,
+    "node_modules",
+    "@napi-rs",
+    "keyring"
+  );
+  entryCtor = (
+    require(keyringPath) as { Entry: typeof EntryClass }
+  ).Entry;
+  return entryCtor;
+}
+
+const KEYCHAIN_SERVICE = "Granola Safe Storage";
+const KEYCHAIN_ACCOUNT = "Granola Key";
 const DEK_PREFIX = "v10";
 const PBKDF2_SALT = "saltysalt";
 const PBKDF2_ITERATIONS = 1003;
@@ -41,13 +55,6 @@ export class CredentialDecryptionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CredentialDecryptionError";
-  }
-}
-
-export class UnsupportedPlatformError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UnsupportedPlatformError";
   }
 }
 
@@ -108,57 +115,20 @@ export function decryptPayload(dek: Buffer, encBlob: Buffer): Buffer {
   }
 }
 
-export async function getKeychainPassword(): Promise<string> {
-  if (Platform.isMacOS) {
-    return getMacOSKeychainPassword();
-  }
-  if (Platform.isLinux) {
-    return getLinuxKeychainPassword();
-  }
-  throw new UnsupportedPlatformError(
-    "Encrypted Granola credentials are not yet supported on this platform"
-  );
-}
-
-async function getMacOSKeychainPassword(): Promise<string> {
+export function getKeychainPassword(): string {
+  let password: string | null;
   try {
-    const { stdout } = await execFileAsync("security", [
-      "find-generic-password",
-      "-w",
-      "-s",
-      KEYCHAIN_ITEM,
-    ]);
-    return stdout.replace(/\n$/, "");
+    const Entry = getEntry();
+    const entry = new Entry(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+    password = entry.getPassword();
   } catch (error) {
     throw new KeychainAccessError(
-      `Could not read '${KEYCHAIN_ITEM}' from macOS Keychain: ${error instanceof Error ? error.message : String(error)}`
+      `Could not read '${KEYCHAIN_SERVICE}' from system keychain: ${error instanceof Error ? error.message : String(error)}. Make sure Granola is installed and you have logged in.`
     );
   }
-}
-
-async function getLinuxKeychainPassword(): Promise<string> {
-  let stdout: string;
-  try {
-    ({ stdout } = await execFileAsync("secret-tool", [
-      "lookup",
-      "application",
-      LINUX_SECRET_APPLICATION,
-    ]));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (/ENOENT/.test(message)) {
-      throw new KeychainAccessError(
-        "secret-tool is not installed. Install libsecret-tools (e.g. 'sudo apt install libsecret-tools') and try again."
-      );
-    }
-    throw new KeychainAccessError(
-      `Could not read Granola password from libsecret: ${message}`
-    );
-  }
-  const password = stdout.replace(/\n$/, "");
   if (!password) {
     throw new KeychainAccessError(
-      `No password found in libsecret for application='${LINUX_SECRET_APPLICATION}'. Make sure Granola is installed and you have logged in.`
+      `No password found in system keychain for service='${KEYCHAIN_SERVICE}', account='${KEYCHAIN_ACCOUNT}'. Make sure Granola is installed and you have logged in.`
     );
   }
   return password;
@@ -172,7 +142,7 @@ export async function loadEncryptedCredentials(
     fs.promises.readFile(dekPath),
     fs.promises.readFile(encPath),
   ]);
-  const password = await getKeychainPassword();
+  const password = getKeychainPassword();
   const dek = decryptDek(password, dekBlob);
   const plaintext = decryptPayload(dek, encBlob);
   return plaintext.toString("utf-8");

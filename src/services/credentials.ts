@@ -6,7 +6,6 @@ import {
   loadEncryptedCredentials,
   KeychainAccessError,
   CredentialDecryptionError,
-  UnsupportedPlatformError,
 } from "./granolaCredentialsCrypto";
 
 interface WorkosTokens {
@@ -127,9 +126,6 @@ async function refreshAccessToken(
 }
 
 function describeLoadError(error: unknown): string {
-  if (error instanceof UnsupportedPlatformError) {
-    return error.message;
-  }
   if (error instanceof KeychainAccessError) {
     return `Could not read Granola password from system keychain. Make sure Granola is installed and you have logged in. (${error.message})`;
   }

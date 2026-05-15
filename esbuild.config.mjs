@@ -31,6 +31,70 @@ const DEV_PLUGIN_PATH =
     "obsidian/Everything/.obsidian/plugins/granola-sync/main.js"
   );
 
+// External native modules that must be shipped alongside main.js so Obsidian's
+// `require()` can resolve them at runtime. esbuild treats these as `external`,
+// so they need to live in <plugin-dir>/node_modules/<name>/.
+const NATIVE_DEPENDENCIES = [
+  "@napi-rs/keyring",
+  // The platform binary subpackage for the current host. Distribution builds
+  // need the matching package for each target arch; for dev we just ship the
+  // host's.
+  `@napi-rs/keyring-${process.platform}-${process.arch}`,
+];
+
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      // Follow symlinks (pnpm stores real files inside .pnpm/) so we get plain files
+      const resolved = fs.realpathSync(srcPath);
+      const stat = fs.statSync(resolved);
+      if (stat.isDirectory()) copyDirSync(resolved, destPath);
+      else fs.copyFileSync(resolved, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function locateModule(name) {
+  // 1. Direct symlink in node_modules (typical npm/yarn, and pnpm-symlinked deps)
+  const direct = path.join(__dirname, "node_modules", name);
+  if (fs.existsSync(direct)) return fs.realpathSync(direct);
+
+  // 2. pnpm's optional/peer deps live under node_modules/.pnpm/<name>@<ver>/node_modules/<name>
+  const pnpmRoot = path.join(__dirname, "node_modules", ".pnpm");
+  if (fs.existsSync(pnpmRoot)) {
+    const flatName = name.replace(/\//g, "+");
+    const match = fs
+      .readdirSync(pnpmRoot)
+      .find((entry) => entry.startsWith(`${flatName}@`));
+    if (match) {
+      const candidate = path.join(pnpmRoot, match, "node_modules", name);
+      if (fs.existsSync(candidate)) return fs.realpathSync(candidate);
+    }
+  }
+  return null;
+}
+
+function copyNativeDependencies(targetDir) {
+  for (const name of NATIVE_DEPENDENCIES) {
+    const resolvedPkg = locateModule(name);
+    if (!resolvedPkg) {
+      console.warn(`✗ Could not locate ${name} in node_modules; skipping copy`);
+      continue;
+    }
+    const destPkg = path.join(targetDir, "node_modules", name);
+    fs.rmSync(destPkg, { recursive: true, force: true });
+    copyDirSync(resolvedPkg, destPkg);
+    console.log(`✓ Copied ${name} to ${destPkg}`);
+  }
+}
+
 function copyToDevPlugin() {
   if (prod) return;
 
@@ -65,6 +129,8 @@ function copyToDevPlugin() {
       "utf-8"
     );
     console.log(`✓ Wrote dev manifest.json to ${manifestTargetPath}`);
+
+    copyNativeDependencies(targetDir);
   } catch (error) {
     console.error(`Failed to copy to dev plugin directory: ${error.message}`);
   }
@@ -94,6 +160,7 @@ const context = await esbuild.context({
   external: [
     "obsidian",
     "electron",
+    "@napi-rs/keyring",
     "@codemirror/autocomplete",
     "@codemirror/collab",
     "@codemirror/commands",
