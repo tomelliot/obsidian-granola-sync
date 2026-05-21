@@ -422,7 +422,7 @@ export default class GranolaSync extends Plugin {
     showStatusBar(this, "Granola sync: Syncing...");
 
     // Load credentials at the start of each sync
-    const { accessToken, error } = await loadGranolaCredentials();
+    const { accessToken, error } = await loadGranolaCredentials(this);
     if (!accessToken || error) {
       log.error("Error loading Granola credentials:", error);
       new Notice(
@@ -454,7 +454,7 @@ export default class GranolaSync extends Plugin {
       const errorStatus = (error as { status?: number })?.status;
       if (errorStatus === 401) {
         new Notice(
-          "Granola sync error: Authentication failed. Your access token may have expired. Please reload Granola to update your credentials file.",
+          "Granola sync error: Sign-in failed. Reload Granola, or import fresh credentials from the plugin settings.",
           10000
         );
       } else if (errorStatus === 403) {

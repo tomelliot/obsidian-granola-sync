@@ -1,6 +1,14 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import type GranolaSync from "./main";
 import type { FolderMapData } from "./services/folderMapBuilder";
+import {
+  verifyCustomCredentials,
+  extractTokensFromImport,
+  getStoredAccountEmail,
+  CUSTOM_CREDENTIALS_SECRET_ID,
+  type WorkosTokens,
+} from "./services/credentials";
+import { fetchGranolaDocuments } from "./services/granolaApi";
 import bmcButtonSvg from "../assets/bmc-button.svg";
 import githubLogoSvg from "../assets/github-logo.svg";
 
@@ -114,6 +122,9 @@ export type GranolaSyncSettings = NoteSettings &
   AutomaticSyncSettings &
   FilterSettings & {
     enableDebugLogging: boolean;
+    // When true, the plugin uses credentials stored in Obsidian Keychain
+    // instead of reading the Granola app's credentials file.
+    useCustomCredentials: boolean;
     // Persisted folder map for detecting renames across syncs
     _folderMapCache?: FolderMapData;
     // Legacy settings preserved for potential rollback
@@ -149,6 +160,8 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   transcriptFilenamePattern: "{title}-transcript",
   // Debug / diagnostics
   enableDebugLogging: false,
+  // Custom credentials (off by default)
+  useCustomCredentials: false,
 };
 
 /**
@@ -244,8 +257,61 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  /**
+   * Finds the scrollable ancestor of an element by walking up the DOM until
+   * one is found whose computed `overflow-y` allows scrolling. Used to
+   * preserve scroll position across `display()` re-renders.
+   */
+  private findScrollContainer(el: HTMLElement): HTMLElement | null {
+    let node: HTMLElement | null = el.parentElement;
+    while (node) {
+      const overflowY = activeWindow.getComputedStyle(node).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll") {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  /**
+   * Parses imported credential text, saves the resulting token pair to
+   * Obsidian Keychain, and shows a notice. Called from the file-picker's
+   * onchange handler so the import flow stays a single user gesture.
+   */
+  private saveImportedCredentials(text: string): void {
+    const extracted = extractTokensFromImport(text);
+    if (!extracted) {
+      new Notice(
+        "Couldn't read credentials from that file. Please pick a valid stored-accounts.json."
+      );
+      return;
+    }
+    // obtained_at: 0, expires_in: 1 forces an immediate refresh on first use,
+    // avoiding any assumption about the token's remaining lifetime.
+    const tokens: WorkosTokens = {
+      access_token: extracted.access_token,
+      refresh_token: extracted.refresh_token,
+      expires_in: 1,
+      token_type: "Bearer",
+      obtained_at: 0,
+      account_email: extracted.account_email,
+    };
+    this.plugin.app.secretStorage.setSecret(
+      CUSTOM_CREDENTIALS_SECRET_ID,
+      JSON.stringify(tokens)
+    );
+    // eslint-disable-next-line obsidianmd/ui/sentence-case -- "Obsidian Keychain" is a feature name
+    new Notice("Credentials saved to Obsidian Keychain.");
+    this.display();
+  }
+
   display(): void {
     const { containerEl } = this;
+
+    // Preserve scroll position so toggling settings doesn't jump the view.
+    const scrollContainer = this.findScrollContainer(containerEl);
+    const scrollTop = scrollContainer?.scrollTop ?? 0;
 
     containerEl.empty();
 
@@ -622,7 +688,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     );
 
     new Setting(containerEl).setDesc(
-      "Full sync, filtering, and debugging options."
+      "Full sync, custom credentials, filtering, and debugging options."
     );
 
     if (this.showAdvanced) {
@@ -640,6 +706,150 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               new Notice("Granola sync: Starting full sync.");
               await this.plugin.sync({ mode: "full" });
               new Notice("Granola sync: Full sync complete.");
+            })
+        );
+
+      // Sign in without Granola installed
+      new Setting(containerEl).setName("Sign in without Granola").setHeading();
+
+      const hasStoredCredentials = !!this.plugin.app.secretStorage.getSecret(
+        CUSTOM_CREDENTIALS_SECRET_ID
+      );
+      const accountIdentity = hasStoredCredentials
+        ? getStoredAccountEmail(this.plugin)
+        : null;
+
+      // Status line only renders when custom credentials are active — outside
+      // that state, the plugin is reading from the Granola app and a "Signed
+      // in as X" would be misleading.
+      const customCredentialsActive = this.plugin.settings.useCustomCredentials;
+      const statusText = !customCredentialsActive
+        ? null
+        : accountIdentity
+          ? `Signed in as ${accountIdentity}.`
+          : hasStoredCredentials
+            ? "Custom credentials saved (no email captured during import)."
+            : "No credentials saved yet.";
+
+      new Setting(containerEl)
+        .setName("Use custom credentials")
+        .setDesc(
+          createFragment((frag) => {
+            frag.appendText(
+              "Use credentials you've imported instead of reading them from the Granola app. " +
+              "Useful when Granola isn't installed on this device. " +
+              "Credentials are stored in Obsidian Keychain."
+            );
+            if (statusText) {
+              frag.createEl("br");
+              frag.createEl("br");
+              frag.createEl("strong", { text: statusText });
+            }
+          })
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.useCustomCredentials)
+            .onChange(async (v) => {
+              this.plugin.settings.useCustomCredentials = v;
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Import credentials")
+        .setDesc(
+          createFragment((frag) => {
+            frag.appendText(
+              "Pick a copy of stored-accounts.json from a device where Granola is installed. Granola writes this file to:"
+            );
+            const list = frag.createEl("ul");
+            const paths: Array<[string, string]> = [
+              ["macOS", "~/Library/Application Support/Granola/stored-accounts.json"],
+              ["Windows", "%APPDATA%\\Granola\\stored-accounts.json"],
+              ["Linux", "~/.config/Granola/stored-accounts.json"],
+            ];
+            for (const [os, p] of paths) {
+              const li = list.createEl("li");
+              li.createEl("strong", { text: `${os}: ` });
+              li.createEl("code", { text: p });
+            }
+            frag.appendText(
+              "The plugin saves the credentials to Obsidian Keychain — never your vault."
+            );
+          })
+        )
+        .addButton((btn) =>
+          btn
+            .setButtonText("Choose file…")
+            .setCta()
+            .onClick(() => {
+              const input = activeDocument.createElement("input");
+              input.type = "file";
+              input.accept = "application/json,.json";
+              input.onchange = () => {
+                const file = input.files?.[0];
+                if (!file) return;
+                file.text()
+                  .then((text) => { this.saveImportedCredentials(text); })
+                  .catch((e: unknown) => {
+                    const msg = e instanceof Error ? e.message : String(e);
+                    new Notice(`Couldn't read that file: ${msg}`);
+                  });
+              };
+              input.click();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Test connection")
+        .setDesc("Check that your saved credentials still work with Granola.")
+        .addButton((btn) => {
+          btn
+            .setButtonText("Test")
+            .setDisabled(!hasStoredCredentials)
+            .onClick(async () => {
+              btn.setDisabled(true);
+              btn.setButtonText("Testing…");
+              try {
+                const { accessToken, error } = await verifyCustomCredentials(
+                  this.plugin
+                );
+                if (error || !accessToken) {
+                  new Notice(`Couldn't connect: ${error ?? "no response"}`, 10000);
+                  return;
+                }
+                // Probe API call: fetch up to 1 document to confirm the new access token works.
+                await fetchGranolaDocuments(accessToken, 1, 0);
+                new Notice("Connected to Granola successfully.", 5000);
+                this.display();
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
+                new Notice(`Couldn't connect: ${msg}`, 10000);
+              } finally {
+                btn.setDisabled(false);
+                btn.setButtonText("Test");
+              }
+            });
+        });
+
+      new Setting(containerEl)
+        .setName("Clear credentials")
+        // eslint-disable-next-line obsidianmd/ui/sentence-case -- "OS" is an acronym
+        .setDesc("Remove saved credentials from Obsidian Keychain.")
+        .addButton((btn) =>
+          btn
+            .setButtonText("Clear")
+            .setWarning()
+            .setDisabled(!hasStoredCredentials)
+            .onClick(() => {
+              this.plugin.app.secretStorage.setSecret(
+                CUSTOM_CREDENTIALS_SECRET_ID,
+                ""
+              );
+              new Notice("Credentials cleared.");
+              this.display();
             })
         );
 
@@ -795,5 +1005,10 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         window.open("https://buymeacoffee.com/tomelliot");
       });
     });
+
+    // Restore scroll position captured at the start of this render.
+    if (scrollContainer) {
+      scrollContainer.scrollTop = scrollTop;
+    }
   }
 }
