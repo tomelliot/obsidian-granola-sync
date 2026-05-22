@@ -26,11 +26,30 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 
 ## Configuration
 
-> **Note:** Granola credentials are read directly from the filesystem. The plugin reads the credentials file from the Granola application's data directory. You can review the implementation of this mechanism in [`src/services/credentials.ts`](src/services/credentials.ts).
+### Authentication
+
+The plugin supports two ways to authenticate with Granola:
+
+1. **Desktop credentials (default).** The plugin reads credentials from your local Granola app (`stored-accounts.json`). Works on any plan, including free and Personal. Implementation: [`src/services/credentials.ts`](src/services/credentials.ts).
+2. **API key.** Use Granola's official [Public API](https://docs.granola.ai/introduction) with a `grn_*` key generated in Granola settings. Requires Granola **Business or Enterprise**. Switch via **Settings → Authentication → Authentication method**.
+
+API key mode is the supported workaround for [issue #126](https://github.com/tomelliot/obsidian-granola-sync/issues/126) (recent Granola desktop builds encrypt their credentials file in a way this plugin can't read on free/Personal plans).
+
+Caveats for API key mode:
+
+- The API returns Granola's **AI summary** (`summary_markdown`), not the ProseMirror enhanced-note body the desktop app syncs. By default, the plugin uses `apiSyncBodyMode = refresh-transcripts-only` to leave existing note bodies alone — only transcripts and frontmatter are updated. Use `force-refresh-all` as a one-shot if you want the API summary as canonical.
+- Private notes are not exposed; that toggle is disabled.
+- "Include shared notes" is controlled by your API key's scopes (Personal vs Public) when you create the key, not by the in-plugin toggle.
+- Existing files synced via desktop are deduplicated against the API by extracting the UUID from each note's `web_url` (no duplicate files when switching modes).
+- Your API key is stored in the plugin's `data.json`. If you sync your vault (Obsidian Sync, iCloud, Dropbox, Git), **the key syncs with it** — revoke and re-create if leaked.
+
+Use **Granola: Dry-run sync** to see exactly what would change in your vault before running a live API-mode sync.
+
+### Note and transcript settings
 
 1. Configure note syncing:
    - Choose whether to sync notes
-   - Optionally enable "Include Private Notes" to include your raw private notes at the top of each synced note
+   - Optionally enable "Include Private Notes" to include your raw private notes at the top of each synced note (desktop credentials only)
    - Select the destination: a specific folder, daily notes, or daily note folder structure
    - Optionally set a section heading for daily notes
 2. Configure transcript syncing:

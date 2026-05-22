@@ -10,6 +10,7 @@ import { getNoteDate } from "../utils/dateUtils";
 import { DocumentProcessor } from "./documentProcessor";
 import { updateSection } from "../utils/textUtils";
 import { log } from "../utils/logger";
+import type { DryRunRecorder } from "./dryRun";
 
 export interface NoteData {
   title: string;
@@ -36,7 +37,19 @@ export interface NoteLinkData {
  * Handles grouping notes by date, building section content, and updating daily notes.
  */
 export class DailyNoteBuilder {
+  /**
+   * Active dry-run recorder for the current sync. When set,
+   * {@link updateDailyNoteSection} records the intended write instead of
+   * calling `vault.modify`, and {@link getOrCreateDailyNote} records
+   * would-create instead of calling `createDailyNote`.
+   */
+  private dryRunRecorder: DryRunRecorder | null = null;
+
   constructor(private app: App, private documentProcessor: DocumentProcessor) {}
+
+  setDryRunRecorder(recorder: DryRunRecorder | null): void {
+    this.dryRunRecorder = recorder;
+  }
 
   /**
    * Extracts existing Granola IDs and their updated_at timestamps from a daily note section.
@@ -156,14 +169,30 @@ export class DailyNoteBuilder {
   /**
    * Gets or creates a daily note for the given date.
    *
+   * Dry-run behavior: if the daily note does NOT exist and a recorder is
+   * active, this records a `would-create` event and returns null. Callers
+   * MUST handle null by skipping any subsequent `vault.read` /
+   * `updateDailyNoteSection` call (there's nothing to read).
+   *
    * @param dateKey - Date key in YYYY-MM-DD format
-   * @returns The daily note file
+   * @returns The daily note file, or null if dry-run + missing.
    */
-  async getOrCreateDailyNote(dateKey: string): Promise<TFile> {
+  async getOrCreateDailyNote(dateKey: string): Promise<TFile | null> {
     const noteMoment = moment(dateKey, "YYYY-MM-DD");
     let dailyNoteFile = getDailyNote(noteMoment, getAllDailyNotes());
 
     if (!dailyNoteFile) {
+      if (this.dryRunRecorder) {
+        // We don't know the actual file path the daily-notes plugin would
+        // resolve to without invoking it, so use the dateKey as the path
+        // identifier in the report.
+        this.dryRunRecorder.record({
+          outcome: "would-create",
+          path: `(daily note for ${dateKey})`,
+          reason: "createDailyNote",
+        });
+        return null;
+      }
       dailyNoteFile = await createDailyNote(noteMoment);
     }
 
@@ -240,6 +269,31 @@ export class DailyNoteBuilder {
     sectionContent: string,
     forceOverwrite: boolean = false
   ): Promise<void> {
+    if (this.dryRunRecorder) {
+      // In dry-run, simulate the change check that `updateSection` would do:
+      // read existing, compare new section with old. Record `would-modify`
+      // only when something would actually change.
+      try {
+        const existingContent = await this.app.vault.read(dailyNoteFile);
+        const existingSection = this.extractSectionText(
+          existingContent,
+          sectionHeading
+        );
+        const wouldChange =
+          forceOverwrite || existingSection.trim() !== sectionContent.trim();
+        this.dryRunRecorder.record({
+          outcome: wouldChange ? "would-modify" : "skip-unchanged",
+          path: dailyNoteFile.path,
+          reason: `daily note section "${sectionHeading.trim()}"`,
+        });
+      } catch (error) {
+        log.warn(
+          `Dry-run: could not read ${dailyNoteFile.path} to assess daily-note section change`,
+          error
+        );
+      }
+      return;
+    }
     try {
       await updateSection(
         this.app,
@@ -255,6 +309,35 @@ export class DailyNoteBuilder {
       );
       log.error("Error updating daily note section:", error);
     }
+  }
+
+  /**
+   * Extracts the verbatim section text (heading + body up to next same-or-
+   * higher-level heading) for change comparison. Used by the dry-run path of
+   * {@link updateDailyNoteSection}; intentionally lives here rather than in
+   * shared utilities so it's purely a diagnostic helper.
+   */
+  private extractSectionText(content: string, heading: string): string {
+    const lines = content.split("\n");
+    const headingMatch = heading.match(/^(#{1,6})\s/);
+    const headingLevel = headingMatch ? headingMatch[1].length : null;
+    let start = -1;
+    let end = lines.length;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === heading.trim()) {
+        start = i;
+        continue;
+      }
+      if (start !== -1 && headingLevel !== null) {
+        const m = lines[i].match(/^(#{1,6})\s/);
+        if (m && m[1].length <= headingLevel) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (start === -1) return "";
+    return lines.slice(start, end).join("\n");
   }
 
   /**
@@ -446,6 +529,21 @@ export class DailyNoteBuilder {
     for (const [dateKey, newLinksForDay] of linksMap) {
       try {
         const dailyNoteFile = await this.getOrCreateDailyNote(dateKey);
+        if (!dailyNoteFile) {
+          // Dry-run path: getOrCreateDailyNote already recorded a
+          // would-create for the missing daily note. We don't have an
+          // existing file to read or merge with — the live sync would
+          // start the section from scratch with the new links. Record the
+          // intended section write and continue.
+          if (this.dryRunRecorder) {
+            this.dryRunRecorder.record({
+              outcome: "would-modify",
+              path: `(daily note for ${dateKey})`,
+              reason: `would write ${newLinksForDay.length} meeting link(s) into new daily note`,
+            });
+          }
+          continue;
+        }
 
         const fileContent = await this.app.vault.read(dailyNoteFile);
         const existingLinks = this.parseExistingLinks(

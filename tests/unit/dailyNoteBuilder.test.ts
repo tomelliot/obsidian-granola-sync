@@ -49,6 +49,164 @@ describe("DailyNoteBuilder", () => {
     jest.clearAllMocks();
   });
 
+  describe("dry-run interception", () => {
+    /**
+     * Regression for a real leak surfaced on 2026-05-22: a dry-run wrote
+     * `## Meetings` sections to two real daily notes because
+     * `addLinksToDailyNotes` and `getOrCreateDailyNote` had no dry-run
+     * guards. The recorder is now plumbed through DailyNoteBuilder and
+     * these tests lock the contract.
+     */
+
+    let recorder: { record: jest.Mock; all: () => unknown[] };
+    let mockVault: { read: jest.Mock; modify: jest.Mock };
+
+    beforeEach(() => {
+      const records: any[] = [];
+      recorder = {
+        record: jest.fn((rec) => records.push(rec)),
+        all: () => records,
+      };
+      mockVault = {
+        read: jest.fn().mockResolvedValue(""),
+        modify: jest.fn(),
+      };
+      (mockApp as any).vault = mockVault;
+      dailyNoteBuilder.setDryRunRecorder(recorder as any);
+    });
+
+    it("does not call createDailyNote in dry-run for a missing daily note", async () => {
+      (getDailyNote as jest.Mock).mockReturnValue(null);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+
+      const result = await dailyNoteBuilder.getOrCreateDailyNote("2026-05-22");
+
+      expect(createDailyNote).not.toHaveBeenCalled();
+      expect(result).toBeNull();
+      expect(recorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outcome: "would-create",
+          path: "(daily note for 2026-05-22)",
+        })
+      );
+    });
+
+    it("returns the existing daily note unchanged in dry-run when it exists", async () => {
+      const existing = new TFile("2026-05-22.md", "md");
+      (getDailyNote as jest.Mock).mockReturnValue(existing);
+
+      const result = await dailyNoteBuilder.getOrCreateDailyNote("2026-05-22");
+
+      expect(createDailyNote).not.toHaveBeenCalled();
+      expect(result).toBe(existing);
+      expect(recorder.record).not.toHaveBeenCalled();
+    });
+
+    it("updateDailyNoteSection records would-modify when section would change, no vault.modify", async () => {
+      const existing = new TFile("2026-05-22.md", "md");
+      mockVault.read.mockResolvedValue("# Day\n\n## Meetings\n- 10:00 old\n");
+
+      await dailyNoteBuilder.updateDailyNoteSection(
+        existing,
+        "## Meetings",
+        "## Meetings\n- 10:00 new\n",
+        false
+      );
+
+      expect(updateSection).not.toHaveBeenCalled();
+      expect(mockVault.modify).not.toHaveBeenCalled();
+      expect(recorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outcome: "would-modify",
+          path: "2026-05-22.md",
+        })
+      );
+    });
+
+    it("updateDailyNoteSection records skip-unchanged when section content is identical", async () => {
+      const existing = new TFile("2026-05-22.md", "md");
+      const section = "## Meetings\n- 10:00 same\n";
+      mockVault.read.mockResolvedValue("# Day\n\n" + section);
+
+      await dailyNoteBuilder.updateDailyNoteSection(
+        existing,
+        "## Meetings",
+        section,
+        false
+      );
+
+      expect(updateSection).not.toHaveBeenCalled();
+      expect(recorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outcome: "skip-unchanged",
+        })
+      );
+    });
+
+    it("addLinksToDailyNotes records intended writes without calling updateSection", async () => {
+      const existing = new TFile("2026-05-22.md", "md");
+      (getDailyNote as jest.Mock).mockReturnValue(existing);
+      mockVault.read.mockResolvedValue("# Day\n");
+
+      const docs = [
+        {
+          doc: {
+            id: "uuid-1",
+            title: "Meeting",
+            updated_at: "2026-05-22T15:00:00Z",
+          } as GranolaDoc,
+          notePath: "Granola/Meeting.md",
+        },
+      ];
+
+      await dailyNoteBuilder.addLinksToDailyNotes(
+        docs,
+        "## Meetings",
+        false,
+        () => "uuid-1"
+      );
+
+      expect(updateSection).not.toHaveBeenCalled();
+      expect(mockVault.modify).not.toHaveBeenCalled();
+      // Should record at least one would-modify for the section update.
+      const records = recorder.all() as any[];
+      expect(
+        records.some((r) => r.outcome === "would-modify")
+      ).toBe(true);
+    });
+
+    it("addLinksToDailyNotes for a missing daily note records would-create + would-modify, no writes", async () => {
+      (getDailyNote as jest.Mock).mockReturnValue(null);
+      (getAllDailyNotes as jest.Mock).mockReturnValue({});
+
+      const docs = [
+        {
+          doc: {
+            id: "uuid-1",
+            title: "Meeting",
+            updated_at: "2026-05-22T15:00:00Z",
+          } as GranolaDoc,
+          notePath: "Granola/Meeting.md",
+        },
+      ];
+
+      await dailyNoteBuilder.addLinksToDailyNotes(
+        docs,
+        "## Meetings",
+        false,
+        () => "uuid-1"
+      );
+
+      expect(createDailyNote).not.toHaveBeenCalled();
+      expect(updateSection).not.toHaveBeenCalled();
+      expect(mockVault.modify).not.toHaveBeenCalled();
+      const records = recorder.all() as any[];
+      const outcomes = records.map((r) => r.outcome);
+      expect(outcomes).toContain("would-create");
+      expect(outcomes).toContain("would-modify");
+    });
+  });
+
   describe("extractExistingNotes", () => {
     it("should extract Granola IDs and updated_at timestamps from a daily note section", () => {
       const fileContent = [

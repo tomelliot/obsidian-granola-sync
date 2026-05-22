@@ -30,6 +30,64 @@ flowchart TD
     P --> H
 ```
 
+## Authentication
+
+The plugin supports two authentication methods, selected in **Settings → Authentication**:
+
+| Method | Endpoint | Plan | Source of credentials |
+|--------|----------|------|----------------------|
+| **Desktop credentials** (default) | `api.granola.ai` | Any (incl. free / Personal) | `stored-accounts.json` written by the Granola desktop app |
+| **API key** | `public-api.granola.ai` | Business or Enterprise | `grn_*` key entered in plugin settings, stored in plugin `data.json` |
+
+The auth method is resolved per sync via [`resolveAuth`](../src/services/auth.ts). Both paths produce a bearer token used by the appropriate API client; the rest of the sync pipeline is auth-agnostic.
+
+### Auth selection
+
+```mermaid
+flowchart TD
+  start[sync triggered]
+  resolve[resolveAuth settings]
+  desktop[loadCredentials → access token]
+  apikey[validate grn_ key]
+  fetcher[fetchDocumentsForSync]
+
+  start --> resolve
+  resolve -->|authMethod=desktop| desktop --> fetcher
+  resolve -->|authMethod=api_key| apikey --> fetcher
+```
+
+### API key mode caveats
+
+Switching to API key mode is **not a 1:1 replacement** for desktop sync:
+
+- **Note body comes from `summary_markdown`** (AI summary), not the ProseMirror enhanced-note body the desktop app syncs. The plugin defaults to `apiSyncBodyMode = refresh-transcripts-only` on first API sync to avoid rewriting every note body. `force-refresh-all` is available as a one-shot opt-in (auto-reverts after one sync).
+- **Private notes are not exposed** by the Public API; the corresponding toggle is disabled.
+- **Shared notes scope** is controlled by the API key's scopes (Personal vs Public) when it's created in Granola, not by the in-plugin toggle.
+- **Folder data** comes from `folder_membership` on each Get Note response. Folder renames are detected by diffing a per-`granola_id` snapshot persisted across syncs (`settings._apiFolderSnapshot`), since the API doesn't emit rename events.
+- **Eligibility:** the Public API only returns meetings with a finished AI summary + transcript. Notes you can browse in a shared workspace folder but don't own may not be returned — use desktop credentials for full shared-folder coverage.
+- **Rate limits:** the Public API is N+1 (one list call + one Get Note per note). The plugin throttles to ~4.5 req/s to stay below Granola's documented 5 req/s sustained limit, and gates `Get Note` calls behind the list endpoint's `updated_at` so unchanged notes don't re-fetch.
+
+### Legacy ID bridge
+
+When a vault has files previously synced via desktop credentials (frontmatter `granola_id` is the legacy UUID), API key mode dedups against them by extracting the UUID from each note's `web_url`:
+
+```mermaid
+flowchart LR
+  vaultFile["vault file granola_id uuid"]
+  apiNote["API Get Note web_url contains uuid"]
+  match{uuid matches?}
+  update["update same file"]
+  apiNote --> match
+  vaultFile --> match
+  match -->|yes| update
+```
+
+The bridge is in-memory only — it does not rewrite `granola_id` in frontmatter, so rollback to a previous plugin version stays safe. Files synced first via API mode that we later see in desktop mode will still match by id directly.
+
+### Dry-run
+
+A `Granola: Dry-run sync` command runs the full sync pipeline up to (but not including) `vault.create / vault.modify / vault.rename`. It intercepts writes at the `FileSyncService` boundary and produces a counted report (would-create / would-modify / would-rename / skip-…). Use this before enabling API key mode on a real vault to verify the expected scope of changes.
+
 ## Credentials Loading
 
 The plugin loads credentials by reading directly from the filesystem. This approach provides secure access to credentials stored in the Granola application's data directory without requiring a temporary HTTP server.
@@ -64,12 +122,13 @@ sequenceDiagram
 
 ### Credentials Service Details
 
-- **File Location**: `{OS-specific}/supabase.json`
-  - Windows: `%APPDATA%/Granola/supabase.json`
-  - Linux: `~/.config/Granola/supabase.json`
-  - macOS: `~/Library/Application Support/Granola/supabase.json`
-- **Token Path**: `workos_tokens.access_token` within the JSON structure
-- **Token Refresh**: Automatically refreshes expired tokens using the refresh token
+- **File Location**: `{OS-specific}/stored-accounts.json`
+  - Windows: `%APPDATA%/Granola/stored-accounts.json`
+  - Linux: `~/.config/Granola/stored-accounts.json`
+  - macOS: `~/Library/Application Support/Granola/stored-accounts.json`
+- **Token Path**: `accounts[0].tokens.access_token` within the JSON structure (where `accounts` and `tokens` may be JSON-encoded strings)
+- **Token Refresh**: Automatically refreshes expired tokens using the refresh token. If refresh fails but the existing access token hasn't hard-expired yet (only within the 5-minute pre-expiry buffer), the plugin falls back to using it so transient network blips don't block sync.
+- **Encrypted credentials detection**: If the Granola desktop app has migrated to `stored-accounts.json.enc` and that file is newer than the plaintext file this plugin reads, sync surfaces an actionable error pointing at [issue #126](https://github.com/tomelliot/obsidian-granola-sync/issues/126). Business / Enterprise users can switch to API key authentication as a workaround.
 - **Error Handling**: Provides clear error messages for:
   - File not found (ENOENT)
   - Permission errors (EACCES)

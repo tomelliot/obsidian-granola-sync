@@ -90,6 +90,8 @@ describe("GranolaSync", () => {
       saveNoteToDisk: jest.fn().mockResolvedValue({ saved: true, path: "Notes/test-note.md" }),
       saveTranscriptToDisk: jest.fn().mockResolvedValue({ saved: true, path: "Transcripts/test-transcript.md" }),
       saveCombinedNoteToDisk: jest.fn().mockResolvedValue({ saved: true, path: "Notes/test-note.md" }),
+      setDryRunRecorder: jest.fn(),
+      recordPublicIdBridge: jest.fn(),
     } as any;
 
     mockDocumentProcessor = {
@@ -105,6 +107,7 @@ describe("GranolaSync", () => {
       buildDailyNoteSectionContent: jest.fn(),
       updateDailyNoteSection: jest.fn(),
       addLinksToDailyNotes: jest.fn(),
+      setDryRunRecorder: jest.fn(),
     } as any;
 
     mockPathResolver = {
@@ -479,14 +482,16 @@ describe("GranolaSync", () => {
 
       expect((plugin as any).syncTranscripts).toHaveBeenCalledWith(
         [mockDoc],
-        mockAccessToken,
-        false
+        { method: "desktop", token: mockAccessToken },
+        false,
+        new Map()
       );
       expect((plugin as any).syncNotes).toHaveBeenCalledWith(
         [mockDoc],
         false,
         mockTranscriptMap,
-        {}
+        {},
+        { skipExistingBodies: false }
       );
       expect((plugin as any).updateCrossLinks).toHaveBeenCalledWith([mockDoc]);
     });
@@ -508,14 +513,16 @@ describe("GranolaSync", () => {
 
       expect((plugin as any).syncTranscripts).toHaveBeenCalledWith(
         [mockDoc],
-        mockAccessToken,
-        true
+        { method: "desktop", token: mockAccessToken },
+        true,
+        new Map()
       );
       expect((plugin as any).syncNotes).toHaveBeenCalledWith(
         [mockDoc],
         true,
         mockTranscriptMap,
-        {}
+        {},
+        { skipExistingBodies: false }
       );
     });
 

@@ -5,6 +5,7 @@ import { PathResolver } from "./pathResolver";
 import { GranolaSyncSettings } from "../settings";
 import { getNoteDate, formatDateForFilename } from "../utils/dateUtils";
 import { log } from "../utils/logger";
+import type { DryRunRecorder } from "./dryRun";
 
 /**
  * Service for handling file synchronization operations including
@@ -12,6 +13,21 @@ import { log } from "../utils/logger";
  */
 export class FileSyncService {
   private granolaIdCache: Map<string, TFile> = new Map();
+  /**
+   * Secondary index from `granola_public_id` (the `not_*` ID written by API-key
+   * mode) to the primary `${granolaId}-${type}` cache key. Lets sync look up
+   * existing files by either id without forcing a frontmatter rewrite.
+   */
+  private publicIdIndex: Map<string, string> = new Map();
+  /**
+   * When set, all writes are intercepted and recorded instead of executed.
+   * Used for the `Granola: Dry-run sync` command and as a pre-PR gate.
+   */
+  private dryRunRecorder: DryRunRecorder | null = null;
+
+  setDryRunRecorder(recorder: DryRunRecorder | null): void {
+    this.dryRunRecorder = recorder;
+  }
 
   constructor(
     private app: App,
@@ -27,6 +43,7 @@ export class FileSyncService {
    */
   async buildCache(): Promise<void> {
     this.granolaIdCache.clear();
+    this.publicIdIndex.clear();
     const files = this.app.vault.getMarkdownFiles();
 
     for (const file of files) {
@@ -37,6 +54,17 @@ export class FileSyncService {
           const type = (cache.frontmatter.type as string | undefined) || "note"; // Default for backward compatibility
           const cacheKey = `${granolaId}-${type}`;
           this.granolaIdCache.set(cacheKey, file);
+
+          // Secondary index: granola_public_id (`not_*`) → primary cache key.
+          // Lets API-key sync find existing desktop-synced files when the API
+          // returns the legacy UUID via web_url AND the public id was previously
+          // recorded in frontmatter (after a prior API-mode write).
+          const publicId = cache.frontmatter.granola_public_id as
+            | string
+            | undefined;
+          if (publicId) {
+            this.publicIdIndex.set(`${publicId}-${type}`, cacheKey);
+          }
         }
       } catch (e) {
         log.error(`Error reading frontmatter for ${file.path}:`, e);
@@ -56,7 +84,36 @@ export class FileSyncService {
     type: "note" | "transcript" | "combined" = "note"
   ): TFile | null {
     const cacheKey = `${granolaId}-${type}`;
-    return this.granolaIdCache.get(cacheKey) || null;
+    const direct = this.granolaIdCache.get(cacheKey);
+    if (direct) return direct;
+
+    // ID bridge: caller may have supplied a public (`not_*`) id, but the file
+    // on disk stores the legacy UUID in `granola_id`. Use the secondary index
+    // to resolve to the primary cache entry.
+    const bridged = this.publicIdIndex.get(cacheKey);
+    if (bridged) {
+      return this.granolaIdCache.get(bridged) ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * Records a `granola_public_id` mapping in the in-memory index. Used by
+   * API-key sync to bridge the legacy UUID and `not_*` id without rewriting
+   * frontmatter on every match. Call after a successful save or when a file's
+   * frontmatter is augmented with `granola_public_id`.
+   *
+   * @param publicId - The `not_*` id from Granola's Public API.
+   * @param granolaId - The legacy UUID stored in `granola_id` frontmatter.
+   * @param type - File type (note / transcript / combined).
+   */
+  recordPublicIdBridge(
+    publicId: string,
+    granolaId: string,
+    type: "note" | "transcript" | "combined" = "note"
+  ): void {
+    if (!publicId || !granolaId) return;
+    this.publicIdIndex.set(`${publicId}-${type}`, `${granolaId}-${type}`);
   }
 
   /**
@@ -132,6 +189,18 @@ export class FileSyncService {
         return true;
       }
 
+      // <60s staleness buffer: treat the remote as up-to-date when the delta
+      // is positive but smaller than a minute. This is what prevents toggling
+      // auth modes — where one path includes the panel timestamp and the
+      // other doesn't — from rewriting every file with a near-equal value.
+      const diffMs = remoteDate.getTime() - localDate.getTime();
+      if (diffMs > 0 && diffMs < 60_000) {
+        log.debug(
+          `isRemoteNewer — within <60s buffer (${diffMs}ms), treating local as up-to-date for ${granolaId} (${type})`
+        );
+        return false;
+      }
+
       return remoteDate > localDate;
     } catch (e) {
       log.error(`Error comparing timestamps for ${granolaId}:`, e);
@@ -168,6 +237,16 @@ export class FileSyncService {
     try {
       const folderExists = this.app.vault.getAbstractFileByPath(folderPath);
       if (!folderExists) {
+        if (this.dryRunRecorder) {
+          // Folder creation is implicit support for the downstream file
+          // create; we don't surface a separate `would-create-folder`
+          // outcome (would be noisy and per-day spammy). The user infers
+          // it from the `would-create` records on files inside.
+          log.debug(
+            `Dry-run: would create folder ${folderPath} (skipping vault.createFolder)`
+          );
+          return true;
+        }
         await this.app.vault.createFolder(folderPath);
       }
       return true;
@@ -246,6 +325,15 @@ export class FileSyncService {
     granolaId: string,
     type: "note" | "transcript" | "combined"
   ): Promise<boolean> {
+    if (this.dryRunRecorder) {
+      this.dryRunRecorder.record({
+        outcome: "would-create",
+        path: normalizedPath,
+        granolaId,
+        type,
+      });
+      return true;
+    }
     const newFile = await this.app.vault.create(normalizedPath, content);
     this.updateCache(granolaId, newFile, type);
     log.debug(`Created ${type} file: ${normalizedPath} (granolaId=${granolaId})`);
@@ -269,7 +357,34 @@ export class FileSyncService {
     if (!forceOverwrite && existingContent === content) {
       this.updateCache(granolaId, existingFile, type);
       log.debug(`Skipped ${type} file — content unchanged: ${existingFile.path} (granolaId=${granolaId})`);
+      if (this.dryRunRecorder) {
+        this.dryRunRecorder.record({
+          outcome: "skip-unchanged",
+          path: existingFile.path,
+          granolaId,
+          type,
+        });
+      }
       return false;
+    }
+
+    if (this.dryRunRecorder) {
+      this.dryRunRecorder.record({
+        outcome: "would-modify",
+        path: existingFile.path,
+        granolaId,
+        type,
+      });
+      if (existingFile.path !== normalizedPath) {
+        this.dryRunRecorder.record({
+          outcome: "would-rename",
+          path: existingFile.path,
+          toPath: normalizedPath,
+          granolaId,
+          type,
+        });
+      }
+      return true;
     }
 
     await this.app.vault.modify(existingFile, content);
@@ -648,6 +763,24 @@ export class FileSyncService {
       ) ?? [];
 
     if (imageAttachments.length === 0) {
+      return content;
+    }
+
+    if (this.dryRunRecorder) {
+      // Dry-run protection: image attachments hit network (`requestUrl`)
+      // and write to disk via `vault.createBinary`. Both are side-effects
+      // we promised not to make. Record an intent line per attachment for
+      // visibility and return the content unchanged — the note dry-run
+      // record already represents the intended write of the note body
+      // (without embed lines, which is acceptable for the report).
+      for (const attachment of imageAttachments) {
+        this.dryRunRecorder.record({
+          outcome: "would-create",
+          path: `(attachment ${attachment.id ?? "?"} for ${doc.id})`,
+          granolaId: doc.id,
+          reason: "image attachment (download + binary write skipped in dry-run)",
+        });
+      }
       return content;
     }
 

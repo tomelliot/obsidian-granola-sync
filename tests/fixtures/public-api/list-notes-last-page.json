@@ -1,0 +1,14 @@
+{
+  "notes": [
+    {
+      "id": "not_BBBBBBBBBBBBBB",
+      "object": "note",
+      "title": "Quarterly Strategy",
+      "owner": { "name": "Alice Example", "email": "alice@example.com" },
+      "created_at": "2026-03-10T15:00:00.000Z",
+      "updated_at": "2026-03-10T15:55:30.000Z"
+    }
+  ],
+  "cursor": null,
+  "hasMore": false
+}
