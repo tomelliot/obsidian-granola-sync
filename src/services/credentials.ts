@@ -29,29 +29,26 @@ interface RefreshTokenResponse {
   token_type: string;
 }
 
-function getTokenFilePath(): string {
+function getGranolaDir(): string {
   if (Platform.isWin) {
-    return path.join(
-      os.homedir(),
-      "AppData",
-      "Roaming",
-      "Granola",
-      "stored-accounts.json"
-    );
+    return path.join(os.homedir(), "AppData", "Roaming", "Granola");
   }
   if (Platform.isLinux) {
-    return path.join(os.homedir(), ".config", "Granola", "stored-accounts.json");
+    return path.join(os.homedir(), ".config", "Granola");
   }
-  return path.join(
-    os.homedir(),
-    "Library",
-    "Application Support",
-    "Granola",
-    "stored-accounts.json"
-  );
+  return path.join(os.homedir(), "Library", "Application Support", "Granola");
+}
+
+function getTokenFilePath(): string {
+  return path.join(getGranolaDir(), "stored-accounts.json");
+}
+
+function getEncryptedTokenFilePath(): string {
+  return path.join(getGranolaDir(), "stored-accounts.json.enc");
 }
 
 const filePath = getTokenFilePath();
+const encryptedFilePath = getEncryptedTokenFilePath();
 
 /**
  * Returns true if the access token has expired or expires within 5 minutes.
@@ -60,6 +57,16 @@ function isTokenExpired(workosTokens: WorkosTokens): boolean {
   const expirationTime = workosTokens.obtained_at + workosTokens.expires_in * 1000;
   const bufferMs = 5 * 60 * 1000;
   return Date.now() >= expirationTime - bufferMs;
+}
+
+/**
+ * Returns true if the access token's hard expiry has already passed.
+ * Distinguished from {@link isTokenExpired} which includes a 5-minute refresh buffer.
+ * Used by the refresh-failure fallback: an "expiring soon" token is still usable.
+ */
+function isTokenHardExpired(workosTokens: WorkosTokens): boolean {
+  const expirationTime = workosTokens.obtained_at + workosTokens.expires_in * 1000;
+  return Date.now() >= expirationTime;
 }
 
 async function refreshAccessToken(workosTokens: WorkosTokens): Promise<WorkosTokens> {
@@ -127,10 +134,53 @@ function parseTokens(fileContents: string): WorkosTokens {
     : account.tokens;
 }
 
+/**
+ * Checks whether the desktop Granola app has migrated to encrypted credentials
+ * (`stored-accounts.json.enc`) while the plaintext file is stale.
+ *
+ * Returns true when the encrypted file exists and is newer than the plaintext
+ * file (or the plaintext file is missing). This is the signal that the user
+ * has updated to a Granola desktop build that no longer writes plaintext
+ * credentials we can read.
+ */
+export async function encryptedCredentialsIsNewerThanPlaintext(): Promise<boolean> {
+  try {
+    const encStat = await fs.promises.stat(encryptedFilePath);
+    try {
+      const plainStat = await fs.promises.stat(filePath);
+      return encStat.mtimeMs > plainStat.mtimeMs;
+    } catch (plainErr) {
+      const code = (plainErr as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        // Encrypted exists but plaintext does not — treat as newer.
+        return true;
+      }
+      return false;
+    }
+  } catch {
+    // Encrypted file does not exist, or stat failed for another reason.
+    return false;
+  }
+}
+
 export async function loadCredentials(): Promise<{
   accessToken: string | null;
   error: string | null;
 }> {
+  // Check if the desktop app has moved to encrypted storage. We log this even
+  // on the happy path so users can correlate sync issues with the desktop
+  // app update. The plain-file read below remains authoritative — if it
+  // succeeds and the token still works, we use it.
+  const encNewer = await encryptedCredentialsIsNewerThanPlaintext();
+  if (encNewer) {
+    log.warn(
+      "Granola desktop credentials appear to have migrated to an encrypted file (stored-accounts.json.enc) " +
+        "that is newer than the plaintext file this plugin reads. Sync may fail. " +
+        "Consider switching to API key authentication (Granola Business/Enterprise) " +
+        "or see https://github.com/tomelliot/obsidian-granola-sync/issues/126 for status."
+    );
+  }
+
   let fileContents: string;
   try {
     fileContents = await fs.promises.readFile(filePath, "utf-8");
@@ -138,6 +188,17 @@ export async function loadCredentials(): Promise<{
     const code = (error as NodeJS.ErrnoException).code;
     log.error("Credentials file read error:", error);
     if (code === "ENOENT") {
+      if (encNewer) {
+        return {
+          accessToken: null,
+          error:
+            `Credentials file not found at ${filePath}, but an encrypted credentials file ` +
+            `(stored-accounts.json.enc) exists. The Granola desktop app has switched to encrypted ` +
+            `credentials this plugin cannot read. See ` +
+            `https://github.com/tomelliot/obsidian-granola-sync/issues/126 for status; ` +
+            `Business/Enterprise users can configure an API key in plugin settings.`,
+        };
+      }
       return {
         accessToken: null,
         error: `Credentials file not found at ${filePath}. Please ensure the Granola app has created the credentials file.`,
@@ -185,10 +246,28 @@ export async function loadCredentials(): Promise<{
       log.debug("Token refresh completed successfully");
     } catch (refreshError) {
       log.error("Failed to refresh token:", refreshError);
+
+      // Refresh-failure fallback: if the existing access token has not actually
+      // expired yet (only inside the 5-minute pre-expiry buffer), use it.
+      // This is the common case when refresh transiently fails (network blip,
+      // server hiccup) — the existing token is still valid for short calls and
+      // a future sync will refresh again.
+      if (!isTokenHardExpired(workosTokens)) {
+        log.warn(
+          "Falling back to existing access token after refresh failure; token is still within hard-expiry window."
+        );
+        return { accessToken: workosTokens.access_token, error: null };
+      }
+
+      const encNewerNow = encNewer || (await encryptedCredentialsIsNewerThanPlaintext());
+      const hint = encNewerNow
+        ? " The Granola desktop app appears to have switched to encrypted credential storage " +
+          "(see https://github.com/tomelliot/obsidian-granola-sync/issues/126). Business/Enterprise users " +
+          "can switch to API key authentication in plugin settings."
+        : " Please re-authenticate in the Granola app.";
       return {
         accessToken: null,
-        error:
-          "Access token has expired and refresh failed. Please re-authenticate in the Granola app.",
+        error: "Access token has expired and refresh failed." + hint,
       };
     }
   }
