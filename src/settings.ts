@@ -91,6 +91,53 @@ export interface AutomaticSyncSettings {
   latestSyncTime: number;
 }
 
+/**
+ * Authentication configuration.
+ *
+ * - `desktop` (default): read WorkOS tokens from the Granola desktop app's
+ *   `stored-accounts.json` and call the internal `api.granola.ai` endpoints.
+ * - `api_key`: use a `grn_*` Public API key against `public-api.granola.ai`.
+ *   Requires Granola Business or Enterprise.
+ */
+export type AuthMethod = "desktop" | "api_key";
+
+/**
+ * Note body behavior when `authMethod === "api_key"`.
+ *
+ * The Public API returns the AI-generated `summary_markdown` rather than the
+ * ProseMirror body the desktop app syncs. This setting controls how aggressive
+ * the first API-mode sync is about overwriting existing note bodies.
+ *
+ * - `refresh-transcripts-only` (default): never rewrite the note body; still
+ *   update transcripts and safe frontmatter. Prevents mass-write churn when a
+ *   user first toggles API auth.
+ * - `normal`: rewrite bodies whenever the remote is newer (mirrors desktop
+ *   behavior).
+ * - `force-refresh-all`: rewrite every body once; auto-reverts to
+ *   `refresh-transcripts-only` after a successful sync.
+ */
+export type ApiSyncBodyMode =
+  | "refresh-transcripts-only"
+  | "normal"
+  | "force-refresh-all";
+
+export interface AuthSettings {
+  authMethod: AuthMethod;
+  /**
+   * Granola Public API key (`grn_*`). Stored in plugin `data.json`; users
+   * should be aware this syncs anywhere the vault syncs (Obsidian Sync,
+   * iCloud, Dropbox, Git, …).
+   */
+  apiKey?: string;
+  apiSyncBodyMode: ApiSyncBodyMode;
+  /**
+   * Set by sync when the most recent API request returned HTTP 401, so the
+   * settings UI can surface a "key revoked/invalid" affordance. Cleared on
+   * the next successful sync.
+   */
+  _lastApiAuthError?: boolean;
+}
+
 type LegacySyncDestination =
   | "granola_folder"
   | "daily_notes"
@@ -112,10 +159,22 @@ export interface LegacySettings {
 export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
   AutomaticSyncSettings &
-  FilterSettings & {
+  FilterSettings &
+  AuthSettings & {
     enableDebugLogging: boolean;
-    // Persisted folder map for detecting renames across syncs
+    // Persisted folder map for detecting renames across syncs (desktop mode)
     _folderMapCache?: FolderMapData;
+    // Per-granolaId last-known folder snapshot, used in API-key mode to
+    // detect folder renames (the Public API doesn't emit rename events; we
+    // diff snapshots between syncs). Carries stable folder IDs and a
+    // doc→folder-ids index so parent renames + incremental syncs work.
+    _apiFolderSnapshot?: import("./services/apiFolderSnapshot").ApiFolderSnapshot;
+    /**
+     * Last time API-mode sync called `listFolders()` to refresh the full
+     * folder hierarchy. ms since epoch. Used by
+     * `shouldRefetchFolders` to gate the daily extra request.
+     */
+    _apiFoldersLastFetched?: number;
     // Legacy settings preserved for potential rollback
     _legacySettings?: LegacySettings;
   };
@@ -147,6 +206,9 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   customTranscriptBaseFolder: "Granola/Transcripts",
   transcriptSubfolderPattern: "none",
   transcriptFilenamePattern: "{title}-transcript",
+  // AuthSettings
+  authMethod: "desktop",
+  apiSyncBodyMode: "refresh-transcripts-only",
   // Debug / diagnostics
   enableDebugLogging: false,
 };
@@ -249,6 +311,8 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
+    this.renderAuthSection(containerEl);
+
     // General settings (no heading per Obsidian conventions)
     new Setting(containerEl)
       .setName("Periodic sync enabled")
@@ -321,20 +385,33 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     if (this.plugin.settings.syncNotes) {
       new Setting(containerEl).setName("Notes").setHeading();
 
-      new Setting(containerEl)
-        .setName("Include private notes")
-        .setDesc(
+      const isApiKeyMode = this.plugin.settings.authMethod === "api_key";
+
+      const privateNotesSetting = new Setting(containerEl).setName(
+        "Include private notes"
+      );
+      if (isApiKeyMode) {
+        privateNotesSetting.setDesc(
+          "Not available in API key mode — Granola's public API does not expose private notes. Switch to desktop credentials to use this setting."
+        );
+      } else {
+        privateNotesSetting.setDesc(
           // eslint-disable-next-line obsidianmd/ui/sentence-case -- '## Private Notes' / '## Enhanced Notes' are literal heading labels written into the output
           "Include your raw private notes at the top of each synced note. Private notes appear in a '## Private Notes' section above the '## Enhanced Notes' section."
-        )
-        .addToggle((toggle) =>
+        );
+      }
+      privateNotesSetting.addToggle((toggle) => {
           toggle
-            .setValue(this.plugin.settings.includePrivateNotes)
+            .setValue(
+              isApiKeyMode ? false : this.plugin.settings.includePrivateNotes
+            )
+            .setDisabled(isApiKeyMode)
             .onChange(async (value) => {
+              if (isApiKeyMode) return;
               this.plugin.settings.includePrivateNotes = value;
               await this.plugin.saveSettings();
-            })
-        );
+            });
+        });
 
       new Setting(containerEl)
         .setName("Save notes as")
@@ -643,6 +720,17 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             })
         );
 
+      new Setting(containerEl)
+        .setName("Dry-run sync")
+        .setDesc(
+          "Simulates a sync without modifying any files. Opens a report showing exactly what would be created, modified, or skipped. Use before enabling API key authentication or after large changes to verify behavior."
+        )
+        .addButton((button) =>
+          button.setButtonText("Dry-run sync").onClick(async () => {
+            await this.plugin.runDryRun();
+          })
+        );
+
       // Filtering
       new Setting(containerEl).setName("Filtering").setHeading();
 
@@ -669,12 +757,16 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       new Setting(containerEl)
         .setName("Include shared notes")
         .setDesc(
-          "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
+          this.plugin.settings.authMethod === "api_key"
+            ? "In API key mode this is controlled by your key's scopes (Personal vs Public). Create the key with the scopes you need in Granola — this toggle has no effect."
+            : "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
         )
         .addToggle((toggle) =>
           toggle
             .setValue(this.plugin.settings.includeSharedNotes)
+            .setDisabled(this.plugin.settings.authMethod === "api_key")
             .onChange(async (value) => {
+              if (this.plugin.settings.authMethod === "api_key") return;
               this.plugin.settings.includeSharedNotes = value;
               await this.plugin.saveSettings();
             })
@@ -769,7 +861,127 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         );
     }
 
-    // Support Section
+    this.renderSupportSection(containerEl);
+  }
+
+  /**
+   * Renders the Authentication section at the top of the settings tab.
+   *
+   * The desktop credential path remains the default for backwards
+   * compatibility with existing installs. API key authentication is the
+   * supported path for Granola Business / Enterprise users.
+   */
+  private renderAuthSection(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName("Authentication").setHeading();
+
+    new Setting(containerEl)
+      .setName("Authentication method")
+      .setDesc(
+        "How the plugin authenticates with Granola. " +
+        "'Desktop credentials' reads tokens from your Granola desktop app (free and Personal plans). " +
+        "'API key' uses Granola's official Public API (requires Business or Enterprise)."
+      )
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("desktop", "Desktop credentials (default)")
+          .addOption("api_key", "API key")
+          .setValue(this.plugin.settings.authMethod)
+          .onChange(async (value) => {
+            this.plugin.settings.authMethod = value as "desktop" | "api_key";
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (this.plugin.settings.authMethod === "api_key") {
+      const keyDesc = activeDocument.createDocumentFragment();
+      keyDesc.append(
+        "Paste your Granola Public API key (starts with 'grn_'). "
+      );
+      const docsLink = activeDocument.createElement("a");
+      docsLink.href = "https://docs.granola.ai/introduction";
+      docsLink.textContent = "Granola API docs";
+      docsLink.target = "_blank";
+      docsLink.rel = "noopener";
+      keyDesc.append(docsLink, ".");
+      keyDesc.append(activeDocument.createElement("br"));
+      keyDesc.append(
+        "Stored in this plugin's data.json. If you sync your Obsidian vault " +
+        "(Obsidian Sync, iCloud, Dropbox, Git), the key syncs with it — " +
+        "revoke and re-create immediately if leaked."
+      );
+
+      new Setting(containerEl)
+        .setName("Granola API key")
+        .setDesc(keyDesc)
+        .addText((text) => {
+          text.inputEl.type = "password";
+          text.inputEl.autocomplete = "off";
+          text.inputEl.spellcheck = false;
+          text
+            // eslint-disable-next-line obsidianmd/ui/sentence-case -- 'grn_' is the literal API key prefix
+            .setPlaceholder("grn_...")
+            .setValue(this.plugin.settings.apiKey ?? "")
+            .onChange(async (value) => {
+              this.plugin.settings.apiKey = value.trim();
+              // User edited the key — clear any stale auth-error flag so the
+              // warning badge disappears until the next sync proves otherwise.
+              if (this.plugin.settings._lastApiAuthError) {
+                this.plugin.settings._lastApiAuthError = false;
+              }
+              await this.plugin.saveSettings();
+            });
+        });
+
+      if (this.plugin.settings._lastApiAuthError) {
+        new Setting(containerEl)
+          .setName("⚠ Last sync returned 401")
+          .setDesc(
+            "The most recent sync failed with an authentication error. Your API key may be " +
+            "invalid, revoked, or missing the required scopes. Re-create it in Granola and paste " +
+            "the new key above."
+          );
+      }
+
+      new Setting(containerEl)
+        .setName("API note body behavior")
+        .setDesc(
+          "The Public API returns Granola's AI summary instead of the ProseMirror " +
+          "body the desktop app syncs. Choose how aggressive sync should be about " +
+          "overwriting existing note bodies. 'Refresh transcripts only' is the safe " +
+          "default — it preserves existing note bodies and only updates transcripts."
+        )
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption(
+              "refresh-transcripts-only",
+              "Refresh transcripts only (default, safest)"
+            )
+            .addOption("normal", "Normal (rewrite when remote is newer)")
+            .addOption(
+              "force-refresh-all",
+              "Force refresh all (one-shot)"
+            )
+            .setValue(this.plugin.settings.apiSyncBodyMode)
+            .onChange(async (value) => {
+              this.plugin.settings.apiSyncBodyMode = value as
+                | "refresh-transcripts-only"
+                | "normal"
+                | "force-refresh-all";
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl).setDesc(
+        "Note: API mode only includes meetings Granola has finished summarizing " +
+        "(AI summary + transcript). Recently-ended meetings may take longer to appear " +
+        "here than with desktop sync. Notes you can browse in a shared workspace folder " +
+        "but don't own may not be returned — use desktop credentials for full shared-folder coverage."
+      );
+    }
+  }
+
+  private renderSupportSection(containerEl: HTMLElement): void {
     new Setting(containerEl).setName("Support").setHeading();
 
     new Setting(containerEl)

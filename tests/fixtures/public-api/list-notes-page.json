@@ -1,0 +1,30 @@
+{
+  "notes": [
+    {
+      "id": "not_AAAAAAAAAAAAAA",
+      "object": "note",
+      "title": "Quarterly Strategy Sync",
+      "owner": { "name": "Alice Example", "email": "alice@example.com" },
+      "created_at": "2026-05-21T15:00:00.000Z",
+      "updated_at": "2026-05-21T15:42:13.000Z"
+    },
+    {
+      "id": "not_CCCCCCCCCCCCCC",
+      "object": "note",
+      "title": "Project Alpha",
+      "owner": { "name": "Alice Example", "email": "alice@example.com" },
+      "created_at": "2026-02-25T17:00:00.000Z",
+      "updated_at": "2026-02-25T18:05:42.000Z"
+    },
+    {
+      "id": "not_DDDDDDDDDDDDDD",
+      "object": "note",
+      "title": "Charlie / Alice",
+      "owner": { "name": "Alice Example", "email": "alice@example.com" },
+      "created_at": "2026-05-21T20:00:00.000Z",
+      "updated_at": "2026-05-21T20:32:01.000Z"
+    }
+  ],
+  "cursor": "eyJjcmVhdGVkX2F0IjoiMjAyNi0wMi0yNVQxNzowMDowMC4wMDBaIn0=",
+  "hasMore": true
+}

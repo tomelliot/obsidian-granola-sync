@@ -98,6 +98,41 @@ describe("FileSyncService", () => {
       expect(fileSyncService.findByGranolaId("id-2")).toBe(mockFile2);
     });
 
+    it("should bridge from granola_public_id to the legacy granola_id (API-key dedup)", async () => {
+      const mockFile = { path: "hopo.md" } as TFile;
+      mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+      mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+        frontmatter: {
+          granola_id: "00000000-0000-0000-0000-000000000001",
+          granola_public_id: "not_AAAAAAAAAAAAAA",
+        },
+      } as any);
+
+      await fileSyncService.buildCache();
+
+      expect(
+        fileSyncService.findByGranolaId("00000000-0000-0000-0000-000000000001")
+      ).toBe(mockFile);
+      // Lookup by the public id resolves via the bridge.
+      expect(fileSyncService.findByGranolaId("not_AAAAAAAAAAAAAA")).toBe(
+        mockFile
+      );
+    });
+
+    it("recordPublicIdBridge adds an alias without rewriting frontmatter", async () => {
+      const mockFile = { path: "hopo.md" } as TFile;
+      mockApp.vault.getMarkdownFiles.mockReturnValue([mockFile]);
+      mockApp.metadataCache.getFileCache.mockReturnValueOnce({
+        frontmatter: { granola_id: "uuid-1" },
+      } as any);
+
+      await fileSyncService.buildCache();
+      expect(fileSyncService.findByGranolaId("not_X")).toBeNull();
+
+      fileSyncService.recordPublicIdBridge("not_X", "uuid-1", "note");
+      expect(fileSyncService.findByGranolaId("not_X")).toBe(mockFile);
+    });
+
     it("should skip files without granola_id frontmatter", async () => {
       const mockFile1 = { path: "note1.md" } as TFile;
       const mockFile2 = { path: "note2.md" } as TFile;
@@ -299,6 +334,44 @@ describe("FileSyncService", () => {
       );
 
       expect(result).toBe(false);
+    });
+
+    it("treats a remote that is <60s newer as up-to-date (frontmatter parity buffer)", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: {
+          granola_id: "test-id",
+          updated: "2024-01-15T12:00:00.000Z",
+        },
+      } as any);
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:00:42.000Z", // 42s newer — inside buffer
+        "note"
+      );
+
+      expect(result).toBe(false);
+    });
+
+    it("still reports newer when the delta is >=60s", () => {
+      const mockFile = { path: "note.md" } as TFile;
+      fileSyncService.updateCache("test-id", mockFile, "note");
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: {
+          granola_id: "test-id",
+          updated: "2024-01-15T12:00:00.000Z",
+        },
+      } as any);
+
+      const result = fileSyncService.isRemoteNewer(
+        "test-id",
+        "2024-01-15T12:01:30.000Z", // 90s newer
+        "note"
+      );
+
+      expect(result).toBe(true);
     });
 
     it("should return false when timestamps are equal", () => {

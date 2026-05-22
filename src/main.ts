@@ -13,8 +13,6 @@ import {
   migrateSettingsToNewFormat,
 } from "./settings";
 import {
-  getAllDocuments,
-  getRecentDocuments,
   fetchGranolaTranscript,
   GranolaDoc,
   TranscriptEntry,
@@ -23,12 +21,24 @@ import {
   buildFolderMap,
   diffFolderMaps,
 } from "./services/folderMapBuilder";
-import {
-  loadCredentials as loadGranolaCredentials,
-} from "./services/credentials";
+import { resolveAuth, AuthResult } from "./services/auth";
 import { presentCredentialsError } from "./services/credentialsErrorPresenter";
 import { setPluginDirectory } from "./services/granolaCredentialsCrypto";
 import { KeychainPermissionModal } from "./ui/keychainPermissionModal";
+import {
+  fetchDocumentsForSync,
+  FetchedDoc,
+} from "./services/documentFetcher";
+import { PublicApiError, listAllFolders } from "./services/publicGranolaApi";
+import { DryRunRecorder } from "./services/dryRun";
+import { DryRunReportModal } from "./services/dryRunModal";
+import {
+  buildApiFolderSnapshot,
+  diffApiFolderSnapshots,
+  mergeApiFolderSnapshots,
+  folderListResponseToSnapshotFolders,
+  shouldRefetchFolders,
+} from "./services/apiFolderSnapshot";
 import {
   formatTranscriptBySpeaker,
   formatTranscriptBody,
@@ -53,6 +63,14 @@ export default class GranolaSync extends Plugin {
   private fileSyncService!: FileSyncService;
   private documentProcessor!: DocumentProcessor;
   private dailyNoteBuilder!: DailyNoteBuilder;
+  /**
+   * Active dry-run recorder for the current sync, if any. The orchestrator
+   * helpers consult this to short-circuit `vault.modify` /
+   * `processFrontMatter` / `saveData(settings)` calls that bypass the
+   * `FileSyncService` interception. Set in {@link sync} and cleared in the
+   * matching `finally`.
+   */
+  private dryRunRecorder: DryRunRecorder | null = null;
   statusBarItemEl: HTMLElement | null = null;
   statusBarTimeoutId: number | null = null;
 
@@ -86,6 +104,14 @@ export default class GranolaSync extends Plugin {
             "Granola sync: No sync options enabled. Please enable either notes or transcripts in settings."
           );
         }
+      },
+    });
+
+    this.addCommand({
+      id: "dry-run-granola",
+      name: "Dry-run sync (no writes)",
+      callback: async () => {
+        await this.runDryRun();
       },
     });
 
@@ -321,7 +347,15 @@ export default class GranolaSync extends Plugin {
           updatedFolders
         );
         if (updatedContent !== content) {
-          await this.app.vault.modify(file, updatedContent);
+          if (this.dryRunRecorder) {
+            this.dryRunRecorder.record({
+              outcome: "would-modify-frontmatter",
+              path: file.path,
+              reason: "folder rename",
+            });
+          } else {
+            await this.app.vault.modify(file, updatedContent);
+          }
           updatedCount++;
         }
       }
@@ -329,7 +363,7 @@ export default class GranolaSync extends Plugin {
 
     if (updatedCount > 0) {
       log.debug(
-        `Updated folders in ${updatedCount} file(s) due to folder renames`
+        `${this.dryRunRecorder ? "Dry-run: would update" : "Updated"} folders in ${updatedCount} file(s) due to folder renames`
       );
     }
   }
@@ -417,38 +451,354 @@ export default class GranolaSync extends Plugin {
       );
 
       if (updatedContent !== content) {
-        await this.app.vault.modify(file, updatedContent);
+        if (this.dryRunRecorder) {
+          this.dryRunRecorder.record({
+            outcome: "would-modify-frontmatter",
+            path: file.path,
+            granolaId,
+            reason: `backfill folders ${JSON.stringify(folders)}`,
+          });
+        } else {
+          await this.app.vault.modify(file, updatedContent);
+        }
         updatedCount++;
-        log.debug(`backfill updated — ${file.path} (granolaId=${granolaId}, folders=${JSON.stringify(folders)})`);
+        log.debug(`backfill ${this.dryRunRecorder ? "would update" : "updated"} — ${file.path} (granolaId=${granolaId}, folders=${JSON.stringify(folders)})`);
       }
     }
 
-    log.debug(`backfillFolderMetadata — scanned=${scannedCount} granola files, updated=${updatedCount}, alreadyHasFolders=${alreadyHasFoldersCount}, noFolderData=${noFolderDataCount}, noFrontmatter=${noFrontmatterCount}`);
+    log.debug(`backfillFolderMetadata — scanned=${scannedCount} granola files, ${this.dryRunRecorder ? "would-update" : "updated"}=${updatedCount}, alreadyHasFolders=${alreadyHasFoldersCount}, noFolderData=${noFolderDataCount}, noFrontmatter=${noFrontmatterCount}`);
+  }
+
+  /**
+   * Refreshes the API-mode folder snapshot and applies any detected renames.
+   *
+   * Runs in API-key mode regardless of whether this sync's window returned
+   * any notes — folder renames need to be detected even on empty incremental
+   * syncs. The work has three parts:
+   *
+   * 1. Merge this sync's per-note `folder_membership` into the persisted
+   *    snapshot.
+   * 2. Once per `FOLDERS_REFETCH_INTERVAL_MS` (or always on `mode: "full"`),
+   *    call `listFolders()` for the full hierarchy and merge it in. Catches
+   *    renames of folders whose notes didn't appear in this sync window.
+   * 3. Diff the previous snapshot against the merged one and dispatch any
+   *    renames to {@link updateRenamedFolders}.
+   *
+   * Failures of `listFolders` are soft — we log and continue so a transient
+   * network blip doesn't block the rest of sync.
+   */
+  private async refreshApiFolderState(
+    apiKey: string,
+    fetched: FetchedDoc[],
+    mode: "standard" | "full"
+  ): Promise<void> {
+    const partial = buildApiFolderSnapshot(
+      fetched
+        .filter((f) => f.folderMembership !== undefined)
+        .map((f) => ({ granolaId: f.doc.id, membership: f.folderMembership }))
+    );
+    const previousSnapshot =
+      this.settings._apiFolderSnapshot ?? { folders: {}, docFolders: {} };
+    let mergedSnapshot = mergeApiFolderSnapshots(previousSnapshot, partial);
+
+    const shouldFetchFullList =
+      mode === "full" ||
+      shouldRefetchFolders(Date.now(), this.settings._apiFoldersLastFetched);
+    if (shouldFetchFullList) {
+      try {
+        const allFolders = await listAllFolders(apiKey);
+        const fullFolders = folderListResponseToSnapshotFolders(allFolders);
+        mergedSnapshot = mergeApiFolderSnapshots(mergedSnapshot, {
+          folders: fullFolders,
+          docFolders: {},
+        });
+        this.settings._apiFoldersLastFetched = Date.now();
+        log.debug(
+          `Periodic listFolders refresh — ${Object.keys(fullFolders).length} folder(s)`
+        );
+      } catch (e) {
+        log.warn(
+          "Periodic listFolders call failed; continuing without full-hierarchy refresh",
+          e
+        );
+      }
+    }
+
+    const renamedPaths = diffApiFolderSnapshots(
+      previousSnapshot,
+      mergedSnapshot
+    );
+    if (renamedPaths.size > 0) {
+      log.debug(
+        `Detected ${renamedPaths.size} folder rename(s) (api_key mode)`
+      );
+      await this.updateRenamedFolders(renamedPaths);
+    }
+    this.settings._apiFolderSnapshot = mergedSnapshot;
+    await this.persistSettingsDuringSync();
+  }
+
+  /**
+   * Wrapper around `saveData(this.settings)` used by sync helpers. Skips the
+   * write entirely in dry-run mode so the user's `data.json` is left
+   * untouched. Live sync persists as before.
+   *
+   * This is intentionally a separate helper (rather than inlining the guard
+   * everywhere) so future settings persistence inside the sync run can't
+   * regress the dry-run contract — there's exactly one path.
+   */
+  private async persistSettingsDuringSync(): Promise<void> {
+    if (this.dryRunRecorder) {
+      log.debug(
+        "Dry-run: skipping saveData(settings) — settings persistence is read-only during dry-run"
+      );
+      return;
+    }
+    await this.saveData(this.settings);
+  }
+
+  /**
+   * Builds a `granolaId → updated_at` map from existing vault files. Used by
+   * the API-key fetcher to skip Get Note calls for notes whose remote
+   * `updated_at` hasn't moved since the last sync.
+   *
+   * Reads from `metadataCache.frontmatter` so this is O(n) over vault notes
+   * with no I/O — it relies on the already-populated cache populated by
+   * `fileSyncService.buildCache()`.
+   */
+  private buildKnownUpdatedAtMap(): Map<string, string | undefined> {
+    const out = new Map<string, string | undefined>();
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const granolaId = cache?.frontmatter?.granola_id as string | undefined;
+      if (!granolaId) continue;
+      const updated = cache?.frontmatter?.updated as string | undefined;
+      out.set(granolaId, updated);
+    }
+    return out;
+  }
+
+  /**
+   * Surfaces a user-facing Notice for fetch failures. API-key 401s set the
+   * settings flag so the settings tab can show a "key revoked" badge until
+   * the next successful sync clears it.
+   */
+  /**
+   * Note on dry-run: this helper deliberately does NOT route its
+   * `saveData(...)` calls through {@link persistSettingsDuringSync}. The
+   * `_lastApiAuthError` flag is diagnostic — a 401 detected during a
+   * dry-run is real (the key really was rejected), and surfacing the badge
+   * in settings UI helps the user fix it without needing to run a live sync
+   * first. The only persistence side-effect here is that one boolean.
+   */
+  private async handleFetchError(
+    error: unknown,
+    auth: AuthResult
+  ): Promise<void> {
+    if (error instanceof PublicApiError) {
+      if (error.status === 401) {
+        new Notice(
+          "Granola API key invalid or revoked — open settings to fix.",
+          10000
+        );
+        this.settings._lastApiAuthError = true;
+        await this.saveData(this.settings);
+      } else if (error.status === 429) {
+        new Notice(
+          "Granola sync error: rate limited by the Granola API. Try again in a minute.",
+          10000
+        );
+      } else if (error.status >= 500) {
+        new Notice(
+          "Granola sync error: Granola API server error. Please try again later.",
+          10000
+        );
+      } else {
+        new Notice(
+          `Granola sync error: ${error.message}` +
+            (error.requestId ? ` (request-id ${error.requestId})` : ""),
+          10000
+        );
+      }
+      log.error(
+        `Public API error during fetch — status=${error.status}, requestId=${error.requestId ?? "<none>"}`,
+        error
+      );
+      return;
+    }
+    const errorStatus = (error as { status?: number })?.status;
+    if (errorStatus === 401) {
+      new Notice(
+        auth.method === "api_key"
+          ? "Granola API key invalid or revoked — open settings to fix."
+          : "Granola sync error: Authentication failed. Your access token may have expired. Please reload Granola to update your credentials file.",
+        10000
+      );
+      if (auth.method === "api_key") {
+        this.settings._lastApiAuthError = true;
+        await this.saveData(this.settings);
+      }
+    } else if (errorStatus === 403) {
+      new Notice("Granola sync error: Access forbidden.", 10000);
+    } else if (errorStatus === 404) {
+      new Notice("Granola sync error: API endpoint not found.", 10000);
+    } else if (errorStatus && errorStatus >= 500) {
+      new Notice(
+        "Granola sync error: Granola API server error. Please try again later.",
+        10000
+      );
+    } else {
+      new Notice(
+        "Granola sync error: Failed to fetch documents from Granola API. Please check your internet connection.",
+        10000
+      );
+    }
+    log.error("Error fetching Granola documents:", error);
   }
 
   // Top-level sync function that handles common setup once
-  async sync(options: { mode?: "standard" | "full" } = {}) {
+  async sync(
+    options: { mode?: "standard" | "full"; dryRun?: DryRunRecorder } = {}
+  ) {
     const mode = options.mode ?? "standard";
-    log.debug(`Sync started — mode=${mode}, daysBack=${this.settings.syncDaysBack}`);
-    showStatusBar(this, "Granola sync: Syncing...");
-
-    // Load credentials at the start of each sync
-    const credentialsResult = await loadGranolaCredentials();
-    const { accessToken } = credentialsResult;
-    if (!accessToken || credentialsResult.error) {
-      log.error("Error loading Granola credentials:", credentialsResult.error);
-      presentCredentialsError(
-        {
-          ...credentialsResult,
-          error: credentialsResult.error ?? "No access token loaded.",
-        },
-        {
-          onKeychainDenied: () =>
-            new KeychainPermissionModal(this.app).open(),
-          onOtherError: (message) =>
-            new Notice(`Granola sync error: ${message}`, 10000),
+    log.debug(`Sync started — mode=${mode}, daysBack=${this.settings.syncDaysBack}, dryRun=${options.dryRun ? "yes" : "no"}`);
+    showStatusBar(
+      this,
+      options.dryRun ? "Granola dry-run: Syncing..." : "Granola sync: Syncing..."
+    );
+    // Wire dry-run interception into both the FileSyncService write paths
+    // AND the orchestrator-level write paths (backfill, cross-links,
+    // rename-application, settings persistence) for the duration of this
+    // sync. The orchestrator helpers consult `this.dryRunRecorder` directly.
+    //
+    // In-memory settings snapshot: even though we skip writing settings to
+    // disk during dry-run, individual code paths still mutate `this.settings`
+    // in place (e.g. `this.settings.latestSyncTime = Date.now()`). Without
+    // a snapshot, two back-to-back dry-runs in the same Obsidian session see
+    // different state because the first run advanced the in-memory clock.
+    // We snapshot before the run and restore after, with one documented
+    // exception: `_lastApiAuthError = true` (a 401 surfaced by dry-run is
+    // real and we want the settings UI badge to show until the user fixes
+    // the key — that mutation is allowed through).
+    this.dryRunRecorder = options.dryRun ?? null;
+    this.fileSyncService.setDryRunRecorder(options.dryRun ?? null);
+    this.dailyNoteBuilder.setDryRunRecorder(options.dryRun ?? null);
+    const settingsSnapshot = options.dryRun
+      ? this.snapshotSettings()
+      : null;
+    try {
+      return await this._sync(mode, options.dryRun ?? null);
+    } finally {
+      if (settingsSnapshot) {
+        const lastApiAuthError = this.settings._lastApiAuthError;
+        this.restoreSettingsSnapshot(settingsSnapshot);
+        // Preserve the 401 flag from this dry-run (documented exception)
+        if (lastApiAuthError) {
+          this.settings._lastApiAuthError = lastApiAuthError;
         }
-      );
+      }
+      this.dryRunRecorder = null;
+      this.fileSyncService.setDryRunRecorder(null);
+      this.dailyNoteBuilder.setDryRunRecorder(null);
+    }
+  }
+
+  /**
+   * Runs a dry-run sync and shows the report inline via {@link DryRunReportModal}.
+   *
+   * Single entry point for both the command palette command and the settings
+   * "Dry-run sync" button — keeps the UX consistent and the recorder lifecycle
+   * in one place.
+   */
+  async runDryRun(): Promise<void> {
+    new Notice("Granola dry-run: Starting (no files will be modified).");
+    const recorder = new DryRunRecorder();
+    const startedAt = new Date();
+    try {
+      await this.sync({ dryRun: recorder });
+    } catch (e) {
+      // sync() catches and surfaces its own errors via Notice + log.error,
+      // so we expect to be told via the recorder + Notice rather than via a
+      // thrown error. If something escaped, surface it so the modal still
+      // opens with the partial state captured up to the failure.
+      log.error("Dry-run threw unexpectedly; opening modal with partial state.", e);
+    }
+    const finishedAt = new Date();
+    log.info(recorder.summarize());
+    new DryRunReportModal(this.app, recorder, startedAt, finishedAt).open();
+  }
+
+  /**
+   * Captures the current settings state for restoration after a dry-run.
+   *
+   * Uses `structuredClone` to deep-copy nested fields like `_folderMapCache`
+   * and `_apiFolderSnapshot` so in-place mutations inside the sync don't
+   * surface in the snapshot. Falls back to a JSON round-trip for older
+   * runtimes that lack `structuredClone` (none of Obsidian's supported
+   * platforms, but safer to guard).
+   */
+  private snapshotSettings(): GranolaSyncSettings {
+    if (typeof structuredClone === "function") {
+      return structuredClone(this.settings);
+    }
+    return JSON.parse(JSON.stringify(this.settings)) as GranolaSyncSettings;
+  }
+
+  /**
+   * Restores settings to the snapshot taken at the start of a dry-run.
+   *
+   * Mutates `this.settings` in place (not reassign) so the closure-captured
+   * `getSettings` reference in {@link FileSyncService} keeps pointing at
+   * the same object. Replacing keys, not the object identity.
+   */
+  private restoreSettingsSnapshot(snapshot: GranolaSyncSettings): void {
+    // Delete keys that were added during the dry-run but aren't in the
+    // snapshot, then re-apply snapshot values. This handles the case where
+    // a sync added a new field (e.g. `_apiFoldersLastFetched` on first ever
+    // API sync).
+    for (const k of Object.keys(this.settings) as Array<keyof GranolaSyncSettings>) {
+      if (!(k in snapshot)) {
+        delete this.settings[k];
+      }
+    }
+    Object.assign(this.settings, snapshot);
+  }
+
+  private async _sync(
+    mode: "standard" | "full",
+    dryRun: DryRunRecorder | null
+  ): Promise<void> {
+
+    // Resolve auth (desktop credentials or API key) at the start of each sync.
+    // The desktop path returns the full `credentialsResult` so we can route
+    // keychain-denied / decrypt-error states through the dedicated modal that
+    // ships with the desktop credential decryption work (PR #130).
+    const { auth, error, credentialsResult } = await resolveAuth(this.settings);
+    if (!auth || error) {
+      log.error("Error resolving Granola auth:", error);
+      if (credentialsResult) {
+        // Desktop path failure — `presentCredentialsError` routes
+        // `errorKind === "keychain"` to the modal and everything else to a
+        // Notice. Keeps the UX consistent with the desktop-only sync flow.
+        presentCredentialsError(
+          {
+            ...credentialsResult,
+            error: credentialsResult.error ?? "No access token loaded.",
+          },
+          {
+            onKeychainDenied: () =>
+              new KeychainPermissionModal(this.app).open(),
+            onOtherError: (message) =>
+              new Notice(`Granola sync error: ${message}`, 10000),
+          }
+        );
+      } else {
+        // API key path failure (no credentials file involved) — simple Notice.
+        new Notice(
+          `Granola sync error: ${error || "No credentials available."}`,
+          10000
+        );
+      }
       hideStatusBar(this);
       return;
     }
@@ -456,51 +806,55 @@ export default class GranolaSync extends Plugin {
     // Build the Granola ID cache before syncing
     await this.fileSyncService.buildCache();
 
-    // Fetch documents
-    let documents: GranolaDoc[] = [];
-    const includeShared = this.settings.includeSharedNotes;
+    // Build the list-level updated_at gate for API-key mode. This lets the
+    // fetcher skip Get Note calls for notes whose remote timestamp hasn't
+    // moved since the last sync — the dominant cost saver on large vaults.
+    let knownUpdatedAtByGranolaId: Map<string, string | undefined> | undefined;
+    if (auth.method === "api_key") {
+      knownUpdatedAtByGranolaId = this.buildKnownUpdatedAtMap();
+    }
+
+    // Fetch documents via the appropriate API for this auth method
+    let fetched: FetchedDoc[];
     try {
-      if (mode === "full") {
-        documents = await getAllDocuments(accessToken, 100, includeShared);
-      } else {
-        documents = await getRecentDocuments(
-          accessToken,
-          this.settings.syncDaysBack,
-          100,
-          includeShared
-        );
-      }
+      fetched = await fetchDocumentsForSync(auth, this.settings, {
+        mode,
+        includeTranscripts: this.settings.syncTranscripts,
+        knownUpdatedAtByGranolaId,
+        latestSyncTime: this.settings.latestSyncTime,
+      });
     } catch (error: unknown) {
-      const errorStatus = (error as { status?: number })?.status;
-      if (errorStatus === 401) {
-        new Notice(
-          "Granola sync error: Authentication failed. Your access token may have expired. Please reload Granola to update your credentials file.",
-          10000
-        );
-      } else if (errorStatus === 403) {
-        new Notice(
-          "Granola sync error: Access forbidden. Please check your permissions.",
-          10000
-        );
-      } else if (errorStatus === 404) {
-        new Notice(
-          "Granola sync error: API endpoint not found. Please check for updates.",
-          10000
-        );
-      } else if (errorStatus && errorStatus >= 500) {
-        new Notice(
-          "Granola sync error: Granola API server error. Please try again later.",
-          10000
-        );
-      } else {
-        new Notice(
-          "Granola sync error: Failed to fetch documents from Granola API. Please check your internet connection.",
-          10000
-        );
-      }
-      log.error("Error fetching Granola documents:", error);
+      await this.handleFetchError(error, auth);
       hideStatusBar(this);
       return;
+    }
+
+    // Clear any "last sync was 401" flag — we got past the fetch.
+    if (this.settings._lastApiAuthError) {
+      this.settings._lastApiAuthError = false;
+      await this.persistSettingsDuringSync();
+    }
+
+    // For API-key mode we already have folder data inline on each FetchedDoc
+    // and pre-fetched transcripts. The desktop path still uses the legacy
+    // accessToken for the folder-map builder and transcript endpoint.
+    const accessToken = auth.method === "desktop" ? auth.token : "";
+    let documents: GranolaDoc[] = fetched.map((f) => f.doc);
+    const apiFoldersByDocId = new Map<string, string[]>();
+    const apiTranscriptsByDocId = new Map<string, TranscriptEntry[]>();
+    const publicIdByDocId = new Map<string, string>();
+    for (const f of fetched) {
+      if (f.folders) apiFoldersByDocId.set(f.doc.id, f.folders);
+      if (f.apiTranscript) apiTranscriptsByDocId.set(f.doc.id, f.apiTranscript);
+      if (f.publicId) publicIdByDocId.set(f.doc.id, f.publicId);
+    }
+
+    // Record ID bridge alias entries so updateExistingFile and isRemoteNewer
+    // can resolve by either the legacy UUID or the public `not_*` id.
+    for (const [docId, publicId] of publicIdByDocId) {
+      this.fileSyncService.recordPublicIdBridge(publicId, docId, "note");
+      this.fileSyncService.recordPublicIdBridge(publicId, docId, "transcript");
+      this.fileSyncService.recordPublicIdBridge(publicId, docId, "combined");
     }
 
     // Apply title filter
@@ -509,6 +863,13 @@ export default class GranolaSync extends Plugin {
       this.settings.titleFilterMode,
       this.settings.titleFilterKeyword
     );
+
+    // API-mode folder housekeeping runs BEFORE the empty-docs early-return.
+    // An incremental sync window may return zero notes while a folder rename
+    // still needs to be detected via the periodic listFolders() refresh.
+    if (auth.method === "api_key") {
+      await this.refreshApiFolderState(auth.token, fetched, mode);
+    }
 
     if (documents.length === 0) {
       new Notice(
@@ -530,34 +891,42 @@ export default class GranolaSync extends Plugin {
 
     // Build folder map (document → folder paths)
     let docFolders: Record<string, string[]> = {};
-    try {
-      showStatusBar(this, "Granola sync: Fetching folders...");
-      const freshFolderMap = await buildFolderMap(accessToken);
-      const previousFolderMap = this.settings._folderMapCache ?? null;
+    if (auth.method === "desktop") {
+      try {
+        showStatusBar(this, "Granola sync: Fetching folders...");
+        const freshFolderMap = await buildFolderMap(accessToken);
+        const previousFolderMap = this.settings._folderMapCache ?? null;
 
-      // Detect folder renames and update affected notes
-      const diff = diffFolderMaps(previousFolderMap, freshFolderMap);
-      if (diff.renamedPaths.size > 0) {
-        log.debug(`Detected ${diff.renamedPaths.size} folder rename(s)`);
-        await this.updateRenamedFolders(diff.renamedPaths);
+        // Detect folder renames and update affected notes
+        const diff = diffFolderMaps(previousFolderMap, freshFolderMap);
+        if (diff.renamedPaths.size > 0) {
+          log.debug(`Detected ${diff.renamedPaths.size} folder rename(s)`);
+          await this.updateRenamedFolders(diff.renamedPaths);
+        }
+
+        // Persist the fresh folder map
+        this.settings._folderMapCache = freshFolderMap;
+        await this.persistSettingsDuringSync();
+
+        docFolders = freshFolderMap.docFolders;
+        log.debug(`Folder map built — ${Object.keys(freshFolderMap.folders).length} folder(s), ${Object.keys(docFolders).length} document(s) with folder data`);
+
+        // Backfill folders on existing notes that don't have the field yet
+        await this.backfillFolderMetadata(docFolders);
+      } catch (error) {
+        log.error("Failed to build folder map, continuing sync without folder data:", error);
+        // Use previously cached data if available
+        if (this.settings._folderMapCache) {
+          docFolders = this.settings._folderMapCache.docFolders;
+          log.debug("Using cached folder map from previous sync");
+        }
       }
-
-      // Persist the fresh folder map
-      this.settings._folderMapCache = freshFolderMap;
-      await this.saveData(this.settings);
-
-      docFolders = freshFolderMap.docFolders;
-      log.debug(`Folder map built — ${Object.keys(freshFolderMap.folders).length} folder(s), ${Object.keys(docFolders).length} document(s) with folder data`);
-
-      // Backfill folders on existing notes that don't have the field yet
+    } else {
+      // API-key mode: folder snapshot / rename detection already ran via
+      // refreshApiFolderState() above the empty-docs early-return. Here we
+      // only need to thread the per-doc folder paths through to backfill.
+      docFolders = Object.fromEntries(apiFoldersByDocId.entries());
       await this.backfillFolderMetadata(docFolders);
-    } catch (error) {
-      log.error("Failed to build folder map, continuing sync without folder data:", error);
-      // Use previously cached data if available
-      if (this.settings._folderMapCache) {
-        docFolders = this.settings._folderMapCache.docFolders;
-        log.debug("Using cached folder map from previous sync");
-      }
     }
 
     const forceOverwrite = mode === "full";
@@ -565,13 +934,45 @@ export default class GranolaSync extends Plugin {
     if (this.settings.syncTranscripts) {
       const transcriptResult = await this.syncTranscripts(
         documents,
-        accessToken,
-        forceOverwrite
+        auth,
+        forceOverwrite,
+        apiTranscriptsByDocId
       );
       transcriptDataMap = transcriptResult.transcriptDataMap;
     }
     if (this.settings.syncNotes) {
-      await this.syncNotes(documents, forceOverwrite, transcriptDataMap, docFolders);
+      // API-key mode body-write policy:
+      // - `refresh-transcripts-only` (default): preserve note bodies on
+      //   EXISTING files (don't overwrite the desktop-rendered ProseMirror
+      //   body the user already has), but still CREATE missing notes. This
+      //   resolves "orphan" cases where desktop sync wrote a transcript
+      //   before Granola finished the AI summary and the matching note
+      //   never landed.
+      // - `force-refresh-all`: write everything (one-shot, auto-reverts).
+      // - `normal`: write when remote is newer (desktop-equivalent behavior).
+      // - Desktop auth: pass through with `skipExistingBodies = false`.
+      //
+      // Daily-notes mode in `refresh-transcripts-only` is not yet covered by
+      // per-doc orphan-fix; see `syncNotesToDailyNotes` for why.
+      const apiBodyMode =
+        auth.method === "api_key" ? this.settings.apiSyncBodyMode : "normal";
+      const skipExistingBodies = apiBodyMode === "refresh-transcripts-only";
+      await this.syncNotes(
+        documents,
+        forceOverwrite || apiBodyMode === "force-refresh-all",
+        transcriptDataMap,
+        docFolders,
+        { skipExistingBodies }
+      );
+      // force-refresh-all is a one-shot: auto-revert so users don't permanently
+      // run in body-rewriting mode after a single corrective sync.
+      if (apiBodyMode === "force-refresh-all") {
+        log.debug(
+          "Auto-reverting apiSyncBodyMode from force-refresh-all to refresh-transcripts-only after a completed sync"
+        );
+        this.settings.apiSyncBodyMode = "refresh-transcripts-only";
+        await this.persistSettingsDuringSync();
+      }
     }
 
     // Update frontmatter cross-links between notes and transcripts using
@@ -586,24 +987,28 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
-    docFolders: Record<string, string[]> = {}
+    docFolders: Record<string, string[]> = {},
+    options: { skipExistingBodies?: boolean } = {}
   ): Promise<void> {
     let syncedCount: number;
-    log.debug(`syncNotes — mode=${this.settings.saveAsIndividualFiles ? "individual" : "daily-notes"}, docs=${documents.length}`);
+    const skipExistingBodies = options.skipExistingBodies ?? false;
+    log.debug(`syncNotes — mode=${this.settings.saveAsIndividualFiles ? "individual" : "daily-notes"}, docs=${documents.length}, skipExistingBodies=${skipExistingBodies}`);
 
     if (!this.settings.saveAsIndividualFiles) {
       syncedCount = await this.syncNotesToDailyNotes(
         documents,
         forceOverwrite,
         transcriptDataMap,
-        docFolders
+        docFolders,
+        { skipExistingBodies }
       );
     } else {
       const result = await this.syncNotesToIndividualFiles(
         documents,
         forceOverwrite,
         transcriptDataMap,
-        docFolders
+        docFolders,
+        { skipExistingBodies }
       );
       syncedCount = result.syncedCount;
 
@@ -627,7 +1032,7 @@ export default class GranolaSync extends Plugin {
     this.settings.latestSyncTime = Date.now();
     // Persist directly: saveSettings() rebuilds services and would clear the
     // FileSyncService cache mid-sync, breaking updateCrossLinks().
-    await this.saveData(this.settings);
+    await this.persistSettingsDuringSync();
 
     log.debug(`Saved ${syncedCount} note(s)`);
   }
@@ -636,8 +1041,38 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
-    docFolders: Record<string, string[]> = {}
+    docFolders: Record<string, string[]> = {},
+    options: { skipExistingBodies?: boolean } = {}
   ): Promise<number> {
+    // Daily-notes mode + skipExistingBodies (API-key refresh-transcripts-only):
+    // sections live INSIDE daily-note files and the existing updater replaces
+    // the entire heading-to-next-heading block as a unit. Implementing a
+    // per-doc "only fill missing sections, never overwrite existing ones"
+    // requires refactoring `updateDailyNoteSection` to splice sections rather
+    // than rewrite. Until that's done, the safe fallback is to skip the whole
+    // method — preserving existing daily notes. The cost: orphan notes in
+    // daily-notes mode won't auto-resolve on API sync until this lands. Track
+    // as a follow-up; out of scope for the orphan-fix in PR-current.
+    if (options.skipExistingBodies) {
+      log.warn(
+        "syncNotesToDailyNotes — skipExistingBodies requested but per-doc " +
+          "orphan-fix is not yet implemented for daily-notes mode. Skipping all " +
+          "note writes for this sync. (Transcripts and folder housekeeping still ran.)"
+      );
+      if (this.dryRunRecorder) {
+        for (const doc of documents) {
+          this.dryRunRecorder.record({
+            outcome: "skip-body-write-disabled",
+            path: this.pathResolver.computeNotePath(doc),
+            granolaId: doc.id,
+            type: "note",
+            reason:
+              "apiSyncBodyMode=refresh-transcripts-only (daily-notes mode — per-doc orphan-fix not yet supported)",
+          });
+        }
+      }
+      return 0;
+    }
     const dailyNotesMap = this.dailyNoteBuilder.buildDailyNotesMap(documents, docFolders);
     const sectionHeadingSetting = (
       this.settings.dailyNoteSectionHeading ||
@@ -653,6 +1088,22 @@ export default class GranolaSync extends Plugin {
       const dailyNoteFile = await this.dailyNoteBuilder.getOrCreateDailyNote(
         dateKey
       );
+      if (!dailyNoteFile) {
+        // Dry-run + daily note does not exist on disk yet.
+        // `getOrCreateDailyNote` already recorded a would-create event;
+        // we record the intended write and skip the section-update step
+        // (there's no file to read or modify).
+        if (this.dryRunRecorder) {
+          this.dryRunRecorder.record({
+            outcome: "would-modify",
+            path: `(daily note for ${dateKey})`,
+            reason: `would write ${notesWithDocs.length} note section(s) into new daily note`,
+          });
+        }
+        processedCount += notesWithDocs.length;
+        this.updateSyncStatus("Note", processedCount, documents.length);
+        continue;
+      }
 
       // Extract just the note data for comparison
       const notesForDay = notesWithDocs.map((item) => item.noteData);
@@ -737,7 +1188,8 @@ export default class GranolaSync extends Plugin {
     documents: GranolaDoc[],
     forceOverwrite: boolean = false,
     transcriptDataMap: Map<string, TranscriptEntry[]> | null = null,
-    docFolders: Record<string, string[]> = {}
+    docFolders: Record<string, string[]> = {},
+    options: { skipExistingBodies?: boolean } = {}
   ): Promise<{
     syncedCount: number;
     syncedNotes: Array<{ doc: GranolaDoc; notePath: string }>;
@@ -751,23 +1203,43 @@ export default class GranolaSync extends Plugin {
     const isCombinedMode =
       this.settings.syncTranscripts &&
       this.settings.transcriptHandling === "combined";
+    const skipExistingBodies = options.skipExistingBodies ?? false;
 
     for (const doc of documents) {
       const notePath = this.pathResolver.computeNotePath(doc);
+      const fileType: "note" | "combined" = isCombinedMode ? "combined" : "note";
+      const existingNote = this.fileSyncService.findByGranolaId(doc.id, fileType);
+
+      // refresh-transcripts-only: preserve the body on EXISTING files but
+      // still create missing ones. Resolves orphans without clobbering the
+      // user's desktop-rendered ProseMirror body when present. Subsequent
+      // syncs see the created note as "existing" and preserve it from then
+      // on (user-edit safety).
+      if (skipExistingBodies && existingNote) {
+        log.debug(
+          `Skipping body write for ${doc.id} — file exists at ${existingNote.path} (skipExistingBodies)`
+        );
+        if (this.dryRunRecorder) {
+          this.dryRunRecorder.record({
+            outcome: "skip-body-write-disabled",
+            path: existingNote.path,
+            granolaId: doc.id,
+            type: fileType,
+            reason: "apiSyncBodyMode=refresh-transcripts-only",
+          });
+        }
+        continue;
+      }
 
       // Skip processing if note already exists locally and is up-to-date (unless forceOverwrite is true)
       if (!forceOverwrite) {
-        const existingNote = this.fileSyncService.findByGranolaId(
-          doc.id,
-          isCombinedMode ? "combined" : "note"
-        );
         if (existingNote) {
           // Check if remote is newer than local
           if (
             !this.fileSyncService.isRemoteNewer(
               doc.id,
               getEffectiveUpdatedAt(doc),
-              isCombinedMode ? "combined" : "note"
+              fileType
             )
           ) {
             log.debug(`Skipping doc ${doc.id} — local copy is up-to-date`);
@@ -866,12 +1338,21 @@ export default class GranolaSync extends Plugin {
           const noteFile = this.fileSyncService.findByGranolaId(doc.id, "note");
           if (noteFile) {
             noteLinkPath = noteFile.path;
-            await this.app.fileManager.processFrontMatter(
-              noteFile,
-              (fm: Record<string, unknown>) => {
-                fm.transcript = `[[${transcriptFile.path}]]`;
-              }
-            );
+            if (this.dryRunRecorder) {
+              this.dryRunRecorder.record({
+                outcome: "would-modify-frontmatter",
+                path: noteFile.path,
+                granolaId: doc.id,
+                reason: `cross-link transcript=[[${transcriptFile.path}]]`,
+              });
+            } else {
+              await this.app.fileManager.processFrontMatter(
+                noteFile,
+                (fm: Record<string, unknown>) => {
+                  fm.transcript = `[[${transcriptFile.path}]]`;
+                }
+              );
+            }
           }
         } else {
           // Daily notes mode: link to the daily note heading
@@ -885,29 +1366,45 @@ export default class GranolaSync extends Plugin {
         }
 
         if (noteLinkPath) {
-          await this.app.fileManager.processFrontMatter(
-            transcriptFile,
-            (fm: Record<string, unknown>) => {
-              fm.note = `[[${noteLinkPath}]]`;
-            }
-          );
+          if (this.dryRunRecorder) {
+            this.dryRunRecorder.record({
+              outcome: "would-modify-frontmatter",
+              path: transcriptFile.path,
+              granolaId: doc.id,
+              reason: `cross-link note=[[${noteLinkPath}]]`,
+            });
+          } else {
+            await this.app.fileManager.processFrontMatter(
+              transcriptFile,
+              (fm: Record<string, unknown>) => {
+                fm.note = `[[${noteLinkPath}]]`;
+              }
+            );
+          }
+          // Only count a "pair" when we actually had both sides to link. If
+          // the matching note file didn't exist locally (`noteLinkPath` was
+          // never set), there's nothing to record — and bumping the counter
+          // would produce a misleading "Updated cross-links in N pair(s)"
+          // log line.
+          updatedCount++;
         }
-
-        updatedCount++;
       } catch (e) {
         log.error(`updateCrossLinks: failed for doc ${doc.id}:`, e);
       }
     }
 
     if (updatedCount > 0) {
-      log.debug(`Updated cross-links in ${updatedCount} note/transcript pair(s)`);
+      log.debug(
+        `${this.dryRunRecorder ? "Dry-run: would update" : "Updated"} cross-links in ${updatedCount} note/transcript pair(s)`
+      );
     }
   }
 
   private async syncTranscripts(
     documents: GranolaDoc[],
-    accessToken: string,
-    forceOverwrite: boolean = false
+    auth: AuthResult,
+    forceOverwrite: boolean = false,
+    apiTranscriptsByDocId?: Map<string, TranscriptEntry[]>
   ): Promise<{ transcriptDataMap: Map<string, TranscriptEntry[]> }> {
     const transcriptDataMap = new Map<string, TranscriptEntry[]>();
     const isCombinedMode = this.settings.transcriptHandling === "combined";
@@ -940,10 +1437,13 @@ export default class GranolaSync extends Plugin {
           }
         }
 
-        const transcriptData: TranscriptEntry[] = await fetchGranolaTranscript(
-          accessToken,
-          docId
-        );
+        // In API-key mode, the transcript was already fetched inline with the
+        // note. The desktop path still hits /v1/get-document-transcript.
+        const transcriptData: TranscriptEntry[] =
+          apiTranscriptsByDocId?.get(docId) ??
+          (auth.method === "desktop"
+            ? await fetchGranolaTranscript(auth.token, docId)
+            : []);
         if (transcriptData.length === 0) {
           log.debug(`Skipping transcript for doc ${docId} — API returned empty transcript`);
           continue;
@@ -1000,3 +1500,4 @@ export default class GranolaSync extends Plugin {
     return { transcriptDataMap };
   }
 }
+

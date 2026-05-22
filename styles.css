@@ -17,3 +17,61 @@
   width: auto;
   display: block;
 }
+
+/* Dry-run report modal styles. Kept here (vs inline) so the
+   obsidianmd/no-static-styles-assignment rule passes and so users can
+   override via CSS snippets if they want a different presentation. */
+.granola-sync-dry-run-modal .granola-sync-dry-run-timing {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-counts ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-counts li {
+  padding: 0.15em 0;
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-details {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  padding: 0.5em;
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-details table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-details th {
+  text-align: left;
+  padding: 0.25em 0.5em;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-details td {
+  padding: 0.25em 0.5em;
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-outcome {
+  white-space: nowrap;
+  font-family: var(--font-monospace);
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-path {
+  word-break: break-all;
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-granola-id {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.granola-sync-dry-run-modal .granola-sync-dry-run-reason {
+  color: var(--text-muted);
+}
