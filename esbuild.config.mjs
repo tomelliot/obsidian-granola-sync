@@ -4,6 +4,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from "node:module";
+import { execFileSync } from "node:child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -31,6 +32,18 @@ const DEV_PLUGIN_PATH =
     "obsidian/Everything/.obsidian/plugins/granola-sync/main.js"
   );
 
+// Regenerate src/services/embeddedKeyringBinaries.ts before each build so the
+// bundle picks up the current @napi-rs/keyring binaries. The TS file is large
+// (~8 MB of base64) and not committed — this keeps it fresh after `pnpm install`.
+function regenerateEmbeddedBinaries() {
+  console.log("Regenerating embedded keyring binaries…");
+  execFileSync(
+    process.execPath,
+    [path.join(__dirname, "scripts/generateEmbeddedKeyringBinaries.mjs")],
+    { stdio: "inherit" }
+  );
+}
+
 function copyToDevPlugin() {
   if (prod) return;
 
@@ -41,23 +54,19 @@ function copyToDevPlugin() {
     const manifestTargetPath = path.join(targetDir, "manifest.json");
     const stylesTargetPath = path.join(targetDir, "styles.css");
 
-    // Check if target directory exists
     if (!fs.existsSync(targetDir)) {
       console.error(`Target directory does not exist: ${targetDir}`);
       return;
     }
 
-    // Copy the built main.js
     fs.copyFileSync(outputPath, DEV_PLUGIN_PATH);
     console.log(`✓ Copied main.js to ${DEV_PLUGIN_PATH}`);
 
-    // Copy styles.css
     if (fs.existsSync(stylesPath)) {
       fs.copyFileSync(stylesPath, stylesTargetPath);
       console.log(`✓ Copied styles.css to ${stylesTargetPath}`);
     }
 
-    // Write a dev manifest with a fixed version so it doesn't override production
     const devManifest = { ...manifest, version: "1.0.0" };
     fs.writeFileSync(
       manifestTargetPath,
@@ -65,22 +74,30 @@ function copyToDevPlugin() {
       "utf-8"
     );
     console.log(`✓ Wrote dev manifest.json to ${manifestTargetPath}`);
+
+    // Stale binaries previously copied via the per-platform node_modules path —
+    // remove them so we don't end up with two keyring backends in the plugin dir.
+    const staleNodeModules = path.join(targetDir, "node_modules");
+    if (fs.existsSync(staleNodeModules)) {
+      fs.rmSync(staleNodeModules, { recursive: true, force: true });
+      console.log(`✓ Removed stale ${staleNodeModules}`);
+    }
   } catch (error) {
     console.error(`Failed to copy to dev plugin directory: ${error.message}`);
   }
 }
 
-// Plugin to copy file after build in development mode
 const copyPlugin = {
   name: "copy-to-dev-plugin",
   setup(build) {
     if (prod) return;
-
     build.onEnd(() => {
       copyToDevPlugin();
     });
   },
 };
+
+regenerateEmbeddedBinaries();
 
 const context = await esbuild.context({
   banner: {
@@ -122,9 +139,6 @@ if (prod) {
   await context.rebuild();
   process.exit(0);
 } else {
-  // Initial build (plugin will copy automatically)
   await context.rebuild();
-
-  // Watch for changes (plugin will copy on each rebuild)
   await context.watch();
 }

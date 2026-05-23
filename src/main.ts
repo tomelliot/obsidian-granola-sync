@@ -26,6 +26,9 @@ import {
 import {
   loadCredentials as loadGranolaCredentials,
 } from "./services/credentials";
+import { presentCredentialsError } from "./services/credentialsErrorPresenter";
+import { setPluginDirectory } from "./services/granolaCredentialsCrypto";
+import { KeychainPermissionModal } from "./ui/keychainPermissionModal";
 import {
   formatTranscriptBySpeaker,
   formatTranscriptBody,
@@ -57,6 +60,14 @@ export default class GranolaSync extends Plugin {
     await this.loadSettings();
 
     this.initializeLogger();
+
+    // Tell the credentials crypto module where the plugin lives so it can
+    // resolve its bundled native dependency by absolute path. Obsidian's
+    // plugin require doesn't search the plugin's own node_modules.
+    const adapter = this.app.vault.adapter;
+    if (adapter instanceof FileSystemAdapter && this.manifest.dir) {
+      setPluginDirectory(path.join(adapter.getBasePath(), this.manifest.dir));
+    }
 
     // Initialize services
     this.initializeServices();
@@ -422,12 +433,21 @@ export default class GranolaSync extends Plugin {
     showStatusBar(this, "Granola sync: Syncing...");
 
     // Load credentials at the start of each sync
-    const { accessToken, error } = await loadGranolaCredentials();
-    if (!accessToken || error) {
-      log.error("Error loading Granola credentials:", error);
-      new Notice(
-        `Granola sync error: ${error || "No access token loaded."}`,
-        10000
+    const credentialsResult = await loadGranolaCredentials();
+    const { accessToken } = credentialsResult;
+    if (!accessToken || credentialsResult.error) {
+      log.error("Error loading Granola credentials:", credentialsResult.error);
+      presentCredentialsError(
+        {
+          ...credentialsResult,
+          error: credentialsResult.error ?? "No access token loaded.",
+        },
+        {
+          onKeychainDenied: () =>
+            new KeychainPermissionModal(this.app).open(),
+          onOtherError: (message) =>
+            new Notice(`Granola sync error: ${message}`, 10000),
+        }
       );
       hideStatusBar(this);
       return;

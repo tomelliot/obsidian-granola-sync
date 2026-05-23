@@ -1,13 +1,32 @@
 import { loadCredentials } from "../../src/services/credentials";
 import { requestUrl } from "obsidian";
-import fs from "fs";
+import {
+  loadEncryptedCredentials,
+  KeychainAccessError,
+  CredentialDecryptionError,
+} from "../../src/services/granolaCredentialsCrypto";
 
 jest.mock("obsidian");
-jest.mock("fs", () => ({
-  promises: {
-    readFile: jest.fn(),
-  },
-}));
+
+jest.mock("../../src/services/granolaCredentialsCrypto", () => {
+  class KeychainAccessError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "KeychainAccessError";
+    }
+  }
+  class CredentialDecryptionError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "CredentialDecryptionError";
+    }
+  }
+  return {
+    loadEncryptedCredentials: jest.fn(),
+    KeychainAccessError,
+    CredentialDecryptionError,
+  };
+});
 
 jest.mock("../../src/utils/logger", () => ({
   log: {
@@ -18,7 +37,7 @@ jest.mock("../../src/utils/logger", () => ({
   },
 }));
 
-(global as any).PLUGIN_VERSION = "1.0.0-test";
+(global as unknown as { PLUGIN_VERSION: string }).PLUGIN_VERSION = "1.0.0-test";
 
 const mockAccessToken = "mock-access-token";
 const mockRefreshToken = "mock-refresh-token";
@@ -48,144 +67,84 @@ function buildTokens(overrides: Partial<TokensShape> = {}): TokensShape {
 }
 
 function storedAccountsFile(
-  tokens: TokensShape | undefined,
-  extra: Record<string, unknown> = {}
+  tokens: Partial<TokensShape> | string | null = {}
 ): string {
-  const account: Record<string, unknown> = {
-    userId: "user-1",
-    email: "user@example.com",
-    userInfo: JSON.stringify({ id: "user-1" }),
-    savedAt: Date.now(),
-    ...extra,
-  };
-  if (tokens !== undefined) {
-    account.tokens = JSON.stringify(tokens);
-  }
-  return JSON.stringify({ accounts: JSON.stringify([account]) });
+  const tokensField =
+    typeof tokens === "string" || tokens === null
+      ? tokens
+      : JSON.stringify(buildTokens(tokens));
+  return JSON.stringify({
+    accounts: JSON.stringify([{ tokens: tokensField }]),
+  });
 }
 
-function mockRead(response: string | Error): void {
-  const mock = fs.promises.readFile as jest.Mock;
-  mock.mockReset();
-  if (response instanceof Error) {
-    mock.mockRejectedValueOnce(response);
-  } else {
-    mock.mockResolvedValueOnce(response);
-  }
-}
+describe("Credentials Service - Token Refresh", () => {
+  const mockLoadEncrypted = loadEncryptedCredentials as jest.MockedFunction<
+    typeof loadEncryptedCredentials
+  >;
 
-describe("Credentials Service - stored-accounts.json", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("loads access token when not expired", async () => {
-    mockRead(storedAccountsFile(buildTokens()));
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("should load credentials successfully when token is not expired", async () => {
+    mockLoadEncrypted.mockResolvedValueOnce(storedAccountsFile());
 
     const result = await loadCredentials();
 
     expect(result.accessToken).toBe(mockAccessToken);
     expect(result.error).toBeNull();
-    expect(fs.promises.readFile).toHaveBeenCalledTimes(1);
-    expect(requestUrl).not.toHaveBeenCalled();
+    expect(mockLoadEncrypted).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts already-parsed accounts/tokens objects", async () => {
-    const tokens = buildTokens();
-    mockRead(JSON.stringify({ accounts: [{ tokens }] }));
+  it("should refresh token when expired", async () => {
+    const expiredTime = Date.now() - 6 * 60 * 60 * 1000;
 
-    const result = await loadCredentials();
-
-    expect(result.accessToken).toBe(mockAccessToken);
-    expect(result.error).toBeNull();
-  });
-
-  it("surfaces a helpful error when accounts array is empty", async () => {
-    mockRead(JSON.stringify({ accounts: JSON.stringify([]) }));
-
-    const result = await loadCredentials();
-
-    expect(result.accessToken).toBeNull();
-    expect(result.error).toContain("No accounts found");
-  });
-
-  it("surfaces a helpful error when the first account has no tokens", async () => {
-    mockRead(storedAccountsFile(undefined));
-
-    const result = await loadCredentials();
-
-    expect(result.accessToken).toBeNull();
-    expect(result.error).toContain("Missing 'tokens' field");
-  });
-
-  it("reports missing 'accounts' field", async () => {
-    mockRead(JSON.stringify({}));
-
-    const result = await loadCredentials();
-
-    expect(result.accessToken).toBeNull();
-    expect(result.error).toContain("Missing 'accounts' field");
-  });
-});
-
-describe("Credentials Service - refresh behaviour", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it("refreshes an expired token", async () => {
-    const expiredAt = Date.now() - 6 * 60 * 60 * 1000;
-    mockRead(storedAccountsFile(buildTokens({ obtained_at: expiredAt })));
-    (requestUrl as jest.Mock).mockResolvedValueOnce({
-      json: { access_token: mockNewAccessToken, expires_in: 21600, token_type: "Bearer" },
-    });
-
-    const result = await loadCredentials();
-
-    expect(result.accessToken).toBe(mockNewAccessToken);
-    expect(result.error).toBeNull();
-    const call = (requestUrl as jest.Mock).mock.calls[0][0];
-    expect(call.url).toBe("https://api.granola.ai/v1/refresh-access-token");
-    expect(JSON.parse(call.body)).toEqual({
-      refresh_token: mockRefreshToken,
-      provider: "workos",
-    });
-  });
-
-  it("refreshes when token expires within 5 minutes", async () => {
-    const expiresIn = 21600;
-    const obtainedAt = Date.now() - expiresIn * 1000 + 3 * 60 * 1000;
-    mockRead(storedAccountsFile(buildTokens({ obtained_at: obtainedAt, expires_in: expiresIn })));
-    (requestUrl as jest.Mock).mockResolvedValueOnce({
-      json: { access_token: mockNewAccessToken, expires_in: 21600, token_type: "Bearer" },
-    });
-
-    const result = await loadCredentials();
-
-    expect(result.accessToken).toBe(mockNewAccessToken);
-    expect(result.error).toBeNull();
-  });
-
-  it("returns a clear error when refresh fails", async () => {
-    const expiredAt = Date.now() - 6 * 60 * 60 * 1000;
-    mockRead(storedAccountsFile(buildTokens({ obtained_at: expiredAt })));
-    (requestUrl as jest.Mock).mockRejectedValueOnce(new Error("network down"));
-
-    const result = await loadCredentials();
-
-    expect(result.accessToken).toBeNull();
-    expect(result.error).toContain("Access token has expired and refresh failed");
-  });
-
-  it("uses the new refresh_token from the refresh response", async () => {
-    const expiredAt = Date.now() - 6 * 60 * 60 * 1000;
-    mockRead(storedAccountsFile(buildTokens({ obtained_at: expiredAt })));
+    mockLoadEncrypted.mockResolvedValueOnce(
+      storedAccountsFile({ obtained_at: expiredTime })
+    );
     (requestUrl as jest.Mock).mockResolvedValueOnce({
       json: {
         access_token: mockNewAccessToken,
         expires_in: 21600,
         token_type: "Bearer",
-        refresh_token: "new-refresh-token",
+      },
+    });
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBe(mockNewAccessToken);
+    expect(result.error).toBeNull();
+    expect(mockLoadEncrypted).toHaveBeenCalledTimes(1);
+    expect(requestUrl).toHaveBeenCalledTimes(1);
+
+    const refreshCall = (requestUrl as jest.Mock).mock.calls[0][0];
+    expect(refreshCall.url).toBe(
+      "https://api.granola.ai/v1/refresh-access-token"
+    );
+    expect(refreshCall.method).toBe("POST");
+    expect(JSON.parse(refreshCall.body)).toEqual({
+      refresh_token: mockRefreshToken,
+      provider: "workos",
+    });
+  });
+
+  it("should refresh token when it will expire soon (within 5 minutes)", async () => {
+    const expiresIn = 21600;
+    const obtainedAt = Date.now() - expiresIn * 1000 + 3 * 60 * 1000;
+
+    mockLoadEncrypted.mockResolvedValueOnce(
+      storedAccountsFile({ expires_in: expiresIn, obtained_at: obtainedAt })
+    );
+    (requestUrl as jest.Mock).mockResolvedValueOnce({
+      json: {
+        access_token: mockNewAccessToken,
+        expires_in: 21600,
+        token_type: "Bearer",
       },
     });
 
@@ -195,11 +154,32 @@ describe("Credentials Service - refresh behaviour", () => {
     expect(result.error).toBeNull();
   });
 
-  it("falls back to the existing refresh_token if not in response", async () => {
-    const expiredAt = Date.now() - 6 * 60 * 60 * 1000;
-    mockRead(storedAccountsFile(buildTokens({ obtained_at: expiredAt })));
+  it("should handle refresh token failure gracefully", async () => {
+    const expiredTime = Date.now() - 6 * 60 * 60 * 1000;
+
+    mockLoadEncrypted.mockResolvedValueOnce(
+      storedAccountsFile({ obtained_at: expiredTime })
+    );
+    (requestUrl as jest.Mock).mockRejectedValueOnce(new Error("Refresh failed"));
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBeNull();
+    expect(result.error).toContain("Access token has expired and refresh failed");
+  });
+
+  it("should handle refresh response without new refresh_token", async () => {
+    const expiredTime = Date.now() - 6 * 60 * 60 * 1000;
+
+    mockLoadEncrypted.mockResolvedValueOnce(
+      storedAccountsFile({ obtained_at: expiredTime })
+    );
     (requestUrl as jest.Mock).mockResolvedValueOnce({
-      json: { access_token: mockNewAccessToken, expires_in: 21600, token_type: "Bearer" },
+      json: {
+        access_token: mockNewAccessToken,
+        expires_in: 21600,
+        token_type: "Bearer",
+      },
     });
 
     const result = await loadCredentials();
@@ -208,52 +188,75 @@ describe("Credentials Service - refresh behaviour", () => {
     expect(result.error).toBeNull();
   });
 
-  it("sends Authorization and Content-Type headers on refresh", async () => {
-    const expiredAt = Date.now() - 6 * 60 * 60 * 1000;
-    mockRead(storedAccountsFile(buildTokens({ obtained_at: expiredAt })));
+  it("should include authorization header in refresh request", async () => {
+    const expiredTime = Date.now() - 6 * 60 * 60 * 1000;
+
+    mockLoadEncrypted.mockResolvedValueOnce(
+      storedAccountsFile({ obtained_at: expiredTime })
+    );
     (requestUrl as jest.Mock).mockResolvedValueOnce({
-      json: { access_token: mockNewAccessToken, expires_in: 21600, token_type: "Bearer" },
+      json: {
+        access_token: mockNewAccessToken,
+        expires_in: 21600,
+        token_type: "Bearer",
+      },
     });
 
     await loadCredentials();
 
-    const call = (requestUrl as jest.Mock).mock.calls[0][0];
-    expect(call.headers.Authorization).toBe(`Bearer ${mockAccessToken}`);
-    expect(call.headers["Content-Type"]).toBe("application/json");
-  });
-});
-
-describe("Credentials Service - error handling", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+    const refreshCall = (requestUrl as jest.Mock).mock.calls[0][0];
+    expect(refreshCall.headers.Authorization).toBe(`Bearer ${mockAccessToken}`);
+    expect(refreshCall.headers["Content-Type"]).toBe("application/json");
   });
 
-  it("reports file-not-found", async () => {
-    const err = new Error("ENOENT") as NodeJS.ErrnoException;
-    err.code = "ENOENT";
-    mockRead(err);
+  it("should handle file not found error", async () => {
+    const error = Object.assign(new Error("File not found"), {
+      code: "ENOENT",
+    });
+    mockLoadEncrypted.mockRejectedValueOnce(error);
 
     const result = await loadCredentials();
 
     expect(result.accessToken).toBeNull();
-    expect(result.error).toContain("Credentials file not found");
-    expect(result.error).toContain("Please ensure the Granola app has created the credentials file");
+    expect(result.error).toContain("Granola credentials file not found");
   });
 
-  it("reports permission denied", async () => {
-    const err = new Error("Permission denied") as NodeJS.ErrnoException;
-    err.code = "EACCES";
-    mockRead(err);
+  it("should handle permission denied error", async () => {
+    const error = Object.assign(new Error("Permission denied"), {
+      code: "EACCES",
+    });
+    mockLoadEncrypted.mockRejectedValueOnce(error);
 
     const result = await loadCredentials();
 
     expect(result.accessToken).toBeNull();
     expect(result.error).toContain("Permission denied");
-    expect(result.error).toContain("Please check file permissions");
   });
 
-  it("reports invalid JSON", async () => {
-    mockRead("not json at all");
+  it("should surface keychain access failures with a friendly message", async () => {
+    mockLoadEncrypted.mockRejectedValueOnce(
+      new KeychainAccessError("security exited non-zero")
+    );
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBeNull();
+    expect(result.error).toContain("system keychain");
+  });
+
+  it("should surface decryption failures with a friendly message", async () => {
+    mockLoadEncrypted.mockRejectedValueOnce(
+      new CredentialDecryptionError("auth tag mismatch")
+    );
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBeNull();
+    expect(result.error).toContain("Failed to decrypt Granola credentials");
+  });
+
+  it("should handle invalid JSON format in the decrypted payload", async () => {
+    mockLoadEncrypted.mockResolvedValueOnce("invalid json");
 
     const result = await loadCredentials();
 
@@ -261,10 +264,51 @@ describe("Credentials Service - error handling", () => {
     expect(result.error).toContain("Invalid JSON format");
   });
 
-  it("reports missing access_token inside the tokens object", async () => {
-    const tokens = buildTokens();
-    delete (tokens as Partial<TokensShape>).access_token;
-    mockRead(storedAccountsFile(tokens as TokensShape));
+  it("should handle missing accounts field", async () => {
+    mockLoadEncrypted.mockResolvedValueOnce(JSON.stringify({}));
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBeNull();
+    expect(result.error).toContain("Missing 'accounts' field");
+  });
+
+  it("should handle empty accounts array", async () => {
+    mockLoadEncrypted.mockResolvedValueOnce(
+      JSON.stringify({ accounts: JSON.stringify([]) })
+    );
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBeNull();
+    expect(result.error).toContain("No accounts found");
+  });
+
+  it("should handle account missing tokens field", async () => {
+    mockLoadEncrypted.mockResolvedValueOnce(
+      JSON.stringify({ accounts: JSON.stringify([{}]) })
+    );
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBeNull();
+    expect(result.error).toContain("Missing 'tokens' field");
+  });
+
+  it("should handle missing access_token in tokens", async () => {
+    const tokensWithoutAccess = JSON.stringify({
+      expires_in: 21600,
+      refresh_token: mockRefreshToken,
+      token_type: "Bearer",
+      obtained_at: Date.now(),
+      session_id: "session-123",
+      external_id: "external-123",
+    });
+    mockLoadEncrypted.mockResolvedValueOnce(
+      JSON.stringify({
+        accounts: JSON.stringify([{ tokens: tokensWithoutAccess }]),
+      })
+    );
 
     const result = await loadCredentials();
 
