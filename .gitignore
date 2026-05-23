@@ -12,6 +12,10 @@ node_modules
 # They should be uploaded to GitHub releases instead.
 main.js
 
+# Auto-generated each build from pnpm-installed @napi-rs/keyring binaries.
+# Multi-MB base64 of platform-specific native bindings — not source.
+src/services/embeddedKeyringBinaries.ts
+
 # Exclude sourcemaps
 *.map
 

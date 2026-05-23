@@ -12,7 +12,28 @@ export class TFile {
 }
 export const Editor = jest.fn();
 export const MarkdownView = jest.fn();
-export const Modal = jest.fn();
+export class Modal {
+  app: unknown;
+  titleEl = {
+    setText: jest.fn(),
+    createEl: jest.fn(),
+  };
+  contentEl = {
+    createEl: jest.fn(() => ({ createEl: jest.fn(), setText: jest.fn() })),
+    createDiv: jest.fn(() => ({ createEl: jest.fn(), setText: jest.fn() })),
+    empty: jest.fn(),
+    setText: jest.fn(),
+  };
+
+  constructor(app: unknown) {
+    this.app = app;
+  }
+
+  setTitle = jest.fn();
+  setContent = jest.fn();
+  open = jest.fn();
+  close = jest.fn();
+}
 export const Notice = jest.fn();
 
 // Mock Plugin class that properly sets the app property

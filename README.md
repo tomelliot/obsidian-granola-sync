@@ -24,9 +24,34 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 1. Go to [https://community.obsidian.md/plugins/granola-sync](https://community.obsidian.md/plugins/granola-sync)
 2. Click Install
 
-## Configuration
+## How the plugin authenticates with Granola
 
-> **Note:** Granola credentials are read directly from the filesystem. The plugin reads the credentials file from the Granola application's data directory. You can review the implementation of this mechanism in [`src/services/credentials.ts`](src/services/credentials.ts).
+Granola stores its credentials encrypted on disk, with the encryption key held in your operating system's keychain (macOS Keychain, Linux libsecret, or Windows Credential Manager). To sync, the plugin needs to read those same credentials. It does this entirely on your machine — nothing about your credentials ever leaves your computer except the access token that's sent to Granola's own API (the same destination Granola itself talks to). See [docs/CREDENTIALS.md](docs/CREDENTIALS.md) for the full decoding chain.
+
+### What happens on first sync
+
+The first time you sync, your operating system will ask whether to allow **Obsidian** to access the `Granola Safe Storage` keychain item. On macOS, the prompt looks like a standard system dialog:
+
+> *Obsidian Helper (Renderer) wants to use your confidential information stored in "Granola Safe Storage" in your keychain.*
+
+Choose **Always Allow**. That records Obsidian as a trusted reader for this specific item, so future syncs don't prompt you again. You can review or revoke this consent at any time in **Keychain Access** → search `Granola Safe Storage` → double-click → **Access Control**:
+
+<p align="center">
+  <img src="assets/keychain-access-control.png" alt="macOS Keychain showing Obsidian Helper (Renderer).app and Granola.app in the 'Always allow access' list for the Granola Safe Storage item" width="600">
+</p>
+
+### Why this is safe
+
+- **Local only.** Credential decryption happens inside the plugin process on your machine. The encryption key is never written to disk by the plugin, never sent over the network, and never persisted outside your OS keychain.
+- **Scoped consent.** The keychain "Always Allow" grant is per-item and per-application. Trusting Obsidian to read `Granola Safe Storage` doesn't give it access to anything else in your keychain.
+- **Open source.** The full implementation lives in [`src/services/credentials.ts`](src/services/credentials.ts), [`src/services/granolaCredentialsCrypto.ts`](src/services/granolaCredentialsCrypto.ts), and [`src/services/keyringLoader.ts`](src/services/keyringLoader.ts). The native keychain binding is the well-maintained [`@napi-rs/keyring`](https://github.com/Brooooooklyn/keyring-node), and only its compiled binary for your platform is loaded.
+- **You stay in control.** Open Keychain Access (or the equivalent on your OS) at any time and remove Obsidian from the access list. The next sync will prompt you again — the plugin can't bypass the prompt.
+
+### Linux and Windows
+
+The same flow applies — your OS will ask once whether Obsidian may read Granola's credentials from its secret store (libsecret/kwallet on Linux, Credential Manager on Windows). Approve once and subsequent syncs are silent.
+
+## Configuration
 
 1. Configure note syncing:
    - Choose whether to sync notes
@@ -160,3 +185,7 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) for info on contributing to this p
 ## License
 
 MIT
+
+## Disclaimer
+
+This plugin is an independent project and is not affiliated with, endorsed by, or sponsored by Granola. It uses Granola's own API and credential files only on your local machine, with credentials you've already authenticated through the official Granola app. Do not use this plugin in any way that breaks [Granola's Terms of Service](https://www.granola.ai/terms) — you are responsible for ensuring your use complies with them.
