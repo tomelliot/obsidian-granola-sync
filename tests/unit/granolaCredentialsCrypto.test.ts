@@ -1,12 +1,16 @@
 import crypto from "crypto";
 import fs from "fs";
 import { loadEntry } from "../../src/services/keyringLoader";
+import { loadDpapi } from "../../src/services/dpapiLoader";
 import {
   decryptDek,
   decryptPayload,
+  extractDpapiWrappedKey,
+  unwrapDpapiKey,
   getKeychainPassword,
   loadEncryptedCredentials,
   KeychainAccessError,
+  DpapiAccessError,
   CredentialDecryptionError,
 } from "../../src/services/granolaCredentialsCrypto";
 
@@ -21,6 +25,11 @@ jest.mock("../../src/services/keyringLoader", () => ({
   setPluginDirectory: jest.fn(),
 }));
 
+jest.mock("../../src/services/dpapiLoader", () => ({
+  loadDpapi: jest.fn(),
+  setPluginDirectory: jest.fn(),
+}));
+
 const mockLoadEntry = loadEntry as jest.MockedFunction<typeof loadEntry>;
 const MockEntry = jest.fn();
 
@@ -32,6 +41,23 @@ function mockEntry(getPassword: jest.Mock | (() => string | null)) {
   mockLoadEntry.mockReturnValue(
     MockEntry as unknown as ReturnType<typeof loadEntry>
   );
+}
+
+const mockLoadDpapi = loadDpapi as jest.MockedFunction<typeof loadDpapi>;
+
+function mockDpapi(
+  unprotectData:
+    | ((data: Uint8Array, entropy: Uint8Array | null, scope: string) => Buffer)
+    | jest.Mock
+) {
+  const fn =
+    typeof unprotectData === "function"
+      ? jest.fn(unprotectData)
+      : unprotectData;
+  mockLoadDpapi.mockReturnValue({
+    unprotectData: fn as unknown as ReturnType<typeof loadDpapi>["unprotectData"],
+  });
+  return fn;
 }
 
 const PBKDF2_SALT = "saltysalt";
@@ -58,6 +84,17 @@ function encryptPayload(dek: Buffer, plaintext: Buffer): Buffer {
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, ciphertext, tag]);
+}
+
+function makeLocalStateJson(wrappedKey: Buffer): string {
+  return JSON.stringify({
+    os_crypt: {
+      encrypted_key: Buffer.concat([
+        Buffer.from("DPAPI", "ascii"),
+        wrappedKey,
+      ]).toString("base64"),
+    },
+  });
 }
 
 beforeEach(() => {
@@ -171,7 +208,89 @@ describe("getKeychainPassword", () => {
   });
 });
 
-describe("loadEncryptedCredentials", () => {
+describe("extractDpapiWrappedKey", () => {
+  it("base64-decodes encrypted_key and strips the DPAPI prefix", () => {
+    const wrapped = crypto.randomBytes(80);
+    const localState = makeLocalStateJson(wrapped);
+
+    const result = extractDpapiWrappedKey(localState);
+
+    expect(result.equals(wrapped)).toBe(true);
+  });
+
+  it("throws DpapiAccessError when Local State is not valid JSON", () => {
+    expect(() => extractDpapiWrappedKey("not json")).toThrow(DpapiAccessError);
+  });
+
+  it("throws DpapiAccessError when os_crypt.encrypted_key is missing", () => {
+    expect(() =>
+      extractDpapiWrappedKey(JSON.stringify({ os_crypt: {} }))
+    ).toThrow(DpapiAccessError);
+    expect(() => extractDpapiWrappedKey(JSON.stringify({}))).toThrow(
+      DpapiAccessError
+    );
+  });
+
+  it("throws DpapiAccessError when the DPAPI prefix is missing", () => {
+    const noPrefix = JSON.stringify({
+      os_crypt: {
+        encrypted_key: Buffer.from("XXXXX-not-the-right-prefix").toString(
+          "base64"
+        ),
+      },
+    });
+    expect(() => extractDpapiWrappedKey(noPrefix)).toThrow(DpapiAccessError);
+  });
+});
+
+describe("unwrapDpapiKey", () => {
+  it("calls unprotectData with NULL entropy and CurrentUser scope, returning a 32-byte DEK", () => {
+    const wrapped = crypto.randomBytes(80);
+    const dek = crypto.randomBytes(32);
+    const unprotect = mockDpapi(() => dek);
+
+    const result = unwrapDpapiKey(wrapped);
+
+    expect(result.equals(dek)).toBe(true);
+    expect(unprotect).toHaveBeenCalledTimes(1);
+    const [data, entropy, scope] = unprotect.mock.calls[0];
+    expect(Buffer.from(data).equals(wrapped)).toBe(true);
+    expect(entropy).toBeNull();
+    expect(scope).toBe("CurrentUser");
+  });
+
+  it("throws DpapiAccessError when unprotectData throws (different user/profile)", () => {
+    mockDpapi(
+      jest.fn(() => {
+        throw new Error("CRYPT_E_DECRYPT_FAILED");
+      })
+    );
+
+    expect(() => unwrapDpapiKey(crypto.randomBytes(80))).toThrow(
+      DpapiAccessError
+    );
+  });
+
+  it("throws DpapiAccessError when the unwrapped key is the wrong length", () => {
+    mockDpapi(() => Buffer.alloc(16));
+
+    expect(() => unwrapDpapiKey(crypto.randomBytes(80))).toThrow(
+      DpapiAccessError
+    );
+  });
+
+  it("throws DpapiAccessError when the loader itself throws", () => {
+    mockLoadDpapi.mockImplementation(() => {
+      throw new Error("no bundled binary for win32-ia32");
+    });
+
+    expect(() => unwrapDpapiKey(crypto.randomBytes(80))).toThrow(
+      DpapiAccessError
+    );
+  });
+});
+
+describe("loadEncryptedCredentials (keychain mode)", () => {
   it("reads both files, decrypts, and returns the plaintext string", async () => {
     const password = "kc-secret";
     const dek = crypto.randomBytes(32);
@@ -186,10 +305,11 @@ describe("loadEncryptedCredentials", () => {
     });
     mockEntry(() => password);
 
-    const result = await loadEncryptedCredentials(
-      "/granola/stored-accounts.json.enc",
-      "/granola/storage.dek"
-    );
+    const result = await loadEncryptedCredentials({
+      mode: "keychain",
+      encPath: "/granola/stored-accounts.json.enc",
+      dekPath: "/granola/storage.dek",
+    });
 
     expect(result).toBe(plaintext);
   });
@@ -199,7 +319,11 @@ describe("loadEncryptedCredentials", () => {
     (fs.promises.readFile as jest.Mock).mockRejectedValue(enoent);
 
     await expect(
-      loadEncryptedCredentials("/x.enc", "/y.dek")
+      loadEncryptedCredentials({
+        mode: "keychain",
+        encPath: "/x.enc",
+        dekPath: "/y.dek",
+      })
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -217,7 +341,97 @@ describe("loadEncryptedCredentials", () => {
     );
 
     await expect(
-      loadEncryptedCredentials("/x.enc", "/y.dek")
+      loadEncryptedCredentials({
+        mode: "keychain",
+        encPath: "/x.enc",
+        dekPath: "/y.dek",
+      })
     ).rejects.toBeInstanceOf(KeychainAccessError);
+  });
+});
+
+describe("loadEncryptedCredentials (dpapi mode)", () => {
+  it("reads Local State + payload, unwraps via DPAPI, and returns plaintext", async () => {
+    const dek = crypto.randomBytes(32);
+    const wrappedKey = crypto.randomBytes(80);
+    const localState = makeLocalStateJson(wrappedKey);
+    const plaintext = JSON.stringify({ accounts: "stringified-accounts" });
+    const encBlob = encryptPayload(dek, Buffer.from(plaintext, "utf8"));
+
+    (fs.promises.readFile as jest.Mock).mockImplementation(
+      (p: string, encoding?: string) => {
+        if (p === "/granola/Local State") {
+          expect(encoding).toBe("utf-8");
+          return Promise.resolve(localState);
+        }
+        if (p === "/granola/stored-accounts.json.enc") {
+          return Promise.resolve(encBlob);
+        }
+        return Promise.reject(new Error(`unexpected path: ${p}`));
+      }
+    );
+    const unprotect = mockDpapi((data) => {
+      expect(Buffer.from(data).equals(wrappedKey)).toBe(true);
+      return dek;
+    });
+
+    const result = await loadEncryptedCredentials({
+      mode: "dpapi",
+      encPath: "/granola/stored-accounts.json.enc",
+      localStatePath: "/granola/Local State",
+    });
+
+    expect(result).toBe(plaintext);
+    expect(unprotect).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates ENOENT when Local State is missing", async () => {
+    const enoent = Object.assign(new Error("no such file"), { code: "ENOENT" });
+    (fs.promises.readFile as jest.Mock).mockRejectedValue(enoent);
+
+    await expect(
+      loadEncryptedCredentials({
+        mode: "dpapi",
+        encPath: "/x.enc",
+        localStatePath: "/Local State",
+      })
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("propagates DpapiAccessError when the unprotect call fails", async () => {
+    const wrappedKey = crypto.randomBytes(80);
+    const localState = makeLocalStateJson(wrappedKey);
+    (fs.promises.readFile as jest.Mock).mockImplementation((p: string) =>
+      Promise.resolve(p.endsWith("Local State") ? localState : Buffer.alloc(40))
+    );
+    mockDpapi(
+      jest.fn(() => {
+        throw new Error("CRYPT_E_DECRYPT_FAILED");
+      })
+    );
+
+    await expect(
+      loadEncryptedCredentials({
+        mode: "dpapi",
+        encPath: "/x.enc",
+        localStatePath: "/Local State",
+      })
+    ).rejects.toBeInstanceOf(DpapiAccessError);
+  });
+
+  it("propagates DpapiAccessError when Local State is missing os_crypt.encrypted_key", async () => {
+    (fs.promises.readFile as jest.Mock).mockImplementation((p: string) =>
+      Promise.resolve(
+        p.endsWith("Local State") ? JSON.stringify({}) : Buffer.alloc(40)
+      )
+    );
+
+    await expect(
+      loadEncryptedCredentials({
+        mode: "dpapi",
+        encPath: "/x.enc",
+        localStatePath: "/Local State",
+      })
+    ).rejects.toBeInstanceOf(DpapiAccessError);
   });
 });

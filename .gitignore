@@ -15,6 +15,7 @@ main.js
 # Auto-generated each build from pnpm-installed @napi-rs/keyring binaries.
 # Multi-MB base64 of platform-specific native bindings — not source.
 src/services/embeddedKeyringBinaries.ts
+src/services/embeddedDpapiBinaries.ts
 
 # Exclude sourcemaps
 *.map

@@ -4,8 +4,8 @@
   "description": "Sync Granola notes to your vault.",
   "main": "main.js",
   "scripts": {
-    "embed-binaries": "node scripts/generateEmbeddedKeyringBinaries.mjs",
-    "postinstall": "node scripts/generateEmbeddedKeyringBinaries.mjs",
+    "embed-binaries": "node scripts/generateEmbeddedKeyringBinaries.mjs && node scripts/generateEmbeddedDpapiBinaries.mjs",
+    "postinstall": "node scripts/generateEmbeddedKeyringBinaries.mjs && node scripts/generateEmbeddedDpapiBinaries.mjs",
     "dev": "node esbuild.config.mjs",
     "build": "npm run embed-binaries && npm run lint && tsc -p . -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "lint": "eslint src --ext .ts",
@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@napi-rs/keyring": "^1.3.0",
+    "@primno/dpapi": "^2.0.1",
     "@tomelliot/obsidian-logger": "github:tomelliot/obsidian-logger",
     "@types/moment": "^2.11.29",
     "moment": "^2.30.1",
