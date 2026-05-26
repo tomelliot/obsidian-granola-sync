@@ -26,11 +26,11 @@ This plugin allows you to synchronize your notes and transcripts from Granola (h
 
 ## How the plugin authenticates with Granola
 
-Granola stores its credentials encrypted on disk, with the encryption key held in your operating system's keychain (macOS Keychain, Linux libsecret, or Windows Credential Manager). To sync, the plugin needs to read those same credentials. It does this entirely on your machine — nothing about your credentials ever leaves your computer except the access token that's sent to Granola's own API (the same destination Granola itself talks to). See [docs/CREDENTIALS.md](docs/CREDENTIALS.md) for the full decoding chain.
+Granola stores its credentials encrypted on disk and protects the wrapping key with the OS's user-scoped secret store — your macOS Keychain, Linux libsecret/kwallet entry, or, on Windows, the per-user Data Protection API (DPAPI). To sync, the plugin needs to read those same credentials. It does this entirely on your machine — nothing about your credentials ever leaves your computer except the access token that's sent to Granola's own API (the same destination Granola itself talks to). See [docs/CREDENTIALS.md](docs/CREDENTIALS.md) for the full decoding chain.
 
-### What happens on first sync
+### macOS: first-sync prompt
 
-The first time you sync, your operating system will ask whether to allow **Obsidian** to access the `Granola Safe Storage` keychain item. On macOS, the prompt looks like a standard system dialog:
+The first time you sync on macOS, your operating system will ask whether to allow **Obsidian** to access the `Granola Safe Storage` keychain item. The prompt looks like a standard system dialog:
 
 > *Obsidian Helper (Renderer) wants to use your confidential information stored in "Granola Safe Storage" in your keychain.*
 
@@ -40,16 +40,20 @@ Choose **Always Allow**. That records Obsidian as a trusted reader for this spec
   <img src="assets/keychain-access-control.png" alt="macOS Keychain showing Obsidian Helper (Renderer).app and Granola.app in the 'Always allow access' list for the Granola Safe Storage item" width="600">
 </p>
 
+### Linux
+
+The same flow applies — your OS will ask once (via libsecret/kwallet) whether Obsidian may read Granola's credentials. Approve once and subsequent syncs are silent.
+
+### Windows
+
+Granola on Windows does not store anything in Credential Manager — there is nothing to "Always Allow", and you will not see a prompt the first time you sync. Instead, Granola's wrapping key lives DPAPI-encrypted in its Electron `Local State` file under `%APPDATA%\Granola`. DPAPI is gated by your Windows login: only the same Windows user account that wrote the key can unwrap it, and the unwrap happens silently in the background. The plugin reads `Local State`, asks Windows to decrypt the wrapped key, then decrypts `stored-accounts.json.enc` exactly as it does on the other platforms. If the plugin reports a DPAPI failure, it usually means Granola was installed under a different Windows user account or the user profile was migrated — sign in to Granola again so it can rewrite `Local State` for the current user.
+
 ### Why this is safe
 
-- **Local only.** Credential decryption happens inside the plugin process on your machine. The encryption key is never written to disk by the plugin, never sent over the network, and never persisted outside your OS keychain.
-- **Scoped consent.** The keychain "Always Allow" grant is per-item and per-application. Trusting Obsidian to read `Granola Safe Storage` doesn't give it access to anything else in your keychain.
-- **Open source.** The full implementation lives in [`src/services/credentials.ts`](src/services/credentials.ts), [`src/services/granolaCredentialsCrypto.ts`](src/services/granolaCredentialsCrypto.ts), and [`src/services/keyringLoader.ts`](src/services/keyringLoader.ts). The native keychain binding is the well-maintained [`@napi-rs/keyring`](https://github.com/Brooooooklyn/keyring-node), and only its compiled binary for your platform is loaded.
-- **You stay in control.** Open Keychain Access (or the equivalent on your OS) at any time and remove Obsidian from the access list. The next sync will prompt you again — the plugin can't bypass the prompt.
-
-### Linux and Windows
-
-The same flow applies — your OS will ask once whether Obsidian may read Granola's credentials from its secret store (libsecret/kwallet on Linux, Credential Manager on Windows). Approve once and subsequent syncs are silent.
+- **Local only.** Credential decryption happens inside the plugin process on your machine. The wrapping key is never written to disk by the plugin, never sent over the network, and never persisted outside your OS's secret store.
+- **Scoped consent.** On macOS/Linux the keychain "Always Allow" grant is per-item and per-application — trusting Obsidian to read `Granola Safe Storage` doesn't give it access to anything else. On Windows, DPAPI is scoped to your Windows user account; the wrapped key cannot be decrypted by another user on the same machine, or by you on a different machine.
+- **Open source.** The full implementation lives in [`src/services/credentials.ts`](src/services/credentials.ts), [`src/services/granolaCredentialsCrypto.ts`](src/services/granolaCredentialsCrypto.ts), [`src/services/keyringLoader.ts`](src/services/keyringLoader.ts), and [`src/services/dpapiLoader.ts`](src/services/dpapiLoader.ts). The native bindings are the well-maintained [`@napi-rs/keyring`](https://github.com/Brooooooklyn/keyring-node) (macOS/Linux) and [`@primno/dpapi`](https://github.com/primno/dpapi) (Windows); only the compiled binary for your platform is loaded.
+- **You stay in control.** On macOS/Linux, open Keychain Access (or the equivalent) any time and remove Obsidian from the access list — the next sync will prompt you again. On Windows, signing into a different user account or removing Granola will make `CryptUnprotectData` fail; the plugin can't bypass that either.
 
 ## Configuration
 

@@ -3,6 +3,7 @@ import { requestUrl } from "obsidian";
 import {
   loadEncryptedCredentials,
   KeychainAccessError,
+  DpapiAccessError,
   CredentialDecryptionError,
 } from "../../src/services/granolaCredentialsCrypto";
 
@@ -15,6 +16,12 @@ jest.mock("../../src/services/granolaCredentialsCrypto", () => {
       this.name = "KeychainAccessError";
     }
   }
+  class DpapiAccessError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "DpapiAccessError";
+    }
+  }
   class CredentialDecryptionError extends Error {
     constructor(message: string) {
       super(message);
@@ -24,6 +31,7 @@ jest.mock("../../src/services/granolaCredentialsCrypto", () => {
   return {
     loadEncryptedCredentials: jest.fn(),
     KeychainAccessError,
+    DpapiAccessError,
     CredentialDecryptionError,
   };
 });
@@ -242,6 +250,20 @@ describe("Credentials Service - Token Refresh", () => {
 
     expect(result.accessToken).toBeNull();
     expect(result.error).toContain("system keychain");
+    expect(result.errorKind).toBe("keychain");
+  });
+
+  it("should surface DPAPI failures with a Windows-specific message", async () => {
+    mockLoadEncrypted.mockRejectedValueOnce(
+      new DpapiAccessError("CRYPT_E_DECRYPT_FAILED")
+    );
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBeNull();
+    expect(result.error).toContain("Windows DPAPI");
+    expect(result.error).not.toContain("system keychain");
+    expect(result.errorKind).toBe("dpapi");
   });
 
   it("should surface decryption failures with a friendly message", async () => {

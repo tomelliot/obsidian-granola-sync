@@ -2,6 +2,7 @@ import type { CredentialsResult } from "./credentials";
 
 export interface CredentialsErrorHandlers {
   onKeychainDenied: () => void;
+  onDpapiFailed: (message: string) => void;
   onOtherError: (message: string) => void;
 }
 
@@ -18,6 +19,11 @@ export function presentCredentialsError(
 
   if (result.errorKind === "keychain") {
     handlers.onKeychainDenied();
+    return;
+  }
+
+  if (result.errorKind === "dpapi") {
+    handlers.onDpapiFailed(result.error);
     return;
   }
 

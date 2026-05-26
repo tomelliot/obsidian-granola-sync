@@ -4,7 +4,9 @@ import os from "os";
 import { log } from "../utils/logger";
 import {
   loadEncryptedCredentials,
+  LoadEncryptedCredentialsOpts,
   KeychainAccessError,
+  DpapiAccessError,
   CredentialDecryptionError,
 } from "./granolaCredentialsCrypto";
 
@@ -33,11 +35,6 @@ interface RefreshTokenResponse {
   token_type: string;
 }
 
-interface CredentialPaths {
-  encPath: string;
-  dekPath: string;
-}
-
 function getGranolaDirectory(): string {
   if (Platform.isWin) {
     return path.join(os.homedir(), "AppData", "Roaming", "Granola");
@@ -53,15 +50,26 @@ function getGranolaDirectory(): string {
   );
 }
 
-function getCredentialPaths(): CredentialPaths {
+export function getCredentialPaths(): LoadEncryptedCredentialsOpts {
   const dir = getGranolaDirectory();
+  const encPath = path.join(dir, "stored-accounts.json.enc");
+  const dekPath = path.join(dir, "storage.dek");
+  if (Platform.isWin) {
+    return {
+      mode: "dpapi",
+      encPath,
+      dekPath,
+      localStatePath: path.join(dir, "Local State"),
+    };
+  }
   return {
-    encPath: path.join(dir, "stored-accounts.json.enc"),
-    dekPath: path.join(dir, "storage.dek"),
+    mode: "keychain",
+    encPath,
+    dekPath,
   };
 }
 
-const { encPath, dekPath } = getCredentialPaths();
+const credentialPaths = getCredentialPaths();
 
 /**
  * Checks if the access token has expired.
@@ -168,6 +176,7 @@ function parseTokens(fileContents: string): WorkosTokens {
 
 export type CredentialsErrorKind =
   | "keychain"
+  | "dpapi"
   | "decryption"
   | "file_not_found"
   | "permission_denied"
@@ -193,6 +202,12 @@ function describeLoadError(error: unknown): LoadErrorDescription {
       kind: "keychain",
     };
   }
+  if (error instanceof DpapiAccessError) {
+    return {
+      message: `Could not unwrap Granola's encryption key via Windows DPAPI. Make sure Granola is installed under the same Windows user account and you have signed in. (${error.message})`,
+      kind: "dpapi",
+    };
+  }
   if (error instanceof CredentialDecryptionError) {
     return {
       message: `Failed to decrypt Granola credentials. The file may be corrupt or from an unsupported Granola version. (${error.message})`,
@@ -200,15 +215,24 @@ function describeLoadError(error: unknown): LoadErrorDescription {
     };
   }
   const errorCode = (error as NodeJS.ErrnoException)?.code;
+  const allPaths =
+    credentialPaths.mode === "keychain"
+      ? [credentialPaths.encPath, credentialPaths.dekPath]
+      : [
+          credentialPaths.encPath,
+          credentialPaths.dekPath,
+          credentialPaths.localStatePath,
+        ];
+  const pathList = allPaths.join(", ");
   if (errorCode === "ENOENT") {
     return {
-      message: `Granola credentials file not found at ${encPath} or ${dekPath}. Please ensure the Granola app has created the credentials files.`,
+      message: `Granola credentials file not found. Checked: ${pathList}. Please ensure the Granola app has created the credentials files.`,
       kind: "file_not_found",
     };
   }
   if (errorCode === "EACCES") {
     return {
-      message: `Permission denied reading Granola credentials at ${encPath} or ${dekPath}. Please check file permissions.`,
+      message: `Permission denied reading Granola credentials. Checked: ${pathList}. Please check file permissions.`,
       kind: "permission_denied",
     };
   }
@@ -221,7 +245,7 @@ export async function loadCredentials(): Promise<CredentialsResult> {
 
   let fileContents: string;
   try {
-    fileContents = await loadEncryptedCredentials(encPath, dekPath);
+    fileContents = await loadEncryptedCredentials(credentialPaths);
     log.debug("Successfully decrypted credentials");
   } catch (error) {
     const { message, kind } = describeLoadError(error);

@@ -5,7 +5,10 @@ import obsidianmd from 'eslint-plugin-obsidianmd';
 
 export default tseslint.config(
   {
-    ignores: ['src/services/embeddedKeyringBinaries.ts'],
+    ignores: [
+      'src/services/embeddedKeyringBinaries.ts',
+      'src/services/embeddedDpapiBinaries.ts',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

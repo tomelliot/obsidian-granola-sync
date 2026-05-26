@@ -32,9 +32,10 @@ const DEV_PLUGIN_PATH =
     "obsidian/Everything/.obsidian/plugins/granola-sync/main.js"
   );
 
-// Regenerate src/services/embeddedKeyringBinaries.ts before each build so the
-// bundle picks up the current @napi-rs/keyring binaries. The TS file is large
-// (~8 MB of base64) and not committed — this keeps it fresh after `pnpm install`.
+// Regenerate src/services/embedded{Keyring,Dpapi}Binaries.ts before each build
+// so the bundle picks up the current native binaries. Both files are large
+// (~8 MB / ~350 KB of base64) and not committed — this keeps them fresh after
+// `pnpm install`.
 function regenerateEmbeddedBinaries() {
   console.log("Regenerating embedded keyring binaries…");
   execFileSync(
@@ -42,6 +43,28 @@ function regenerateEmbeddedBinaries() {
     [path.join(__dirname, "scripts/generateEmbeddedKeyringBinaries.mjs")],
     { stdio: "inherit" }
   );
+  console.log("Regenerating embedded DPAPI binaries…");
+  execFileSync(
+    process.execPath,
+    [path.join(__dirname, "scripts/generateEmbeddedDpapiBinaries.mjs")],
+    { stdio: "inherit" }
+  );
+}
+
+function copyToOutput() {
+  const outputDir = path.join(__dirname, "output");
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  fs.copyFileSync(manifestPath, path.join(outputDir, "manifest.json"));
+  console.log(`✓ Copied manifest.json to ${outputDir}`);
+
+  const stylesPath = path.join(__dirname, "styles.css");
+  if (fs.existsSync(stylesPath)) {
+    fs.copyFileSync(stylesPath, path.join(outputDir, "styles.css"));
+    console.log(`✓ Copied styles.css to ${outputDir}`);
+  }
 }
 
 function copyToDevPlugin() {
@@ -90,9 +113,9 @@ function copyToDevPlugin() {
 const copyPlugin = {
   name: "copy-to-dev-plugin",
   setup(build) {
-    if (prod) return;
     build.onEnd(() => {
-      copyToDevPlugin();
+      copyToOutput();
+      if (!prod) copyToDevPlugin();
     });
   },
 };

@@ -445,6 +445,8 @@ export default class GranolaSync extends Plugin {
         {
           onKeychainDenied: () =>
             new KeychainPermissionModal(this.app).open(),
+          onDpapiFailed: (message) =>
+            new Notice(`Granola sync error: ${message}`, 15000),
           onOtherError: (message) =>
             new Notice(`Granola sync error: ${message}`, 10000),
         }
