@@ -51,6 +51,22 @@ function regenerateEmbeddedBinaries() {
   );
 }
 
+function copyToOutput() {
+  const outputDir = path.join(__dirname, "output");
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  fs.copyFileSync(manifestPath, path.join(outputDir, "manifest.json"));
+  console.log(`✓ Copied manifest.json to ${outputDir}`);
+
+  const stylesPath = path.join(__dirname, "styles.css");
+  if (fs.existsSync(stylesPath)) {
+    fs.copyFileSync(stylesPath, path.join(outputDir, "styles.css"));
+    console.log(`✓ Copied styles.css to ${outputDir}`);
+  }
+}
+
 function copyToDevPlugin() {
   if (prod) return;
 
@@ -97,9 +113,9 @@ function copyToDevPlugin() {
 const copyPlugin = {
   name: "copy-to-dev-plugin",
   setup(build) {
-    if (prod) return;
     build.onEnd(() => {
-      copyToDevPlugin();
+      copyToOutput();
+      if (!prod) copyToDevPlugin();
     });
   },
 };
