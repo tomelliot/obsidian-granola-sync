@@ -53,17 +53,19 @@ function getGranolaDirectory(): string {
 export function getCredentialPaths(): LoadEncryptedCredentialsOpts {
   const dir = getGranolaDirectory();
   const encPath = path.join(dir, "stored-accounts.json.enc");
+  const dekPath = path.join(dir, "storage.dek");
   if (Platform.isWin) {
     return {
       mode: "dpapi",
       encPath,
+      dekPath,
       localStatePath: path.join(dir, "Local State"),
     };
   }
   return {
     mode: "keychain",
     encPath,
-    dekPath: path.join(dir, "storage.dek"),
+    dekPath,
   };
 }
 
@@ -213,19 +215,24 @@ function describeLoadError(error: unknown): LoadErrorDescription {
     };
   }
   const errorCode = (error as NodeJS.ErrnoException)?.code;
-  const secondaryPath =
+  const allPaths =
     credentialPaths.mode === "keychain"
-      ? credentialPaths.dekPath
-      : credentialPaths.localStatePath;
+      ? [credentialPaths.encPath, credentialPaths.dekPath]
+      : [
+          credentialPaths.encPath,
+          credentialPaths.dekPath,
+          credentialPaths.localStatePath,
+        ];
+  const pathList = allPaths.join(", ");
   if (errorCode === "ENOENT") {
     return {
-      message: `Granola credentials file not found at ${credentialPaths.encPath} or ${secondaryPath}. Please ensure the Granola app has created the credentials files.`,
+      message: `Granola credentials file not found. Checked: ${pathList}. Please ensure the Granola app has created the credentials files.`,
       kind: "file_not_found",
     };
   }
   if (errorCode === "EACCES") {
     return {
-      message: `Permission denied reading Granola credentials at ${credentialPaths.encPath} or ${secondaryPath}. Please check file permissions.`,
+      message: `Permission denied reading Granola credentials. Checked: ${pathList}. Please check file permissions.`,
       kind: "permission_denied",
     };
   }

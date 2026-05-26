@@ -29,21 +29,23 @@ The third piece — the one the plugin has to ask the OS for — is a password k
 
 ## Windows: the DPAPI chain
 
-Granola on Windows does not use Windows Credential Manager. Instead, the encryption follows the standard Chromium/Electron OSCrypt design: a random AES-256 key is stored in Granola's Electron `Local State` file, itself wrapped with the [Windows Data Protection API (DPAPI)](https://learn.microsoft.com/en-us/windows/win32/seccrypto/cryptoapi-system-architecture). DPAPI is per-Windows-user and silent — no prompt is shown when reading the key, but only the same user account that wrote it can read it back.
+Granola on Windows does not use Windows Credential Manager. Instead, the encryption follows the standard Chromium/Electron OSCrypt design: a random AES-256 "safeStorage" key is stored in Granola's Electron `Local State` file, itself wrapped with the [Windows Data Protection API (DPAPI)](https://learn.microsoft.com/en-us/windows/win32/seccrypto/cryptoapi-system-architecture). DPAPI is per-Windows-user and silent — no prompt is shown when reading the key, but only the same user account that wrote it can read it back.
 
 Granola's per-user files on Windows live under `%APPDATA%\Granola` (i.e. `C:\Users\<you>\AppData\Roaming\Granola`):
 
 | File | What it contains |
 | --- | --- |
-| `stored-accounts.json.enc` | Your account state, encrypted with the OSCrypt AES key. |
-| `Local State` | Electron metadata JSON, containing `os_crypt.encrypted_key` — the DPAPI-wrapped AES key. |
+| `Local State` | Electron metadata JSON, containing `os_crypt.encrypted_key` — the DPAPI-wrapped safeStorage key. |
+| `storage.dek` | The data-encryption key (DEK), wrapped with the safeStorage key (Chromium `v10` AES-256-GCM envelope). |
+| `stored-accounts.json.enc` | Your account state, encrypted with the DEK. |
 
 ### The decoding chain
 
 1. **Read `Local State`** and pull out `os_crypt.encrypted_key`. The value is base64; once decoded it starts with the literal 5-byte ASCII prefix `DPAPI` followed by the actual DPAPI ciphertext.
-2. **Call `CryptUnprotectData`** with `NULL` entropy under the `CurrentUser` scope — the same options Chromium/Electron's `safeStorage` uses on Windows. This returns the 32-byte AES key. No prompt is shown.
-3. **Decrypt `stored-accounts.json.enc`** with that AES key. The on-disk layout is the same AES-256-GCM (12-byte IV + ciphertext + 16-byte authentication tag) Granola uses on the other platforms.
-4. **Pick the first account, refresh if needed** — identical to step 4 onward of the keychain chain above.
+2. **Call `CryptUnprotectData`** with `NULL` entropy under the `CurrentUser` scope — the same options Chromium/Electron's `safeStorage` uses on Windows. This returns the 32-byte safeStorage AES key. No prompt is shown.
+3. **Decrypt `storage.dek`** with the safeStorage key. The blob is `v10` (3 ASCII bytes) + AES-256-GCM (12-byte IV + ciphertext + 16-byte tag). The plaintext is the base64-encoded DEK; base64-decode it to recover the raw 32-byte DEK.
+4. **Decrypt `stored-accounts.json.enc`** with the DEK. The on-disk layout is bare AES-256-GCM (12-byte IV + ciphertext + 16-byte tag) — the same Granola uses on the other platforms.
+5. **Pick the first account, refresh if needed** — identical to step 4 onward of the keychain chain above.
 
 The plugin uses [`@primno/dpapi`](https://www.npmjs.com/package/@primno/dpapi)'s prebuilt N-API binding for the `CryptUnprotectData` call; the Windows native binary is bundled into `main.js` alongside the platform keyring binaries and extracted to the plugin directory on first use.
 

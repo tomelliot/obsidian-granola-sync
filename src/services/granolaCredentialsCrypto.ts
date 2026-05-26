@@ -190,7 +190,12 @@ export function unwrapDpapiKey(wrappedKey: Buffer): Buffer {
 
 export type LoadEncryptedCredentialsOpts =
   | { mode: "keychain"; encPath: string; dekPath: string }
-  | { mode: "dpapi"; encPath: string; localStatePath: string };
+  | {
+      mode: "dpapi";
+      encPath: string;
+      dekPath: string;
+      localStatePath: string;
+    };
 
 export async function loadEncryptedCredentials(
   opts: LoadEncryptedCredentialsOpts
@@ -205,12 +210,36 @@ export async function loadEncryptedCredentials(
     const plaintext = decryptPayload(dek, encBlob);
     return plaintext.toString("utf-8");
   }
-  const [localStateRaw, encBlob] = await Promise.all([
+  const [localStateRaw, dekBlob, encBlob] = await Promise.all([
     fs.promises.readFile(opts.localStatePath, "utf-8"),
+    fs.promises.readFile(opts.dekPath),
     fs.promises.readFile(opts.encPath),
   ]);
+  // Stage 1: unwrap Granola's safeStorage AES key via DPAPI.
   const wrappedKey = extractDpapiWrappedKey(localStateRaw);
-  const dek = unwrapDpapiKey(wrappedKey);
+  const safeStorageKey = unwrapDpapiKey(wrappedKey);
+  // Stage 2: decrypt `storage.dek` with the safeStorage key. The blob is a
+  // standard Chromium v10 envelope: 3-byte ASCII `v10` prefix + AES-256-GCM
+  // (12-byte IV + ciphertext + 16-byte tag). The plaintext is the
+  // base64-encoded raw DEK.
+  if (
+    dekBlob.subarray(0, DEK_PREFIX.length).toString("utf8") !== DEK_PREFIX
+  ) {
+    throw new CredentialDecryptionError(
+      `storage.dek does not start with ${DEK_PREFIX} prefix`
+    );
+  }
+  const dekPlaintext = decryptPayload(
+    safeStorageKey,
+    dekBlob.subarray(DEK_PREFIX.length)
+  );
+  const dek = Buffer.from(dekPlaintext.toString("utf-8"), "base64");
+  if (dek.length !== DEK_LENGTH) {
+    throw new CredentialDecryptionError(
+      `Expected ${DEK_LENGTH}-byte DEK from storage.dek, got ${dek.length}`
+    );
+  }
+  // Stage 3: decrypt `stored-accounts.json.enc` with the DEK.
   const plaintext = decryptPayload(dek, encBlob);
   return plaintext.toString("utf-8");
 }
