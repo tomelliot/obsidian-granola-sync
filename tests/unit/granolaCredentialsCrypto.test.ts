@@ -3,7 +3,8 @@ import fs from "fs";
 import { loadEntry } from "../../src/services/keyringLoader";
 import { loadDpapi } from "../../src/services/dpapiLoader";
 import {
-  decryptDek,
+  decryptKeychainDek,
+  decryptDpapiDek,
   decryptPayload,
   extractDpapiWrappedKey,
   unwrapDpapiKey,
@@ -114,13 +115,13 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-describe("decryptDek", () => {
+describe("decryptKeychainDek", () => {
   it("recovers the original DEK from a v10-prefixed blob", () => {
     const password = "test-password";
     const dek = crypto.randomBytes(32);
     const blob = encryptDek(password, dek);
 
-    const result = decryptDek(password, blob);
+    const result = decryptKeychainDek(password, blob);
 
     expect(result.equals(dek)).toBe(true);
   });
@@ -131,7 +132,7 @@ describe("decryptDek", () => {
     const blob = encryptDek(password, dek);
     const tampered = Buffer.concat([Buffer.from("xxx"), blob.subarray(3)]);
 
-    expect(() => decryptDek(password, tampered)).toThrow(
+    expect(() => decryptKeychainDek(password, tampered)).toThrow(
       CredentialDecryptionError
     );
   });
@@ -140,7 +141,49 @@ describe("decryptDek", () => {
     const dek = crypto.randomBytes(32);
     const blob = encryptDek("correct-password", dek);
 
-    expect(() => decryptDek("wrong-password", blob)).toThrow(
+    expect(() => decryptKeychainDek("wrong-password", blob)).toThrow(
+      CredentialDecryptionError
+    );
+  });
+});
+
+describe("decryptDpapiDek", () => {
+  it("recovers the original DEK from a v10-prefixed GCM blob", () => {
+    const safeStorageKey = crypto.randomBytes(32);
+    const dek = crypto.randomBytes(32);
+    const blob = encryptDpapiDek(safeStorageKey, dek);
+
+    const result = decryptDpapiDek(safeStorageKey, blob);
+
+    expect(result.equals(dek)).toBe(true);
+  });
+
+  it("throws CredentialDecryptionError when the v10 prefix is missing", () => {
+    const safeStorageKey = crypto.randomBytes(32);
+    const dek = crypto.randomBytes(32);
+    const blob = encryptDpapiDek(safeStorageKey, dek);
+    const tampered = Buffer.concat([Buffer.from("xxx"), blob.subarray(3)]);
+
+    expect(() => decryptDpapiDek(safeStorageKey, tampered)).toThrow(
+      CredentialDecryptionError
+    );
+  });
+
+  it("throws CredentialDecryptionError when the safeStorage key is wrong (GCM auth fails)", () => {
+    const dek = crypto.randomBytes(32);
+    const blob = encryptDpapiDek(crypto.randomBytes(32), dek);
+
+    expect(() => decryptDpapiDek(crypto.randomBytes(32), blob)).toThrow(
+      CredentialDecryptionError
+    );
+  });
+
+  it("throws CredentialDecryptionError when the plaintext is not a 32-byte base64 DEK", () => {
+    const safeStorageKey = crypto.randomBytes(32);
+    const shortDek = crypto.randomBytes(16);
+    const blob = encryptDpapiDek(safeStorageKey, shortDek);
+
+    expect(() => decryptDpapiDek(safeStorageKey, blob)).toThrow(
       CredentialDecryptionError
     );
   });
@@ -506,78 +549,4 @@ describe("loadEncryptedCredentials (dpapi mode)", () => {
     ).rejects.toBeInstanceOf(DpapiAccessError);
   });
 
-  it("throws CredentialDecryptionError when storage.dek is missing the v10 prefix", async () => {
-    const safeStorageKey = crypto.randomBytes(32);
-    const dek = crypto.randomBytes(32);
-    const wrappedKey = crypto.randomBytes(80);
-    const goodBlob = encryptDpapiDek(safeStorageKey, dek);
-    const tampered = Buffer.concat([
-      Buffer.from("xxx", "utf8"),
-      goodBlob.subarray(3),
-    ]);
-    (fs.promises.readFile as jest.Mock).mockImplementation((p: string) => {
-      if (p === LOCAL_STATE_PATH)
-        return Promise.resolve(makeLocalStateJson(wrappedKey));
-      if (p === DEK_PATH) return Promise.resolve(tampered);
-      return Promise.resolve(Buffer.alloc(80));
-    });
-    mockDpapi(() => safeStorageKey);
-
-    await expect(
-      loadEncryptedCredentials({
-        mode: "dpapi",
-        encPath: ENC_PATH,
-        dekPath: DEK_PATH,
-        localStatePath: LOCAL_STATE_PATH,
-      })
-    ).rejects.toBeInstanceOf(CredentialDecryptionError);
-  });
-
-  it("throws CredentialDecryptionError when storage.dek GCM auth fails (e.g. wrong safeStorage key)", async () => {
-    const correctKey = crypto.randomBytes(32);
-    const wrongKey = crypto.randomBytes(32);
-    const dek = crypto.randomBytes(32);
-    const wrappedKey = crypto.randomBytes(80);
-    const dekBlob = encryptDpapiDek(correctKey, dek);
-    (fs.promises.readFile as jest.Mock).mockImplementation((p: string) => {
-      if (p === LOCAL_STATE_PATH)
-        return Promise.resolve(makeLocalStateJson(wrappedKey));
-      if (p === DEK_PATH) return Promise.resolve(dekBlob);
-      return Promise.resolve(Buffer.alloc(80));
-    });
-    mockDpapi(() => wrongKey);
-
-    await expect(
-      loadEncryptedCredentials({
-        mode: "dpapi",
-        encPath: ENC_PATH,
-        dekPath: DEK_PATH,
-        localStatePath: LOCAL_STATE_PATH,
-      })
-    ).rejects.toBeInstanceOf(CredentialDecryptionError);
-  });
-
-  it("throws CredentialDecryptionError when storage.dek plaintext does not base64-decode to 32 bytes", async () => {
-    const safeStorageKey = crypto.randomBytes(32);
-    const wrappedKey = crypto.randomBytes(80);
-    // Encrypt a 16-byte key's base64 instead of 32 → DEK will be 16 bytes.
-    const shortDek = crypto.randomBytes(16);
-    const dekBlob = encryptDpapiDek(safeStorageKey, shortDek);
-    (fs.promises.readFile as jest.Mock).mockImplementation((p: string) => {
-      if (p === LOCAL_STATE_PATH)
-        return Promise.resolve(makeLocalStateJson(wrappedKey));
-      if (p === DEK_PATH) return Promise.resolve(dekBlob);
-      return Promise.resolve(Buffer.alloc(80));
-    });
-    mockDpapi(() => safeStorageKey);
-
-    await expect(
-      loadEncryptedCredentials({
-        mode: "dpapi",
-        encPath: ENC_PATH,
-        dekPath: DEK_PATH,
-        localStatePath: LOCAL_STATE_PATH,
-      })
-    ).rejects.toBeInstanceOf(CredentialDecryptionError);
-  });
 });
