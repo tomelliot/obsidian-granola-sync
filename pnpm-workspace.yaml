@@ -1,0 +1,21 @@
+overrides:
+  "minimatch@~3.1.0": "^3.1.4"
+  "minimatch@~9.0.0": "^9.0.7"
+  "ajv@^6.0.0": "^6.14.0"
+  "flatted@^3.0.0": "^3.4.2"
+  "handlebars@^4.0.0": "^4.7.9"
+  "brace-expansion@^1.0.0": "^1.1.13"
+  "brace-expansion@^2.0.0": "^2.0.3"
+  "picomatch@^2.0.0": "^2.3.2"
+  "@tootallnate/once": "^3.0.1"
+
+supportedArchitectures:
+  os:
+    - darwin
+    - linux
+    - win32
+  cpu:
+    - x64
+    - arm64
+  libc:
+    - glibc
