@@ -189,6 +189,7 @@ export class FileSyncService {
    * @param granolaId - Granola ID for caching and deduplication
    * @param type - Optional type ('note', 'transcript', or 'combined'). Defaults to 'note' for backward compatibility
    * @param forceOverwrite - If true, always writes the file even if content is unchanged
+   * @param noteDate - Used to build a collision-resolved filename if the target path is already taken
    * @returns True if the file was created or modified, false if no change or error
    */
   async saveFile(
@@ -196,7 +197,8 @@ export class FileSyncService {
     content: string,
     granolaId: string,
     type: "note" | "transcript" | "combined" = "note",
-    forceOverwrite: boolean = false
+    forceOverwrite: boolean = false,
+    noteDate: Date = new Date()
   ): Promise<boolean> {
     const normalizedPath = normalizePath(filePath);
     const existingFile = this.findByGranolaId(granolaId, type);
@@ -207,7 +209,8 @@ export class FileSyncService {
           normalizedPath,
           content,
           granolaId,
-          type
+          type,
+          noteDate
         );
       }
 
@@ -238,18 +241,74 @@ export class FileSyncService {
   }
 
   /**
-   * Creates a new file at the specified path.
+   * Creates a new file, recovering from path collisions.
+   *
+   * The filesystem is the source of truth: we attempt `vault.create` and, if it
+   * reports the path is already taken, retry under a collision-resolved name
+   * (date suffix, then a numeric counter). This is robust on case-insensitive
+   * filesystems where a path pre-check via getAbstractFileByPath can miss a
+   * case/normalization variant that `create` then collides with.
    */
   private async createNewFile(
     normalizedPath: string,
     content: string,
     granolaId: string,
-    type: "note" | "transcript" | "combined"
+    type: "note" | "transcript" | "combined",
+    noteDate: Date
   ): Promise<boolean> {
-    const newFile = await this.app.vault.create(normalizedPath, content);
-    this.updateCache(granolaId, newFile, type);
-    log.debug(`Created ${type} file: ${normalizedPath} (granolaId=${granolaId})`);
-    return true;
+    const maxAttempts = 20;
+    let candidate = normalizedPath;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const newFile = await this.app.vault.create(candidate, content);
+        this.updateCache(granolaId, newFile, type);
+        if (candidate === normalizedPath) {
+          log.debug(`Created ${type} file: ${candidate} (granolaId=${granolaId})`);
+        } else {
+          log.debug(`Created ${type} file under collision-resolved name: ${candidate} (granolaId=${granolaId})`);
+        }
+        return true;
+      } catch (e) {
+        if (!this.isFileAlreadyExistsError(e)) {
+          throw e;
+        }
+        candidate = this.buildCollisionCandidate(
+          normalizedPath,
+          noteDate,
+          attempt + 1
+        );
+        log.debug(`Filename collision at ${normalizedPath} — retrying as ${candidate} (granolaId=${granolaId})`);
+      }
+    }
+
+    throw new Error(
+      `Could not find an available filename for ${normalizedPath} after ${maxAttempts} attempts`
+    );
+  }
+
+  /**
+   * Returns true if an error from `vault.create`/`vault.rename` indicates the
+   * target path is already occupied (as opposed to a real I/O failure).
+   */
+  private isFileAlreadyExistsError(e: unknown): boolean {
+    const message = e instanceof Error ? e.message : String(e);
+    return /already exists/i.test(message);
+  }
+
+  /**
+   * Builds a collision-resolved candidate path by appending a date suffix and,
+   * for repeated collisions, a numeric counter to the base filename.
+   */
+  private buildCollisionCandidate(
+    basePath: string,
+    noteDate: Date,
+    n: number
+  ): string {
+    const stem = basePath.replace(/\.md$/, "");
+    const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
+    const suffix = n <= 1 ? `-${dateSuffix}` : `-${dateSuffix}-${n}`;
+    return normalizePath(`${stem}${suffix}.md`);
   }
 
   /**
@@ -307,20 +366,21 @@ export class FileSyncService {
   }
 
   /**
-   * Resolves the final file path for a note or transcript, accounting for filename collisions.
-   * If there is a filename collision (different Granola ID but same filename),
-   * the file is renamed to include a date/timestamp suffix.
+   * Resolves the ideal (collision-free) file path for a note or transcript.
+   *
+   * Collision handling is no longer done here: `createNewFile` treats the
+   * filesystem as the source of truth and resolves collisions on `create`,
+   * which is correct on case-insensitive filesystems where a path pre-check
+   * can miss a case/normalization variant.
    *
    * @param filename - The base filename (e.g., "Note.md")
-   * @param noteDate - The date of the note
-   * @param granolaId - The Granola document ID
+   * @param noteDate - The date of the note (determines the target folder)
    * @param isTranscript - Whether this is a transcript file
    * @returns The resolved file path, or null if folder path cannot be resolved
    */
   resolveFilePath(
     filename: string,
     noteDate: Date,
-    granolaId: string,
     isTranscript: boolean = false
   ): string | null {
     const folderPath = this.resolveFolderPath(noteDate, isTranscript);
@@ -328,22 +388,7 @@ export class FileSyncService {
       return null;
     }
 
-    const type = isTranscript ? "transcript" : "note";
-    let resolvedFilename = filename;
-    let filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
-
-    if (!this.findByGranolaId(granolaId, type)) {
-      const existingFile = this.app.vault.getAbstractFileByPath(filePath);
-      if (existingFile instanceof TFile) {
-        const filenameWithoutExtension = resolvedFilename.replace(/\.md$/, "");
-        const dateSuffix = formatDateForFilename(noteDate).replace(/\s+/g, "_");
-        resolvedFilename = `${filenameWithoutExtension}-${dateSuffix}.md`;
-        log.debug(`Filename collision for granolaId=${granolaId} at ${filePath} — using suffix: ${resolvedFilename}`);
-        filePath = normalizePath(`${folderPath}/${resolvedFilename}`);
-      }
-    }
-
-    return filePath;
+    return normalizePath(`${folderPath}/${filename}`);
   }
 
   /**
@@ -374,19 +419,21 @@ export class FileSyncService {
       return false;
     }
 
-    const filePath = this.resolveFilePath(
-      filename,
-      noteDate,
-      granolaId,
-      isTranscript
-    );
+    const filePath = this.resolveFilePath(filename, noteDate, isTranscript);
     if (!filePath) {
       log.debug(`Cannot resolve file path for ${filename} (granolaId=${granolaId})`);
       return false;
     }
 
     const type = isTranscript ? "transcript" : "note";
-    return this.saveFile(filePath, content, granolaId, type, forceOverwrite);
+    return this.saveFile(
+      filePath,
+      content,
+      granolaId,
+      type,
+      forceOverwrite,
+      noteDate
+    );
   }
 
   /**
@@ -452,7 +499,7 @@ export class FileSyncService {
       return { saved: false, path: null };
     }
 
-    const filePath = this.resolveFilePath(filename, noteDate, doc.id, false);
+    const filePath = this.resolveFilePath(filename, noteDate, false);
     if (!filePath) {
       return { saved: false, path: null };
     }
@@ -469,7 +516,8 @@ export class FileSyncService {
       contentWithAttachments,
       doc.id,
       "combined",
-      forceOverwrite
+      forceOverwrite,
+      noteDate
     );
 
     // Return the actual on-disk path. When we try to rename to the "ideal"
@@ -489,18 +537,13 @@ export class FileSyncService {
     doc: GranolaDoc,
     documentProcessor: DocumentProcessor,
     forceOverwrite: boolean = false,
-    transcriptPath?: string,
     folders?: string[]
   ): Promise<{ saved: boolean; path: string | null }> {
     if (!doc.id) {
       log.error("Document missing required id field:", doc);
       return { saved: false, path: null };
     }
-    const prepared = documentProcessor.prepareNote(
-      doc,
-      transcriptPath,
-      folders
-    );
+    const prepared = documentProcessor.prepareNote(doc, folders);
     if (!prepared) {
       log.debug(`Skipping doc ${doc.id} — no parseable content`);
       return { saved: false, path: null };
@@ -521,7 +564,7 @@ export class FileSyncService {
       return { saved: false, path: null };
     }
 
-    const filePath = this.resolveFilePath(filename, noteDate, doc.id, false);
+    const filePath = this.resolveFilePath(filename, noteDate, false);
     if (!filePath) {
       return { saved: false, path: null };
     }
@@ -537,7 +580,8 @@ export class FileSyncService {
       contentWithAttachments,
       doc.id,
       "note",
-      forceOverwrite
+      forceOverwrite,
+      noteDate
     );
 
     // Return the actual on-disk path. When we try to rename to the "ideal"
@@ -584,7 +628,7 @@ export class FileSyncService {
       return { saved: false, path: null };
     }
 
-    const filePath = this.resolveFilePath(filename, noteDate, doc.id, true);
+    const filePath = this.resolveFilePath(filename, noteDate, true);
     if (!filePath) {
       log.debug(`Cannot resolve file path for ${filename} (granolaId=${doc.id})`);
       return { saved: false, path: null };
@@ -595,7 +639,8 @@ export class FileSyncService {
       content,
       doc.id,
       "transcript",
-      forceOverwrite
+      forceOverwrite,
+      noteDate
     );
 
     // Return the actual on-disk path. When we try to rename to the "ideal"

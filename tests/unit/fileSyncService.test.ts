@@ -473,55 +473,16 @@ describe("FileSyncService", () => {
       const result = fileSyncService.resolveFilePath(
         "note.md",
         new Date(),
-        "doc-1",
         false
       );
 
       expect(result).toBeNull();
     });
 
-    it("should return resolved path when no conflicts", () => {
-      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
-
+    it("should return the resolved path", () => {
       const result = fileSyncService.resolveFilePath(
         "note.md",
         new Date(),
-        "doc-1",
-        false
-      );
-
-      expect(result).toBe("granola-folder/note.md");
-    });
-
-    it("should append date suffix when filename collision exists", () => {
-      const existingFile = new TFile("granola-folder/note.md");
-      mockApp.vault.getAbstractFileByPath.mockReturnValue(existingFile);
-      jest
-        .spyOn(dateUtils, "formatDateForFilename")
-        .mockReturnValue("2024-01-01 10-30-00");
-
-      const noteDate = new Date("2024-01-01T10:30:00Z");
-      const result = fileSyncService.resolveFilePath(
-        "note.md",
-        noteDate,
-        "doc-1",
-        false
-      );
-
-      expect(result).toBe("granola-folder/note-2024-01-01_10-30-00.md");
-    });
-
-    it("should not append date suffix when file exists with same granola_id", async () => {
-      const existingFile = new TFile("granola-folder/note.md");
-      mockApp.vault.getAbstractFileByPath.mockReturnValue(existingFile);
-      
-      // Pre-populate cache with same granola_id
-      fileSyncService.updateCache("doc-1", existingFile, "note");
-
-      const result = fileSyncService.resolveFilePath(
-        "note.md",
-        new Date(),
-        "doc-1",
         false
       );
 
@@ -529,12 +490,9 @@ describe("FileSyncService", () => {
     });
 
     it("should handle transcript files", () => {
-      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
-
       const result = fileSyncService.resolveFilePath(
         "note-transcript.md",
         new Date(),
-        "doc-1",
         true
       );
 
@@ -582,11 +540,12 @@ describe("FileSyncService", () => {
         "content",
         "doc-1",
         "note",
-        false
+        false,
+        expect.any(Date)
       );
     });
 
-    it("should use resolveFilePath for collision detection", async () => {
+    it("should use resolveFilePath to resolve the target path", async () => {
       jest.spyOn(fileSyncService, "ensureFolder").mockResolvedValue(true);
       const resolveFilePathSpy = jest
         .spyOn(fileSyncService, "resolveFilePath")
@@ -605,7 +564,6 @@ describe("FileSyncService", () => {
       expect(resolveFilePathSpy).toHaveBeenCalledWith(
         "note.md",
         expect.any(Date),
-        "doc-1",
         false
       );
       expect(saveFileSpy).toHaveBeenCalledWith(
@@ -613,7 +571,8 @@ describe("FileSyncService", () => {
         "content",
         "doc-1",
         "note",
-        false
+        false,
+        expect.any(Date)
       );
     });
 
@@ -761,7 +720,6 @@ describe("FileSyncService", () => {
       expect(result.saved).toBe(true);
       expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
         doc,
-        undefined,
         undefined
       );
       expect(saveFileSpy).toHaveBeenCalledWith(
@@ -769,32 +727,8 @@ describe("FileSyncService", () => {
         expect.any(String),
         "doc-1",
         "note",
-        false
-      );
-    });
-
-    it("should pass transcriptPath to prepareNote when provided", async () => {
-      const doc = { id: "doc-1" } as GranolaDoc;
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-      jest.spyOn(fileSyncService, "saveFile" as any).mockResolvedValue(true);
-
-      const result = await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
         false,
-        "Transcripts/note-transcript.md"
-      );
-
-      expect(result.saved).toBe(true);
-      expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
-        doc,
-        "Transcripts/note-transcript.md",
-        undefined
+        expect.any(Date)
       );
     });
 
@@ -842,16 +776,10 @@ describe("FileSyncService", () => {
           }
         );
 
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
+      await fileSyncService.saveNoteToDisk(doc, mockDocumentProcessor, false);
 
       expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
         doc,
-        undefined,
         undefined
       );
       expect(requestUrlSpy).toHaveBeenCalledTimes(1);
@@ -1697,6 +1625,115 @@ describe("FileSyncService", () => {
     });
   });
 
+  describe("createNewFile collision recovery (issue #61)", () => {
+    it("recovers from a create collision by saving under a date-suffixed name", async () => {
+      jest
+        .spyOn(dateUtils, "formatDateForFilename")
+        .mockReturnValue("2024-01-01 10-30-00");
+      const suffixedPath = "granola-folder/note-2024-01-01_10-30-00.md";
+      const createdFile = new TFile(suffixedPath);
+      mockApp.vault.create
+        .mockRejectedValueOnce(new Error("File already exists."))
+        .mockResolvedValueOnce(createdFile);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date("2024-01-01T10:30:00Z")
+      );
+
+      expect(result).toBe(true);
+      expect(mockApp.vault.create).toHaveBeenNthCalledWith(
+        1,
+        "granola-folder/note.md",
+        "content"
+      );
+      expect(mockApp.vault.create).toHaveBeenNthCalledWith(
+        2,
+        suffixedPath,
+        "content"
+      );
+      // Cache points at the file that was actually created on disk.
+      expect(fileSyncService.findByGranolaId("id-1", "note")).toBe(createdFile);
+    });
+
+    it("appends a numeric counter when the date-suffixed name also collides", async () => {
+      jest
+        .spyOn(dateUtils, "formatDateForFilename")
+        .mockReturnValue("2024-01-01 10-30-00");
+      const finalPath = "granola-folder/note-2024-01-01_10-30-00-2.md";
+      mockApp.vault.create
+        .mockRejectedValueOnce(new Error("File already exists."))
+        .mockRejectedValueOnce(new Error("File already exists."))
+        .mockResolvedValueOnce(new TFile(finalPath));
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date("2024-01-01T10:30:00Z")
+      );
+
+      expect(result).toBe(true);
+      expect(mockApp.vault.create).toHaveBeenNthCalledWith(
+        3,
+        finalPath,
+        "content"
+      );
+    });
+
+    it("saves under a suffix when getAbstractFileByPath misses but create collides (case-insensitive FS)", async () => {
+      // The in-memory index lookup is case-sensitive and misses the existing
+      // case variant on disk...
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+      jest
+        .spyOn(dateUtils, "formatDateForFilename")
+        .mockReturnValue("2024-01-01 10-30-00");
+      // ...but the case-insensitive filesystem rejects the first create.
+      const suffixedPath =
+        "granola-transcripts/Instance AI standup-transcript-2024-01-01_10-30-00.md";
+      const createdFile = new TFile(suffixedPath);
+      mockApp.vault.create
+        .mockRejectedValueOnce(new Error("File already exists."))
+        .mockResolvedValueOnce(createdFile);
+
+      const result = await fileSyncService.saveFile(
+        "granola-transcripts/Instance AI standup-transcript.md",
+        "transcript content",
+        "e7b12999",
+        "transcript",
+        false,
+        new Date("2024-01-01T10:30:00Z")
+      );
+
+      expect(result).toBe(true);
+      expect(fileSyncService.findByGranolaId("e7b12999", "transcript")).toBe(
+        createdFile
+      );
+    });
+
+    it("does not retry on a non-collision error", async () => {
+      mockApp.vault.create.mockRejectedValue(new Error("Disk full"));
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      expect(result).toBe(false);
+      expect(mockApp.vault.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("clearCache and getCacheSize", () => {
     it("should clear the cache", async () => {
       const mockFile = { path: "note.md" } as TFile;
@@ -1773,7 +1810,8 @@ describe("FileSyncService", () => {
         "content",
         "doc-1",
         "note",
-        true // forceOverwrite should be passed through
+        true, // forceOverwrite should be passed through
+        expect.any(Date)
       );
     });
 
@@ -1801,7 +1839,8 @@ describe("FileSyncService", () => {
         expect.any(String),
         "doc-1",
         "note",
-        true // forceOverwrite should be passed through
+        true, // forceOverwrite should be passed through
+        expect.any(Date)
       );
     });
 
@@ -1834,7 +1873,8 @@ describe("FileSyncService", () => {
         "transcript content",
         "doc-1",
         "transcript",
-        true // forceOverwrite should be passed through
+        true, // forceOverwrite should be passed through
+        expect.any(Date)
       );
     });
   });

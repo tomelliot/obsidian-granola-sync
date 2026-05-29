@@ -155,37 +155,6 @@ describe("DocumentProcessor", () => {
       expect(titleLine).not.toMatch(/title:.*\n.*\n/);
     });
 
-    it("should add transcript field to frontmatter when transcripts enabled and path provided", () => {
-      documentProcessor = new DocumentProcessor(
-        {
-          syncTranscripts: true,
-        },
-        mockPathResolver
-      );
-
-      const doc: GranolaDoc = {
-        id: "doc-123",
-        title: "Test Note",
-        created_at: "2024-01-15T10:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
-      };
-
-      const result = documentProcessor.prepareNote(
-        doc,
-        "Transcripts/Test Note-transcript.md"
-      );
-
-      expect(result.content).toContain(
-        'transcript: "[[Transcripts/Test Note-transcript.md]]"'
-      );
-      expect(result.content).not.toContain("[Transcript]");
-    });
-
     it("should not add transcript field when path not provided", () => {
       documentProcessor = new DocumentProcessor(
         {
@@ -229,66 +198,6 @@ describe("DocumentProcessor", () => {
 
       expect(result.content).not.toContain("[Transcript]");
       expect(result.content).not.toContain("[[");
-    });
-
-    it("should use wiki-style links for transcript paths in frontmatter", () => {
-      documentProcessor = new DocumentProcessor(
-        {
-          syncTranscripts: true,
-        },
-        mockPathResolver
-      );
-
-      const doc: GranolaDoc = {
-        id: "doc-123",
-        title: "Test Note",
-        created_at: "2024-01-15T10:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
-      };
-
-      const result = documentProcessor.prepareNote(
-        doc,
-        "Transcripts/My Meeting Transcript.md"
-      );
-
-      expect(result.content).toContain(
-        'transcript: "[[Transcripts/My Meeting Transcript.md]]"'
-      );
-    });
-
-    it("should use wiki-style links for transcript paths without spaces in frontmatter", () => {
-      documentProcessor = new DocumentProcessor(
-        {
-          syncTranscripts: true,
-        },
-        mockPathResolver
-      );
-
-      const doc: GranolaDoc = {
-        id: "doc-123",
-        title: "Test Note",
-        created_at: "2024-01-15T10:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
-      };
-
-      const result = documentProcessor.prepareNote(
-        doc,
-        "Transcripts/TestNote-transcript.md"
-      );
-
-      expect(result.content).toContain(
-        'transcript: "[[Transcripts/TestNote-transcript.md]]"'
-      );
     });
 
     it("should use default title when title is missing", () => {

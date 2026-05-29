@@ -609,7 +609,6 @@ describe("GranolaSync", () => {
         docWithContent,
         mockDocumentProcessor,
         true,
-        undefined,
         undefined
       );
     });

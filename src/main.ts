@@ -808,7 +808,6 @@ export default class GranolaSync extends Plugin {
             doc,
             this.documentProcessor,
             forceOverwrite,
-            undefined,
             folders
           );
           if (result.saved) {
@@ -823,7 +822,6 @@ export default class GranolaSync extends Plugin {
           doc,
           this.documentProcessor,
           forceOverwrite,
-          undefined,
           folders
         );
         if (result.saved) {

@@ -141,15 +141,17 @@ export class DocumentProcessor {
   }
 
   /**
-   * Prepares a note document for saving, including frontmatter and optional transcript links.
+   * Prepares a note document for saving, including frontmatter.
+   *
+   * The transcript link is not set here: for separate-file transcripts it is
+   * written post-hoc by updateCrossLinks() using the actual on-disk path (which
+   * may differ from the computed path after collision resolution).
    *
    * @param doc - The Granola document to process
-   * @param transcriptPath - Optional resolved transcript path (with collision detection) to include in frontmatter
    * @returns Object containing the filename and full markdown content
    */
   prepareNote(
     doc: GranolaDoc,
-    transcriptPath?: string,
     folders?: string[]
   ): { filename: string; content: string } | null {
     // Build body first — if there's no parseable content, bail out early
@@ -161,7 +163,6 @@ export class DocumentProcessor {
     // Build metadata using shared builder
     const metadata = this.buildNoteMetadata(doc, {
       type: "note",
-      transcriptPath,
       folders,
     });
 
