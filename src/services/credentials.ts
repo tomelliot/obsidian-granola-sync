@@ -1,4 +1,5 @@
 import { requestUrl, Platform } from "obsidian";
+import fs from "fs";
 import path from "path";
 import os from "os";
 import { log } from "../utils/logger";
@@ -28,6 +29,10 @@ interface StoredAccountsData {
   accounts: string | StoredAccount[];
 }
 
+type CredentialPaths = LoadEncryptedCredentialsOpts & {
+  plaintextPath: string;
+};
+
 interface RefreshTokenResponse {
   access_token: string;
   expires_in: number;
@@ -50,22 +55,25 @@ function getGranolaDirectory(): string {
   );
 }
 
-export function getCredentialPaths(): LoadEncryptedCredentialsOpts {
+export function getCredentialPaths(): CredentialPaths {
   const dir = getGranolaDirectory();
   const encPath = path.join(dir, "stored-accounts.json.enc");
   const dekPath = path.join(dir, "storage.dek");
+  const plaintextPath = path.join(dir, "stored-accounts.json");
   if (Platform.isWin) {
     return {
       mode: "dpapi",
       encPath,
       dekPath,
       localStatePath: path.join(dir, "Local State"),
+      plaintextPath,
     };
   }
   return {
     mode: "keychain",
     encPath,
     dekPath,
+    plaintextPath,
   };
 }
 
@@ -217,11 +225,16 @@ function describeLoadError(error: unknown): LoadErrorDescription {
   const errorCode = (error as NodeJS.ErrnoException)?.code;
   const allPaths =
     credentialPaths.mode === "keychain"
-      ? [credentialPaths.encPath, credentialPaths.dekPath]
+      ? [
+          credentialPaths.encPath,
+          credentialPaths.dekPath,
+          credentialPaths.plaintextPath,
+        ]
       : [
           credentialPaths.encPath,
           credentialPaths.dekPath,
           credentialPaths.localStatePath,
+          credentialPaths.plaintextPath,
         ];
   const pathList = allPaths.join(", ");
   if (errorCode === "ENOENT") {
@@ -237,7 +250,25 @@ function describeLoadError(error: unknown): LoadErrorDescription {
     };
   }
   const message = error instanceof Error ? error.message : String(error);
-  return { message: `Failed to load Granola credentials: ${message}`, kind: "unknown" };
+  return {
+    message: `Failed to load Granola credentials: ${message}`,
+    kind: "unknown",
+  };
+}
+
+async function loadCredentialFileContents(): Promise<string> {
+  try {
+    return await loadEncryptedCredentials(credentialPaths);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+      throw error;
+    }
+
+    log.debug(
+      "Encrypted Granola credentials not found, falling back to stored-accounts.json"
+    );
+    return fs.promises.readFile(credentialPaths.plaintextPath, "utf-8");
+  }
 }
 
 export async function loadCredentials(): Promise<CredentialsResult> {
@@ -245,8 +276,8 @@ export async function loadCredentials(): Promise<CredentialsResult> {
 
   let fileContents: string;
   try {
-    fileContents = await loadEncryptedCredentials(credentialPaths);
-    log.debug("Successfully decrypted credentials");
+    fileContents = await loadCredentialFileContents();
+    log.debug("Successfully loaded credentials");
   } catch (error) {
     const { message, kind } = describeLoadError(error);
     log.error("Credentials load error:", error);
