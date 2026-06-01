@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
+import { notifySync } from "./utils/notify";
 import type GranolaSync from "./main";
 import type { FolderMapData } from "./services/folderMapBuilder";
 import bmcButtonSvg from "../assets/bmc-button.svg";
@@ -114,6 +115,7 @@ export type GranolaSyncSettings = NoteSettings &
   AutomaticSyncSettings &
   FilterSettings & {
     enableDebugLogging: boolean;
+    showSyncNotifications: boolean;
     // Persisted folder map for detecting renames across syncs
     _folderMapCache?: FolderMapData;
     // Legacy settings preserved for potential rollback
@@ -149,6 +151,8 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   transcriptFilenamePattern: "{title}-transcript",
   // Debug / diagnostics
   enableDebugLogging: false,
+  // Notifications
+  showSyncNotifications: true,
 };
 
 /**
@@ -314,6 +318,20 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             this.plugin.settings.syncTranscripts = value;
             await this.plugin.saveSettings();
             this.display();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Show sync notifications")
+      .setDesc(
+        "Show a notice when a sync starts or finishes. Errors are always shown."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showSyncNotifications)
+          .onChange(async (value) => {
+            this.plugin.settings.showSyncNotifications = value;
+            await this.plugin.saveSettings();
           })
       );
 
@@ -637,9 +655,10 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             .setButtonText("Full sync")
             .setCta()
             .onClick(async () => {
-              new Notice("Granola sync: Starting full sync.");
+              const showNotices = this.plugin.settings.showSyncNotifications;
+              notifySync(showNotices, "Granola sync: Starting full sync.");
               await this.plugin.sync({ mode: "full" });
-              new Notice("Granola sync: Full sync complete.");
+              notifySync(showNotices, "Granola sync: Full sync complete.");
             })
         );
 

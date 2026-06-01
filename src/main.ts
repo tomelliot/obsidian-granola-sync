@@ -4,6 +4,7 @@ import path from "path";
 import { moment } from "./utils/moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
 import { getTitleOrDefault } from "./utils/filenameUtils";
+import { notifySync } from "./utils/notify";
 import { getNoteDate, getEffectiveUpdatedAt } from "./utils/dateUtils";
 import {
   GranolaSyncSettings,
@@ -77,9 +78,15 @@ export default class GranolaSync extends Plugin {
       id: "sync-granola",
       name: "Sync from Granola",
       callback: async () => {
-        new Notice("Granola sync: Starting manual sync.");
+        notifySync(
+          this.settings.showSyncNotifications,
+          "Granola sync: Starting manual sync."
+        );
         await this.sync();
-        new Notice("Granola sync: Manual sync complete.");
+        notifySync(
+          this.settings.showSyncNotifications,
+          "Granola sync: Manual sync complete."
+        );
 
         if (!this.settings.syncNotes && !this.settings.syncTranscripts) {
           new Notice(
@@ -513,7 +520,8 @@ export default class GranolaSync extends Plugin {
     );
 
     if (documents.length === 0) {
-      new Notice(
+      notifySync(
+        this.settings.showSyncNotifications,
         mode === "full"
           ? "Granola sync: No documents returned from Granola API."
           : `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
