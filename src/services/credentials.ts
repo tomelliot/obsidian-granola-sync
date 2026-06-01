@@ -250,10 +250,7 @@ function describeLoadError(error: unknown): LoadErrorDescription {
     };
   }
   const message = error instanceof Error ? error.message : String(error);
-  return {
-    message: `Failed to load Granola credentials: ${message}`,
-    kind: "unknown",
-  };
+  return { message: `Failed to load Granola credentials: ${message}`, kind: "unknown" };
 }
 
 async function loadCredentialFileContents(): Promise<string> {
@@ -264,9 +261,7 @@ async function loadCredentialFileContents(): Promise<string> {
       throw error;
     }
 
-    log.debug(
-      "Encrypted Granola credentials not found, falling back to stored-accounts.json"
-    );
+    log.debug("Encrypted Granola credentials not found, falling back to stored-accounts.json");
     return fs.promises.readFile(credentialPaths.plaintextPath, "utf-8");
   }
 }
