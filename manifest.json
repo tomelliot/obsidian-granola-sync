@@ -1,7 +1,7 @@
 {
   "id": "granola-sync",
   "name": "Granola Sync",
-  "version": "2.0.26",
+  "version": "2.0.27",
   "minAppVersion": "1.5.7",
   "description": "Sync Granola notes to your vault.",
   "author": "Tom Elliot",
