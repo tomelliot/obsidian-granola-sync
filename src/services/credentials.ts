@@ -29,6 +29,10 @@ interface StoredAccountsData {
   accounts: string | StoredAccount[];
 }
 
+type CredentialPaths = LoadEncryptedCredentialsOpts & {
+  plaintextPath: string;
+};
+
 interface RefreshTokenResponse {
   access_token: string;
   expires_in: number;
@@ -51,31 +55,29 @@ function getGranolaDirectory(): string {
   );
 }
 
-export function getCredentialPaths(): LoadEncryptedCredentialsOpts {
+function getCredentialPaths(): CredentialPaths {
   const dir = getGranolaDirectory();
   const encPath = path.join(dir, "stored-accounts.json.enc");
   const dekPath = path.join(dir, "storage.dek");
+  const plaintextPath = path.join(dir, "stored-accounts.json");
   if (Platform.isWin) {
     return {
       mode: "dpapi",
       encPath,
       dekPath,
       localStatePath: path.join(dir, "Local State"),
+      plaintextPath,
     };
   }
   return {
     mode: "keychain",
     encPath,
     dekPath,
+    plaintextPath,
   };
 }
 
-function getPlaintextCredentialPath(): string {
-  return path.join(getGranolaDirectory(), "stored-accounts.json");
-}
-
 const credentialPaths = getCredentialPaths();
-const plaintextCredentialPath = getPlaintextCredentialPath();
 
 /**
  * Checks if the access token has expired.
@@ -223,12 +225,16 @@ function describeLoadError(error: unknown): LoadErrorDescription {
   const errorCode = (error as NodeJS.ErrnoException)?.code;
   const allPaths =
     credentialPaths.mode === "keychain"
-      ? [credentialPaths.encPath, credentialPaths.dekPath, plaintextCredentialPath]
+      ? [
+          credentialPaths.encPath,
+          credentialPaths.dekPath,
+          credentialPaths.plaintextPath,
+        ]
       : [
           credentialPaths.encPath,
           credentialPaths.dekPath,
           credentialPaths.localStatePath,
-          plaintextCredentialPath,
+          credentialPaths.plaintextPath,
         ];
   const pathList = allPaths.join(", ");
   if (errorCode === "ENOENT") {
@@ -261,7 +267,7 @@ async function loadCredentialFileContents(): Promise<string> {
     log.debug(
       "Encrypted Granola credentials not found, falling back to stored-accounts.json"
     );
-    return fs.promises.readFile(plaintextCredentialPath, "utf-8");
+    return fs.promises.readFile(credentialPaths.plaintextPath, "utf-8");
   }
 }
 
