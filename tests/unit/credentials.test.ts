@@ -1,5 +1,6 @@
 import { loadCredentials } from "../../src/services/credentials";
 import { requestUrl } from "obsidian";
+import fs from "fs";
 import {
   loadEncryptedCredentials,
   KeychainAccessError,
@@ -8,6 +9,12 @@ import {
 } from "../../src/services/granolaCredentialsCrypto";
 
 jest.mock("obsidian");
+
+jest.mock("fs", () => ({
+  promises: {
+    readFile: jest.fn(),
+  },
+}));
 
 jest.mock("../../src/services/granolaCredentialsCrypto", () => {
   class KeychainAccessError extends Error {
@@ -90,6 +97,9 @@ describe("Credentials Service - Token Refresh", () => {
   const mockLoadEncrypted = loadEncryptedCredentials as jest.MockedFunction<
     typeof loadEncryptedCredentials
   >;
+  const mockReadFile = fs.promises.readFile as jest.MockedFunction<
+    typeof fs.promises.readFile
+  >;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -107,6 +117,23 @@ describe("Credentials Service - Token Refresh", () => {
     expect(result.accessToken).toBe(mockAccessToken);
     expect(result.error).toBeNull();
     expect(mockLoadEncrypted).toHaveBeenCalledTimes(1);
+  });
+
+  it("should fall back to plaintext stored-accounts.json when encrypted files are missing", async () => {
+    const missingEncryptedFile = Object.assign(new Error("File not found"), {
+      code: "ENOENT",
+    });
+    mockLoadEncrypted.mockRejectedValueOnce(missingEncryptedFile);
+    mockReadFile.mockResolvedValueOnce(storedAccountsFile());
+
+    const result = await loadCredentials();
+
+    expect(result.accessToken).toBe(mockAccessToken);
+    expect(result.error).toBeNull();
+    expect(mockReadFile).toHaveBeenCalledWith(
+      expect.stringContaining("stored-accounts.json"),
+      "utf-8"
+    );
   });
 
   it("should refresh token when expired", async () => {
@@ -222,6 +249,7 @@ describe("Credentials Service - Token Refresh", () => {
       code: "ENOENT",
     });
     mockLoadEncrypted.mockRejectedValueOnce(error);
+    mockReadFile.mockRejectedValueOnce(error);
 
     const result = await loadCredentials();
 
