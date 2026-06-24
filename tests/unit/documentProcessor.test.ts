@@ -1,6 +1,7 @@
 import { DocumentProcessor } from "../../src/services/documentProcessor";
 import { GranolaDoc } from "../../src/services/granolaApi";
 import { PathResolver } from "../../src/services/pathResolver";
+import { parseFrontmatter, TRICKY_TITLES } from "../helpers/frontmatter";
 
 // Mock convertProsemirrorToMarkdown: While this is a pure function, we mock it to
 // isolate DocumentProcessor's logic (frontmatter generation, formatting) from
@@ -130,30 +131,30 @@ describe("DocumentProcessor", () => {
 
       const result = documentProcessor.prepareNote(doc);
 
-      expect(result.content).toContain('title: "Note with \\"quotes\\""');
+      // Frontmatter must be valid YAML and round-trip the title exactly.
+      const fm = parseFrontmatter(result.content);
+      expect(fm.title).toBe('Note with "quotes"');
     });
 
-    it("should sanitize newlines in titles for YAML frontmatter", () => {
-      const doc: GranolaDoc = {
-        id: "doc-newline",
-        title: "\nMeeting Title With Leading Newline",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
-      };
+    it.each(TRICKY_TITLES)(
+      "should write valid YAML frontmatter for a title with %s (issue #139)",
+      (_label, title) => {
+        const doc: GranolaDoc = {
+          id: "doc-tricky",
+          title,
+          last_viewed_panel: { content: { type: "doc", content: [] } },
+        };
 
-      const result = documentProcessor.prepareNote(doc);
+        const result = documentProcessor.prepareNote(doc);
 
-      // Title should be on a single line — no raw newlines breaking YAML
-      const frontmatter = result.content.split("---")[1];
-      const titleLine = frontmatter.split("\n").find((l: string) => l.startsWith("title:"));
-      expect(titleLine).toBeDefined();
-      // The title value should not contain a raw newline
-      expect(titleLine).not.toMatch(/title:.*\n.*\n/);
-    });
+        // parseFrontmatter throws on invalid YAML — the #139 failure mode.
+        const fm = parseFrontmatter(result.content);
+        // granola_id must remain readable so deduplication keeps working.
+        expect(fm.granola_id).toBe("doc-tricky");
+        // The (multi-line) title is preserved exactly through the round-trip.
+        expect(fm.title).toBe(title);
+      }
+    );
 
     it("should not add transcript field when path not provided", () => {
       documentProcessor = new DocumentProcessor(
@@ -571,33 +572,31 @@ describe("DocumentProcessor", () => {
         transcriptContent
       );
 
-      expect(result.content).toContain('title: "Note with \\"quotes\\""');
+      const fm = parseFrontmatter(result.content);
+      expect(fm.title).toBe('Note with "quotes"');
     });
 
-    it("should sanitize newlines in titles for YAML frontmatter", () => {
-      const doc: GranolaDoc = {
-        id: "doc-newline",
-        title: "\nMeeting Title With Leading Newline",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
-      };
+    it.each(TRICKY_TITLES)(
+      "should write valid YAML frontmatter for a title with %s (issue #139)",
+      (_label, title) => {
+        const doc: GranolaDoc = {
+          id: "doc-tricky",
+          title,
+          last_viewed_panel: { content: { type: "doc", content: [] } },
+        };
 
-      const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
+        const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
 
-      const result = documentProcessor.prepareCombinedNote(
-        doc,
-        transcriptContent
-      );
+        const result = documentProcessor.prepareCombinedNote(
+          doc,
+          transcriptContent
+        );
 
-      const frontmatter = result.content.split("---")[1];
-      const titleLine = frontmatter.split("\n").find((l: string) => l.startsWith("title:"));
-      expect(titleLine).toBeDefined();
-      expect(titleLine).not.toMatch(/title:.*\n.*\n/);
-    });
+        const fm = parseFrontmatter(result.content);
+        expect(fm.granola_id).toBe("doc-tricky");
+        expect(fm.title).toBe(title);
+      }
+    );
 
     it("should place transcript content after note content", () => {
       const doc: GranolaDoc = {

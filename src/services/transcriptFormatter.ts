@@ -1,6 +1,5 @@
-import { stringifyYaml } from "obsidian";
 import { TranscriptEntry } from "./granolaApi";
-import { formatAttendeesAsYaml } from "../utils/yamlUtils";
+import { buildTitleYaml, formatAttendeesAsYaml } from "../utils/yamlUtils";
 
 /**
  * Formats transcript body content into markdown, grouped by speaker.
@@ -87,7 +86,7 @@ export function formatTranscriptBySpeaker(
   const frontmatterLines = [
     "---",
     `granola_id: ${granolaId}`,
-    `title: ${stringifyYaml(`${title} - Transcript`).trim()}`,
+    buildTitleYaml(`${title} - Transcript`),
     `type: transcript`,
   ];
   if (createdAt) frontmatterLines.push(`created: ${createdAt}`);

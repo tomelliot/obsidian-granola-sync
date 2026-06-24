@@ -1,4 +1,3 @@
-import { stringifyYaml } from "obsidian";
 import { GranolaDoc } from "./granolaApi";
 import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
 import { convertHtmlToMarkdown } from "./htmlMarkdown";
@@ -9,6 +8,7 @@ import {
 import { getEffectiveUpdatedAt } from "../utils/dateUtils";
 import { PathResolver } from "./pathResolver";
 import {
+  buildTitleYaml,
   formatAttendeesAsYaml,
   formatStringListAsYaml,
 } from "../utils/yamlUtils";
@@ -170,7 +170,7 @@ export class DocumentProcessor {
     const frontmatterLines = [
       "---",
       `granola_id: ${metadata.granolaId}`,
-      `title: ${stringifyYaml(metadata.title).trim()}`,
+      buildTitleYaml(metadata.title),
       `type: ${metadata.type}`,
     ];
     if (metadata.createdAt) frontmatterLines.push(`created: ${metadata.createdAt}`);
@@ -243,7 +243,7 @@ export class DocumentProcessor {
     const frontmatterLines = [
       "---",
       `granola_id: ${metadata.granolaId}`,
-      `title: ${stringifyYaml(metadata.title).trim()}`,
+      buildTitleYaml(metadata.title),
       `type: ${metadata.type}`,
     ];
     if (metadata.createdAt) frontmatterLines.push(`created: ${metadata.createdAt}`);
