@@ -349,16 +349,20 @@ export async function fetchDocumentSet(
 }
 
 /**
- * Fetches full document data for a batch of document IDs.
+ * Maximum number of document IDs the v1/get-documents-batch endpoint accepts per
+ * request. The API returns 400 ("Bad Request") for any request with more than 50
+ * IDs, so larger requests must be split into chunks.
+ */
+const DOCUMENTS_BATCH_SIZE = 50;
+
+/**
+ * Fetches full document data for a single chunk of document IDs (≤ DOCUMENTS_BATCH_SIZE).
  * Uses the v1/get-documents-batch endpoint.
  */
-export async function fetchDocumentsBatch(
+async function fetchDocumentsBatchChunk(
   accessToken: string,
   documentIds: string[]
 ): Promise<GranolaDoc[]> {
-  if (documentIds.length === 0) return [];
-
-  log.debug(`Fetching documents batch — ${documentIds.length} ID(s)`);
   const response = await requestUrl({
     url: "https://api.granola.ai/v1/get-documents-batch",
     method: "POST",
@@ -380,8 +384,42 @@ export async function fetchDocumentsBatch(
     throw new Error("Invalid response from Granola API (DocumentsBatchResponseSchema)");
   }
 
-  log.debug(`Fetched ${result.output.docs.length} document(s) in batch`);
   return result.output.docs as GranolaDoc[];
+}
+
+/**
+ * Fetches full document data for a batch of document IDs.
+ * Uses the v1/get-documents-batch endpoint.
+ *
+ * The endpoint accepts at most DOCUMENTS_BATCH_SIZE (50) IDs per request — larger
+ * requests return 400. IDs are therefore split into chunks of ≤ DOCUMENTS_BATCH_SIZE
+ * and fetched with one request per chunk, concatenating the results. A failing chunk
+ * is logged and skipped so that documents fetched in other chunks are not discarded.
+ */
+export async function fetchDocumentsBatch(
+  accessToken: string,
+  documentIds: string[]
+): Promise<GranolaDoc[]> {
+  if (documentIds.length === 0) return [];
+
+  log.debug(`Fetching documents batch — ${documentIds.length} ID(s)`);
+
+  const docs: GranolaDoc[] = [];
+  for (let i = 0; i < documentIds.length; i += DOCUMENTS_BATCH_SIZE) {
+    const chunk = documentIds.slice(i, i + DOCUMENTS_BATCH_SIZE);
+    try {
+      const chunkDocs = await fetchDocumentsBatchChunk(accessToken, chunk);
+      docs.push(...chunkDocs);
+    } catch (error) {
+      log.error(
+        `Failed to fetch documents batch chunk (IDs ${i}–${i + chunk.length - 1} of ${documentIds.length}), continuing with remaining chunks:`,
+        error
+      );
+    }
+  }
+
+  log.debug(`Fetched ${docs.length} document(s) in batch`);
+  return docs;
 }
 
 // ---------------------------------------------------------------------------
