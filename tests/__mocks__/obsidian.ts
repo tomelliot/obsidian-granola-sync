@@ -1,3 +1,5 @@
+import { stringify as yamlStringify, parse as yamlParse } from "yaml";
+
 export const requestUrl = jest.fn();
 export const normalizePath = (path: string) => path.replace(/\\/g, "/");
 export const App = jest.fn();
@@ -70,29 +72,18 @@ export const Platform = {
 };
 
 /**
- * Mock implementation of Obsidian's stringifyYaml function
- * Converts a JavaScript value to YAML format
+ * Mock of Obsidian's stringifyYaml / parseYaml.
  *
- * Note: We assume Obsidian's stringifyYaml handles proper escaping of special characters.
- * This mock approximates real behavior: quotes strings containing special YAML
- * characters and replaces newlines, and always appends a trailing newline.
+ * Obsidian's YAML helpers wrap the eemeli `yaml` library. We delegate to that
+ * same library (pinned in devDependencies) instead of approximating it, so
+ * tests exercise real YAML serialization — block scalars, quoting, escaping —
+ * and can catch invalid output such as the unindented block scalar behind
+ * issue #139. A hand-rolled approximation previously masked that bug.
  */
 export function stringifyYaml(value: unknown): string {
-  if (typeof value === "string") {
-    // Approximate real YAML: quote if the string contains special characters
-    const needsQuoting = /["'\n\r:#{}[\],&*?|>!%@`]/.test(value);
-    if (needsQuoting) {
-      const escaped = value
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/\n/g, "\\n")
-        .replace(/\r/g, "\\r");
-      return `"${escaped}"\n`;
-    }
-    return `${value}\n`;
-  }
+  return yamlStringify(value);
+}
 
-  // For arrays, objects, etc., use JSON stringification as a simple mock
-  // In real Obsidian, this would use a proper YAML library
-  return JSON.stringify(value) + "\n";
+export function parseYaml(value: string): unknown {
+  return yamlParse(value);
 }

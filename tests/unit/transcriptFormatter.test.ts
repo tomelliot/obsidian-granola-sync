@@ -3,6 +3,19 @@ import {
   formatTranscriptBody,
 } from "../../src/services/transcriptFormatter";
 import { TranscriptEntry } from "../../src/services/granolaApi";
+import { parseFrontmatter, TRICKY_TITLES } from "../helpers/frontmatter";
+
+const SINGLE_ENTRY: TranscriptEntry[] = [
+  {
+    document_id: "doc1",
+    start_timestamp: "00:00:01",
+    end_timestamp: "00:00:05",
+    text: "Test text",
+    source: "microphone",
+    id: "entry1",
+    is_final: true,
+  },
+];
 
 describe("formatTranscriptBySpeaker", () => {
   beforeEach(() => {
@@ -118,53 +131,29 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should escape quotes in title for YAML frontmatter", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Test text",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
     const result = formatTranscriptBySpeaker(
-      transcriptData,
+      SINGLE_ENTRY,
       'Meeting "Project Alpha"',
       "test-id"
     );
 
-    expect(result).toContain(
-      'title: "Meeting \\"Project Alpha\\" - Transcript"'
-    );
+    const fm = parseFrontmatter(result);
+    expect(fm.title).toBe('Meeting "Project Alpha" - Transcript');
   });
 
-  it("should sanitize newlines in title for YAML frontmatter", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Test text",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
+  it.each(TRICKY_TITLES)(
+    "should write valid YAML frontmatter for a title with %s (issue #139)",
+    (_label, title) => {
+      const result = formatTranscriptBySpeaker(SINGLE_ENTRY, title, "test-id");
 
-    const result = formatTranscriptBySpeaker(
-      transcriptData,
-      "\nMeeting With Newline",
-      "test-id"
-    );
-
-    const frontmatter = result.split("---")[1];
-    const titleLine = frontmatter.split("\n").find((l: string) => l.startsWith("title:"));
-    expect(titleLine).toBeDefined();
-    expect(titleLine).not.toMatch(/title:.*\n.*\n/);
-  });
+      // parseFrontmatter throws on invalid YAML — the #139 failure mode.
+      const fm = parseFrontmatter(result);
+      // granola_id must remain readable so transcript dedup keeps working.
+      expect(fm.granola_id).toBe("test-id");
+      // Title is preserved exactly, with the " - Transcript" suffix appended.
+      expect(fm.title).toBe(`${title} - Transcript`);
+    }
+  );
 
   it("should distinguish between microphone and speaker sources", () => {
     const transcriptData: TranscriptEntry[] = [

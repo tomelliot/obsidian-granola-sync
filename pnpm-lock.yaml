@@ -92,6 +92,9 @@ importers:
       typescript-eslint:
         specifier: ^8.47.0
         version: 8.47.0(eslint@9.39.1)(typescript@5.2.2)
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
 
 packages:
 
