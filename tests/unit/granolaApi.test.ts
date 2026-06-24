@@ -704,14 +704,99 @@ describe("fetchDocumentsBatch", () => {
     );
   });
 
-  it("should throw on invalid response", async () => {
+  it("should skip and log a chunk with an invalid response instead of throwing", async () => {
     (requestUrl as jest.Mock).mockResolvedValue({
       json: { not_docs: [] },
     });
 
-    await expect(
-      fetchDocumentsBatch(mockAccessToken, ["doc-1"])
-    ).rejects.toThrow("Invalid response from Granola API (DocumentsBatchResponseSchema)");
+    const result = await fetchDocumentsBatch(mockAccessToken, ["doc-1"]);
+
+    expect(result).toEqual([]);
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it("should send all IDs in a single request when at the 50-ID limit", async () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `doc-${i}`);
+    (requestUrl as jest.Mock).mockResolvedValue({
+      json: { docs: ids.map((id) => ({ id, title: id })) },
+    });
+
+    const result = await fetchDocumentsBatch(mockAccessToken, ids);
+
+    expect(result).toHaveLength(50);
+    expect(requestUrl).toHaveBeenCalledTimes(1);
+    expect(requestUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: JSON.stringify({ document_ids: ids }),
+      })
+    );
+  });
+
+  it("should split into multiple chunks when over the 50-ID limit and merge all docs", async () => {
+    const ids = Array.from({ length: 51 }, (_, i) => `doc-${i}`);
+    (requestUrl as jest.Mock).mockImplementation(({ body }: { body: string }) => {
+      const { document_ids } = JSON.parse(body) as { document_ids: string[] };
+      return Promise.resolve({
+        json: { docs: document_ids.map((id) => ({ id, title: id })) },
+      });
+    });
+
+    const result = await fetchDocumentsBatch(mockAccessToken, ids);
+
+    expect(requestUrl).toHaveBeenCalledTimes(2);
+    expect(result).toHaveLength(51);
+    expect(result.map((d) => d.id).sort((a, b) => a.localeCompare(b))).toEqual(
+      [...ids].sort((a, b) => a.localeCompare(b))
+    );
+    // First chunk has 50 IDs, second chunk has the remaining 1
+    const firstChunk = JSON.parse(
+      (requestUrl as jest.Mock).mock.calls[0][0].body
+    ).document_ids;
+    const secondChunk = JSON.parse(
+      (requestUrl as jest.Mock).mock.calls[1][0].body
+    ).document_ids;
+    expect(firstChunk).toHaveLength(50);
+    expect(secondChunk).toHaveLength(1);
+  });
+
+  it("should chunk a large set of IDs into requests of at most 50", async () => {
+    const ids = Array.from({ length: 361 }, (_, i) => `doc-${i}`);
+    (requestUrl as jest.Mock).mockImplementation(({ body }: { body: string }) => {
+      const { document_ids } = JSON.parse(body) as { document_ids: string[] };
+      return Promise.resolve({
+        json: { docs: document_ids.map((id) => ({ id, title: id })) },
+      });
+    });
+
+    const result = await fetchDocumentsBatch(mockAccessToken, ids);
+
+    expect(result).toHaveLength(361);
+    expect(requestUrl).toHaveBeenCalledTimes(8); // ceil(361 / 50)
+    for (const call of (requestUrl as jest.Mock).mock.calls) {
+      const { document_ids } = JSON.parse(call[0].body) as { document_ids: string[] };
+      expect(document_ids.length).toBeLessThanOrEqual(50);
+    }
+  });
+
+  it("should keep docs from successful chunks when one chunk fails", async () => {
+    const ids = Array.from({ length: 100 }, (_, i) => `doc-${i}`);
+    (requestUrl as jest.Mock)
+      // First chunk (50 IDs) succeeds
+      .mockImplementationOnce(({ body }: { body: string }) => {
+        const { document_ids } = JSON.parse(body) as { document_ids: string[] };
+        return Promise.resolve({
+          json: { docs: document_ids.map((id) => ({ id, title: id })) },
+        });
+      })
+      // Second chunk fails (simulates a 400)
+      .mockRejectedValueOnce(new Error("Bad Request"));
+
+    const result = await fetchDocumentsBatch(mockAccessToken, ids);
+
+    expect(requestUrl).toHaveBeenCalledTimes(2);
+    expect(result).toHaveLength(50);
+    expect(result.every((d) => d.id.startsWith("doc-"))).toBe(true);
+    expect(log.error).toHaveBeenCalled();
   });
 });
 
