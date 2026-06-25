@@ -5,7 +5,9 @@
 
 <a href="https://buymeacoffee.com/tomelliot"><img src="assets/bmc-button.svg" alt="Buy Me A Coffee" height="60"></a>
 
-This plugin allows you to synchronize your notes and transcripts from Granola (https://granola.ai) directly into your Obsidian vault. It fetches documents from Granola, converts them from ProseMirror JSON format to Markdown, and saves them as `.md` files.
+This plugin pulls your [Granola](https://granola.ai) meeting notes and transcripts into your Obsidian vault as plain Markdown - so they're searchable, linkable, and yours to keep, instead of locked away in Granola, separate from everything else you know.
+
+It's the most actively maintained Granola sync plugin out there, and the one you can trust to get the details right: it syncs reliably, never leaves you with duplicate notes, and keeps everything neatly organised the way you set it up. It's built on a clean, well-tested codebase, so syncs just work and stay working.
 
 ## Features
 
