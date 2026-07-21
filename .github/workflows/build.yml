@@ -45,7 +45,7 @@ jobs:
           flags: unittests
           name: codecov-umbrella
           override_branch: ${{ github.ref_name }}
-          fail_ci_if_error: true
+          fail_ci_if_error: false
 
   build:
     needs: test
