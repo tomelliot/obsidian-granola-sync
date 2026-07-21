@@ -8,6 +8,10 @@ This plugin is a fork of [Tom Elliot's Granola Sync](https://github.com/tomellio
 - **No keychain/DPAPI prompts** and no credential decryption — just paste a key.
 - **AI summaries as the source of truth** — note bodies come from Granola's `summary_markdown`.
 
+## What changed with the official API
+
+Note bodies are now Granola's AI-generated summary (`summary_markdown`) rather than a conversion of the raw note content, so your own typed notes no longer sync and only meetings with a finished AI summary and transcript come through. Auth is a `grn_` API key you paste into settings instead of the plugin decrypting the desktop app's local credentials — meaning no Keychain prompts and no need for Granola to be installed on the machine, but also no private/shared-notes toggles (your key's scope controls access) and no image attachments.
+
 ## Installation (BRAT beta)
 
 This plugin is currently distributed via [BRAT](https://github.com/TfTHacker/obsidian42-brat):
