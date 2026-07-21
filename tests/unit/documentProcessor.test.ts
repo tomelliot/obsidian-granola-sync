@@ -3,11 +3,6 @@ import { GranolaDoc } from "../../src/services/granolaApi";
 import { PathResolver } from "../../src/services/pathResolver";
 import { parseFrontmatter, TRICKY_TITLES } from "../helpers/frontmatter";
 
-// Mock convertProsemirrorToMarkdown: While this is a pure function, we mock it to
-// isolate DocumentProcessor's logic (frontmatter generation, formatting) from
-// the ProseMirror conversion logic, making tests more maintainable and focused.
-jest.mock("../../src/services/prosemirrorMarkdown");
-
 // Mock getNoteDate: This function has time-dependent behavior (returns new Date()
 // as fallback), so we mock it to ensure consistent, deterministic test results
 // and avoid brittleness from time-dependent test failures.
@@ -19,18 +14,15 @@ jest.mock("../../src/utils/dateUtils", () => {
   };
 });
 
-import { convertProsemirrorToMarkdown } from "../../src/services/prosemirrorMarkdown";
 import { getNoteDate } from "../../src/utils/dateUtils";
+
+const MOCK_MARKDOWN = "# Mock Content\n\nThis is mock markdown content.";
 
 describe("DocumentProcessor", () => {
   let documentProcessor: DocumentProcessor;
   let mockPathResolver: PathResolver;
 
   beforeEach(() => {
-    // Setup mocks
-    (convertProsemirrorToMarkdown as jest.Mock).mockReturnValue(
-      "# Mock Content\n\nThis is mock markdown content."
-    );
     (getNoteDate as jest.Mock).mockReturnValue(
       new Date("2024-01-15T00:00:00.000Z")
     );
@@ -76,12 +68,7 @@ describe("DocumentProcessor", () => {
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
         updated_at: "2024-01-15T12:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.prepareNote(doc);
@@ -96,16 +83,51 @@ describe("DocumentProcessor", () => {
       expect(result.content).toContain("# Mock Content");
     });
 
+    it("should include web_url in frontmatter when present", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        web_url: "https://notes.granola.ai/d/f3e45e0f-24cc-480b-9a6c-8b1f5e3d7a2c",
+        summary_markdown: MOCK_MARKDOWN,
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).toContain(
+        "web_url: https://notes.granola.ai/d/f3e45e0f-24cc-480b-9a6c-8b1f5e3d7a2c"
+      );
+    });
+
+    it("should not include web_url in frontmatter when absent", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        summary_markdown: MOCK_MARKDOWN,
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).not.toContain("web_url:");
+    });
+
+    it("should fall back to summary_text when summary_markdown is missing", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        summary_markdown: null,
+        summary_text: "Plain text summary.",
+      };
+
+      const result = documentProcessor.prepareNote(doc);
+
+      expect(result.content).toContain("Plain text summary.");
+    });
+
     it("should handle documents without created_at or updated_at", () => {
       const doc: GranolaDoc = {
         id: "doc-456",
         title: "Minimal Note",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.prepareNote(doc);
@@ -121,12 +143,7 @@ describe("DocumentProcessor", () => {
       const doc: GranolaDoc = {
         id: "doc-789",
         title: 'Note with "quotes"',
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.prepareNote(doc);
@@ -142,7 +159,7 @@ describe("DocumentProcessor", () => {
         const doc: GranolaDoc = {
           id: "doc-tricky",
           title,
-          last_viewed_panel: { content: { type: "doc", content: [] } },
+          summary_markdown: MOCK_MARKDOWN,
         };
 
         const result = documentProcessor.prepareNote(doc);
@@ -168,12 +185,7 @@ describe("DocumentProcessor", () => {
         id: "doc-123",
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.prepareNote(doc);
@@ -187,12 +199,7 @@ describe("DocumentProcessor", () => {
         id: "doc-123",
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.prepareNote(doc);
@@ -204,12 +211,8 @@ describe("DocumentProcessor", () => {
     it("should use default title when title is missing", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        title: null,
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.prepareNote(doc);
@@ -219,7 +222,7 @@ describe("DocumentProcessor", () => {
       );
     });
 
-    it("should return null when document has no valid content", () => {
+    it("should return null when document has no summary content", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Invalid Note",
@@ -228,16 +231,12 @@ describe("DocumentProcessor", () => {
       expect(documentProcessor.prepareNote(doc)).toBeNull();
     });
 
-    it("should return null when content type is not doc", () => {
+    it("should return null when summary fields are empty/whitespace", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Invalid Note",
-        last_viewed_panel: {
-          content: {
-            type: "invalid",
-            content: [],
-          },
-        },
+        summary_markdown: "   ",
+        summary_text: "",
       };
 
       expect(documentProcessor.prepareNote(doc)).toBeNull();
@@ -259,12 +258,7 @@ describe("DocumentProcessor", () => {
         id: "doc-123",
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.prepareNote(doc);
@@ -295,6 +289,7 @@ describe("DocumentProcessor", () => {
     it("should handle missing title", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
+        title: null,
       };
       const transcriptContent = "Speaker 1: Hello";
 
@@ -346,12 +341,7 @@ describe("DocumentProcessor", () => {
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
         updated_at: "2024-01-15T12:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.extractNoteForDailyNote(doc);
@@ -364,11 +354,11 @@ describe("DocumentProcessor", () => {
         updatedAt: "2024-01-15T12:00:00Z",
         attendees: [],
         transcript: undefined,
-        markdown: "# Mock Content\n\nThis is mock markdown content.",
+        markdown: MOCK_MARKDOWN,
       });
     });
 
-    it("should return null when document has no valid content", () => {
+    it("should return null when document has no summary content", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Invalid Note",
@@ -383,12 +373,7 @@ describe("DocumentProcessor", () => {
       const doc: GranolaDoc = {
         id: "doc-456",
         title: "Minimal Note",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const result = documentProcessor.extractNoteForDailyNote(doc);
@@ -401,7 +386,7 @@ describe("DocumentProcessor", () => {
         updatedAt: undefined,
         attendees: [],
         transcript: undefined,
-        markdown: "# Mock Content\n\nThis is mock markdown content.",
+        markdown: MOCK_MARKDOWN,
       });
     });
   });
@@ -413,12 +398,7 @@ describe("DocumentProcessor", () => {
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
         updated_at: "2024-01-15T12:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const transcriptContent =
@@ -450,12 +430,7 @@ describe("DocumentProcessor", () => {
         id: "doc-123",
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
@@ -481,12 +456,7 @@ describe("DocumentProcessor", () => {
             { name: "Bob", email: "bob@example.com" },
           ],
         },
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
@@ -509,12 +479,7 @@ describe("DocumentProcessor", () => {
         people: {
           attendees: [],
         },
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
@@ -531,12 +496,7 @@ describe("DocumentProcessor", () => {
       const doc: GranolaDoc = {
         id: "doc-456",
         title: "Minimal Note",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
@@ -557,12 +517,7 @@ describe("DocumentProcessor", () => {
       const doc: GranolaDoc = {
         id: "doc-789",
         title: 'Note with "quotes"',
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
@@ -582,7 +537,7 @@ describe("DocumentProcessor", () => {
         const doc: GranolaDoc = {
           id: "doc-tricky",
           title,
-          last_viewed_panel: { content: { type: "doc", content: [] } },
+          summary_markdown: MOCK_MARKDOWN,
         };
 
         const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
@@ -602,12 +557,7 @@ describe("DocumentProcessor", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Test Note",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const transcriptContent = "## You (00:00:01)\n\nTranscript text.\n\n";
@@ -627,7 +577,7 @@ describe("DocumentProcessor", () => {
       expect(transcriptIndex).toBeLessThan(transcriptContentIndex);
     });
 
-    it("should return null when document has no valid content", () => {
+    it("should return null when document has no summary content", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
         title: "Invalid Note",
@@ -643,12 +593,8 @@ describe("DocumentProcessor", () => {
     it("should use default title when title is missing", () => {
       const doc: GranolaDoc = {
         id: "doc-123",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        title: null,
+        summary_markdown: MOCK_MARKDOWN,
       };
 
       const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
@@ -664,397 +610,51 @@ describe("DocumentProcessor", () => {
     });
   });
 
-  describe("private notes functionality", () => {
-    describe("prepareNote with private notes", () => {
-      it("should include private notes section when enabled and content exists", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: false,
-            includePrivateNotes: true,
-          },
-          mockPathResolver
-        );
+  describe("attendees edge cases", () => {
+    it("should handle attendees with only email (no name)", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        people: {
+          attendees: [
+            { email: "alice@example.com" }, // No name
+            { name: "Bob", email: "bob@example.com" },
+          ],
+        },
+        summary_markdown: MOCK_MARKDOWN,
+      };
 
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "This is a private note",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
+      const result = documentProcessor.prepareNote(doc);
 
-        const result = documentProcessor.prepareNote(doc);
-
-        expect(result.content).toContain("## Private Notes\n\n");
-        expect(result.content).toContain("This is a private note");
-        expect(result.content).toContain("## Enhanced Notes\n\n");
-        // Enhanced notes section should come after private notes
-        const privateNotesIndex = result.content.indexOf("## Private Notes");
-        const enhancedNotesIndex = result.content.indexOf("## Enhanced Notes");
-        expect(enhancedNotesIndex).toBeGreaterThan(privateNotesIndex);
-      });
-
-      it("should not include private notes section when disabled", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: false,
-            includePrivateNotes: false,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "This is a private note",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.prepareNote(doc);
-
-        expect(result.content).not.toContain("## Private Notes");
-        expect(result.content).not.toContain("## Enhanced Notes");
-        expect(result.content).not.toContain("This is a private note");
-      });
-
-      it("should not include private notes section when content is empty", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: false,
-            includePrivateNotes: true,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.prepareNote(doc);
-
-        expect(result.content).not.toContain("## Private Notes");
-        expect(result.content).not.toContain("## Enhanced Notes");
-      });
-
-      it("should not include private notes section when content is only whitespace", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: false,
-            includePrivateNotes: true,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "   \n\t  ",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.prepareNote(doc);
-
-        expect(result.content).not.toContain("## Private Notes");
-        expect(result.content).not.toContain("## Enhanced Notes");
-      });
-
-      it("should not include private notes section when notes_markdown is missing", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: false,
-            includePrivateNotes: true,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.prepareNote(doc);
-
-        expect(result.content).not.toContain("## Private Notes");
-        expect(result.content).not.toContain("## Enhanced Notes");
-      });
+      expect(result.content).toContain("attendees:");
+      // Should use email when name is missing
+      expect(result.content).toContain("alice@example.com");
+      expect(result.content).toContain("Bob");
     });
 
-    describe("prepareCombinedNote with private notes", () => {
-      it("should include private notes section when enabled and content exists", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: true,
-            includePrivateNotes: true,
-          },
-          mockPathResolver
-        );
+    it("should filter out attendees with neither name nor email", () => {
+      const doc: GranolaDoc = {
+        id: "doc-123",
+        title: "Test Note",
+        created_at: "2024-01-15T10:00:00Z",
+        people: {
+          attendees: [
+            { name: "Alice" },
+            {}, // No name or email - should be filtered
+            { email: "bob@example.com" },
+          ],
+        },
+        summary_markdown: MOCK_MARKDOWN,
+      };
 
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "Private note content",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
+      const result = documentProcessor.prepareNote(doc);
 
-        const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
-        const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
-
-        expect(result.content).toContain("## Private Notes\n\n");
-        expect(result.content).toContain("Private note content");
-        expect(result.content).toContain("## Enhanced Notes\n\n");
-        // Enhanced notes should come before transcript
-        const enhancedNotesIndex = result.content.indexOf("## Enhanced Notes");
-        const transcriptIndex = result.content.indexOf("## Transcript");
-        expect(enhancedNotesIndex).toBeLessThan(transcriptIndex);
-      });
-
-      it("should use '## Note' heading when private notes are disabled", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: true,
-            includePrivateNotes: false,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "Private note content",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
-        const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
-
-        expect(result.content).not.toContain("## Private Notes");
-        expect(result.content).not.toContain("## Enhanced Notes");
-        expect(result.content).toContain("## Note\n\n");
-      });
-
-      it("should use '## Note' heading when private notes are empty", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: true,
-            includePrivateNotes: true,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const transcriptContent = "## You (00:00:01)\n\nTest.\n\n";
-        const result = documentProcessor.prepareCombinedNote(doc, transcriptContent);
-
-        expect(result.content).not.toContain("## Private Notes");
-        expect(result.content).not.toContain("## Enhanced Notes");
-        expect(result.content).toContain("## Note\n\n");
-      });
-    });
-
-    describe("extractNoteForDailyNote with private notes", () => {
-      it("should include private notes in markdown when enabled and content exists", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: false,
-            includePrivateNotes: true,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "Private note for daily note",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.extractNoteForDailyNote(doc);
-
-        expect(result).not.toBeNull();
-        expect(result!.markdown).toContain("## Private Notes\n\n");
-        expect(result!.markdown).toContain("Private note for daily note");
-        expect(result!.markdown).toContain("## Enhanced Notes\n\n");
-      });
-
-      it("should not include private notes when disabled", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: false,
-            includePrivateNotes: false,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "Private note",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.extractNoteForDailyNote(doc);
-
-        expect(result).not.toBeNull();
-        expect(result!.markdown).not.toContain("## Private Notes");
-        expect(result!.markdown).not.toContain("## Enhanced Notes");
-        expect(result!.markdown).not.toContain("Private note");
-      });
-
-      it("should not include private notes when content is empty", () => {
-        documentProcessor = new DocumentProcessor(
-          {
-            syncTranscripts: false,
-            includePrivateNotes: true,
-          },
-          mockPathResolver
-        );
-
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          notes_markdown: "",
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.extractNoteForDailyNote(doc);
-
-        expect(result).not.toBeNull();
-        expect(result!.markdown).not.toContain("## Private Notes");
-        expect(result!.markdown).not.toContain("## Enhanced Notes");
-      });
-    });
-
-    describe("attendees edge cases", () => {
-      it("should handle attendees with only email (no name)", () => {
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          people: {
-            attendees: [
-              { email: "alice@example.com" }, // No name
-              { name: "Bob", email: "bob@example.com" },
-            ],
-          },
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.prepareNote(doc);
-
-        expect(result.content).toContain("attendees:");
-        // Should use email when name is missing
-        expect(result.content).toContain("alice@example.com");
-        expect(result.content).toContain("Bob");
-      });
-
-      it("should filter out attendees with neither name nor email", () => {
-        const doc: GranolaDoc = {
-          id: "doc-123",
-          title: "Test Note",
-          created_at: "2024-01-15T10:00:00Z",
-          people: {
-            attendees: [
-              { name: "Alice" },
-              {}, // No name or email - should be filtered
-              { email: "bob@example.com" },
-            ],
-          },
-          last_viewed_panel: {
-            content: {
-              type: "doc",
-              content: [],
-            },
-          },
-        };
-
-        const result = documentProcessor.prepareNote(doc);
-
-        expect(result.content).toContain("attendees:");
-        expect(result.content).toContain("Alice");
-        expect(result.content).toContain("bob@example.com");
-        // Should not contain "Unknown" which would be filtered out
-        expect(result.content).not.toContain("Unknown");
-      });
+      expect(result.content).toContain("attendees:");
+      expect(result.content).toContain("Alice");
+      expect(result.content).toContain("bob@example.com");
+      // Should not contain "Unknown" which would be filtered out
+      expect(result.content).not.toContain("Unknown");
     });
   });
 });

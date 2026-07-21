@@ -14,31 +14,14 @@ export function getNoteDate(doc: GranolaDoc): Date {
 }
 
 /**
- * Returns the most recent of `doc.updated_at` and `doc.last_viewed_panel.updated_at`.
- *
- * The note body is rendered from `last_viewed_panel.content`, but Granola only
- * advances the doc-level `updated_at` for some kinds of edits — regenerating the
- * AI summary panel can change the panel without touching the doc timestamp. Using
- * the max of both keeps the staleness check and the persisted `updated`
- * frontmatter aligned with what's actually displayed.
+ * Returns the document's update timestamp used for staleness checks and the
+ * persisted `updated` frontmatter field.
  *
  * @param doc - The Granola document
- * @returns The later ISO timestamp, or undefined if neither is set
+ * @returns The ISO timestamp, or undefined if not set
  */
 export function getEffectiveUpdatedAt(doc: GranolaDoc): string | undefined {
-  const docUpdated = doc.updated_at ?? undefined;
-  const panelUpdated = doc.last_viewed_panel?.updated_at ?? undefined;
-
-  if (!docUpdated) return panelUpdated;
-  if (!panelUpdated) return docUpdated;
-
-  const docTime = Date.parse(docUpdated);
-  const panelTime = Date.parse(panelUpdated);
-
-  if (isNaN(docTime)) return panelUpdated;
-  if (isNaN(panelTime)) return docUpdated;
-
-  return panelTime > docTime ? panelUpdated : docUpdated;
+  return doc.updated_at ?? undefined;
 }
 
 /**
