@@ -18,7 +18,7 @@
     "plugin",
     "granola"
   ],
-  "author": "Tom Elliot",
+  "author": "Kaya Jones",
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^9.39.1",
