@@ -1,521 +1,197 @@
 import { requestUrl } from "obsidian";
 import * as v from "valibot";
 import {
-  GranolaApiResponseSchema,
-  TranscriptResponseSchema,
-  DocumentListsMetadataResponseSchema,
-  DocumentListWithDocsResponseSchema,
-  DocumentSetResponseSchema,
-  DocumentsBatchResponseSchema,
+  ListNotesResponseSchema,
+  ListFoldersResponseSchema,
+  NoteDetailSchema,
 } from "./validationSchemas";
 import { log } from "../utils/logger";
 
-// Re-export all types so existing imports from "./granolaApi" continue to work
 export type {
-  ProseMirrorNode,
-  ProseMirrorDoc,
-  GranolaAttachment,
   GranolaDoc,
   TranscriptEntry,
-  DocumentListMetadata,
-  DocumentListWithDocs,
-  DocumentSetEntry,
+  GranolaFolder,
+  NoteSummaryV1,
+  NoteDetailV1,
 } from "./granolaTypes";
-
 import type {
   GranolaDoc,
-  TranscriptEntry,
-  DocumentListMetadata,
-  DocumentListWithDocs,
-  DocumentSetEntry,
+  GranolaFolder,
+  NoteSummaryV1,
+  NoteDetailV1,
 } from "./granolaTypes";
 
-/**
- * Helper function to print validation issue paths from a Valibot safeParse result.
- * Prints the path of each issue to the console if validation failed.
- */
-export function printValidationIssuePaths(
-  result:
-    | v.SafeParseResult<typeof GranolaApiResponseSchema>
-    | v.SafeParseResult<typeof TranscriptResponseSchema>
-): void {
-  if (result.success) {
-    return;
-  }
+const API_BASE = "https://public-api.granola.ai/v1";
+const PAGE_SIZE = 30;
+const MAX_RETRIES = 3;
 
-  if (result.issues && result.issues.length > 0) {
-    log.error("Validation issues:");
-    result.issues.forEach((issue, index) => {
-      const issueObj = issue as {
-        path?: Array<{ key?: unknown }>;
-      };
-      if (issueObj.path && issueObj.path.length > 0) {
-        const pathStr = issueObj.path
-          .map((p: { key?: unknown }) => {
-            if (typeof p.key === "number") return `[${p.key}]`;
-            if (typeof p.key === "string") return `.${p.key}`;
-            if (p.key !== undefined && p.key !== null) return `.${JSON.stringify(p.key)}`;
-            return "";
-          })
-          .join("");
-        log.error(`  Issue ${index + 1}: `);
-        log.error(`  - expected: ${issue.expected}`);
-        log.error(`  - received: ${issue.received}`);
-        log.error(`  - message: ${issue.message}`);
-        log.error(`  - path: ${pathStr}`);
-      } else {
-        log.error(`  Issue ${index + 1}: `);
-        log.error(`  - expected: ${issue.expected}`);
-        log.error(`  - received: ${issue.received}`);
-        log.error(`  - message: ${issue.message}`);
-        log.error(`  - path: (root)`);
-      }
-    });
+/** Sustained public-API budget is 5 req/s; stay under it between calls. */
+let requestDelayMs = 220;
+/** Test hook: disable throttling in unit tests. */
+export function __setRequestDelayMs(ms: number): void {
+  requestDelayMs = ms;
+}
+
+export class GranolaAuthError extends Error {
+  constructor() {
+    super("Granola API rejected the API key (401)");
+    this.name = "GranolaAuthError";
   }
 }
 
-/**
- * Fetches documents from the Granola API.
- *
- * Pagination: The API supports offset-based pagination via the `offset` parameter.
- * No pagination metadata is returned in responses.
- * Use `offset` to skip documents: offset=0 for first page, offset=limit for second page, etc.
- */
-export async function fetchGranolaDocuments(
-  accessToken: string,
-  limit: number = 100,
-  offset: number = 0
-): Promise<GranolaDoc[]> {
-  log.debug(`Fetching documents — offset=${offset}, limit=${limit}`);
-  const response = await requestUrl({
-    url: "https://api.granola.ai/v2/get-documents",
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "*/*",
-      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-    },
-    body: JSON.stringify({
-      limit,
-      offset,
-      include_last_viewed_panel: true,
-    }),
-  });
-
-  const jsonResponse = response.json as unknown;
-
-  const result = v.safeParse(GranolaApiResponseSchema, jsonResponse);
-  if (!result.success) {
-    log.error("Validation failed for GranolaApiResponseSchema:");
-    log.debug("Response keys:", Object.keys(jsonResponse as object ?? {}));
-    printValidationIssuePaths(result);
-    log.error(JSON.stringify(result.issues, null, 2));
-
-    throw new Error(
-      `Invalid response from Granola API (GranolaApiResponseSchema)`
-    );
-  }
-  log.debug(`Fetched ${result.output.docs.length} document(s) at offset=${offset}`);
-  return result.output.docs as GranolaDoc[];
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function fetchAllGranolaDocuments(
-  accessToken: string,
-  pageSize: number = 100
-): Promise<GranolaDoc[]> {
-  const documents: GranolaDoc[] = [];
-  let offset = 0;
-
-  while (true) {
-    const page = await fetchGranolaDocuments(accessToken, pageSize, offset);
-    if (page.length === 0) {
-      break;
-    }
-
-    documents.push(...page);
-
-    if (page.length < pageSize) {
-      break;
-    }
-
-    offset += pageSize;
-  }
-
-  return documents;
-}
-
-export async function fetchGranolaDocumentsByDaysBack(
-  accessToken: string,
-  daysBack: number,
-  pageSize: number = 100
-): Promise<GranolaDoc[]> {
-  if (daysBack === 0) {
-    return fetchAllGranolaDocuments(accessToken, pageSize);
-  }
-
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - daysBack);
-
-  const documents: GranolaDoc[] = [];
-  let offset = 0;
-
-  while (true) {
-    const page = await fetchGranolaDocuments(accessToken, pageSize, offset);
-    if (page.length === 0) {
-      break;
-    }
-
-    documents.push(...page);
-
-    const hasOlderThanCutoff = page.some((doc) => {
-      const docDate = doc.created_at
-        ? new Date(doc.created_at)
-        : doc.updated_at
-        ? new Date(doc.updated_at)
-        : new Date();
-      return docDate < cutoffDate;
+async function apiGet(apiKey: string, pathAndQuery: string): Promise<unknown> {
+  for (let attempt = 0; ; attempt++) {
+    if (requestDelayMs > 0) await sleep(requestDelayMs);
+    const response = await requestUrl({
+      url: `${API_BASE}${pathAndQuery}`,
+      method: "GET",
+      throw: false,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+        "User-Agent": `GranolaApiSyncObsidian/${PLUGIN_VERSION}`,
+        "X-Client-Version": `GranolaApiSyncObsidian/${PLUGIN_VERSION}`,
+      },
     });
 
-    if (hasOlderThanCutoff || page.length < pageSize) {
-      break;
+    if (response.status === 429 && attempt < MAX_RETRIES) {
+      const backoff = Math.pow(2, attempt) * 1000;
+      log.debug(`429 from Granola API, retrying in ${backoff}ms (${pathAndQuery})`);
+      await sleep(backoff);
+      continue;
     }
-
-    offset += pageSize;
-  }
-
-  return documents.filter((doc) => {
-    const docDate = doc.created_at
-      ? new Date(doc.created_at)
-      : doc.updated_at
-      ? new Date(doc.updated_at)
-      : new Date();
-    return docDate >= cutoffDate;
-  });
-}
-
-/**
- * Fetches the transcript for a specific Granola document.
- */
-export async function fetchGranolaTranscript(
-  accessToken: string,
-  docId: string
-): Promise<TranscriptEntry[]> {
-  log.debug(`Fetching transcript for doc ${docId}`);
-  const transcriptResp = await requestUrl({
-    url: "https://api.granola.ai/v1/get-document-transcript",
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "*/*",
-      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-    },
-    body: JSON.stringify({ document_id: docId }),
-  });
-
-  const result = v.safeParse(TranscriptResponseSchema, transcriptResp.json);
-  if (!result.success) {
-    log.error("Validation failed for TranscriptResponseSchema:");
-    log.debug("Transcript response type:", typeof transcriptResp.json, Array.isArray(transcriptResp.json) ? `length=${transcriptResp.json.length}` : "");
-    printValidationIssuePaths(result);
-    log.error(JSON.stringify(result.issues, null, 2));
-
-    throw new Error(
-      `Invalid transcript response from Granola API (TranscriptResponseSchema)`
-    );
-  }
-  log.debug(`Fetched ${result.output.length} transcript entry/entries for doc ${docId}`);
-  return result.output;
-}
-
-/**
- * Fetches metadata for all document lists (folders) the user has access to.
- * Returns a record keyed by list ID.
- */
-export async function fetchDocumentListsMetadata(
-  accessToken: string
-): Promise<Record<string, DocumentListMetadata>> {
-  log.debug("Fetching document lists metadata");
-  const response = await requestUrl({
-    url: "https://api.granola.ai/v1/get-document-lists-metadata",
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "*/*",
-      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-    },
-    body: JSON.stringify({}),
-  });
-
-  const result = v.safeParse(
-    DocumentListsMetadataResponseSchema,
-    response.json
-  );
-  if (!result.success) {
-    log.error("Validation failed for DocumentListsMetadataResponseSchema:");
-    log.error(JSON.stringify(result.issues, null, 2));
-    throw new Error(
-      "Invalid response from Granola API (DocumentListsMetadataResponseSchema)"
-    );
-  }
-
-  const listCount = Object.keys(result.output.lists).length;
-  log.debug(`Fetched metadata for ${listCount} document list(s)`);
-  return result.output.lists;
-}
-
-/**
- * Fetches a single document list (folder) including its document memberships.
- * Only document IDs are extracted from the response.
- */
-export async function fetchDocumentList(
-  accessToken: string,
-  listId: string
-): Promise<DocumentListWithDocs> {
-  log.debug(`Fetching document list ${listId}`);
-  const response = await requestUrl({
-    url: "https://api.granola.ai/v1/get-document-list",
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "*/*",
-      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-    },
-    body: JSON.stringify({ list_id: listId }),
-  });
-
-  const result = v.safeParse(
-    DocumentListWithDocsResponseSchema,
-    response.json
-  );
-  if (!result.success) {
-    log.error(
-      `Validation failed for DocumentListWithDocsResponseSchema (list ${listId}):`
-    );
-    log.error(JSON.stringify(result.issues, null, 2));
-    throw new Error(
-      `Invalid response from Granola API (DocumentListWithDocsResponseSchema) for list ${listId}`
-    );
-  }
-
-  log.debug(
-    `Fetched document list "${result.output.title}" with ${result.output.documents?.length ?? 0} document(s)`
-  );
-  return result.output;
-}
-
-// ---------------------------------------------------------------------------
-// Document set & batch endpoints (for shared document support)
-// ---------------------------------------------------------------------------
-
-/**
- * Fetches the full set of document IDs the user has access to, including
- * documents shared with them. Returns a record keyed by document ID.
- */
-export async function fetchDocumentSet(
-  accessToken: string
-): Promise<Record<string, DocumentSetEntry>> {
-  log.debug("Fetching document set");
-  const response = await requestUrl({
-    url: "https://api.granola.ai/v1/get-document-set",
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "*/*",
-      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-    },
-    body: JSON.stringify({}),
-  });
-
-  const result = v.safeParse(DocumentSetResponseSchema, response.json);
-  if (!result.success) {
-    log.error("Validation failed for DocumentSetResponseSchema:");
-    log.error(JSON.stringify(result.issues, null, 2));
-    throw new Error("Invalid response from Granola API (DocumentSetResponseSchema)");
-  }
-
-  const count = Object.keys(result.output.documents).length;
-  log.debug(`Fetched document set with ${count} document(s)`);
-  return result.output.documents;
-}
-
-/**
- * Maximum number of document IDs the v1/get-documents-batch endpoint accepts per
- * request. The API returns 400 ("Bad Request") for any request with more than 50
- * IDs, so larger requests must be split into chunks.
- */
-const DOCUMENTS_BATCH_SIZE = 50;
-
-/**
- * Fetches full document data for a single chunk of document IDs (≤ DOCUMENTS_BATCH_SIZE).
- * Uses the v1/get-documents-batch endpoint.
- */
-async function fetchDocumentsBatchChunk(
-  accessToken: string,
-  documentIds: string[]
-): Promise<GranolaDoc[]> {
-  const response = await requestUrl({
-    url: "https://api.granola.ai/v1/get-documents-batch",
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "*/*",
-      "User-Agent": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-      "X-Client-Version": `GranolaObsidianPlugin/${PLUGIN_VERSION}`,
-    },
-    body: JSON.stringify({ document_ids: documentIds }),
-  });
-
-  const result = v.safeParse(DocumentsBatchResponseSchema, response.json);
-  if (!result.success) {
-    log.error("Validation failed for DocumentsBatchResponseSchema:");
-    printValidationIssuePaths(result);
-    log.error(JSON.stringify(result.issues, null, 2));
-    throw new Error("Invalid response from Granola API (DocumentsBatchResponseSchema)");
-  }
-
-  return result.output.docs as GranolaDoc[];
-}
-
-/**
- * Fetches full document data for a batch of document IDs.
- * Uses the v1/get-documents-batch endpoint.
- *
- * The endpoint accepts at most DOCUMENTS_BATCH_SIZE (50) IDs per request — larger
- * requests return 400. IDs are therefore split into chunks of ≤ DOCUMENTS_BATCH_SIZE
- * and fetched with one request per chunk, concatenating the results. A failing chunk
- * is logged and skipped so that documents fetched in other chunks are not discarded.
- */
-export async function fetchDocumentsBatch(
-  accessToken: string,
-  documentIds: string[]
-): Promise<GranolaDoc[]> {
-  if (documentIds.length === 0) return [];
-
-  log.debug(`Fetching documents batch — ${documentIds.length} ID(s)`);
-
-  const docs: GranolaDoc[] = [];
-  for (let i = 0; i < documentIds.length; i += DOCUMENTS_BATCH_SIZE) {
-    const chunk = documentIds.slice(i, i + DOCUMENTS_BATCH_SIZE);
-    try {
-      const chunkDocs = await fetchDocumentsBatchChunk(accessToken, chunk);
-      docs.push(...chunkDocs);
-    } catch (error) {
-      log.error(
-        `Failed to fetch documents batch chunk (IDs ${i}–${i + chunk.length - 1} of ${documentIds.length}), continuing with remaining chunks:`,
-        error
+    if (response.status === 401) throw new GranolaAuthError();
+    if (response.status >= 400) {
+      const error = new Error(
+        `Granola API error ${response.status} for ${pathAndQuery}`
       );
+      (error as Error & { status: number }).status = response.status;
+      throw error;
     }
+    return response.json as unknown;
+  }
+}
+
+function parseOrThrow<TSchema extends v.GenericSchema>(
+  schema: TSchema,
+  data: unknown,
+  label: string
+): v.InferOutput<TSchema> {
+  const result = v.safeParse(schema, data);
+  if (!result.success) {
+    log.error(`Validation failed for ${label}:`);
+    log.error(JSON.stringify(result.issues, null, 2));
+    throw new Error(`Invalid response from Granola API (${label})`);
+  }
+  return result.output as v.InferOutput<TSchema>;
+}
+
+/** Maps a v1 note detail into the internal GranolaDoc domain shape. */
+export function noteDetailToGranolaDoc(detail: NoteDetailV1): GranolaDoc {
+  return {
+    id: detail.id,
+    title: detail.title ?? null,
+    created_at: detail.created_at,
+    updated_at: detail.updated_at,
+    web_url: detail.web_url ?? undefined,
+    people: {
+      attendees: (detail.attendees ?? []).map((attendee) => ({
+        name: attendee.name ?? undefined,
+        email: attendee.email ?? undefined,
+      })),
+    },
+    summary_markdown: detail.summary_markdown,
+    summary_text: detail.summary_text ?? undefined,
+    folder_ids: (detail.folder_membership ?? []).map((folder) => folder.id),
+    transcript: detail.transcript ?? null,
+  };
+}
+
+/**
+ * Lists all accessible note summaries, following cursors.
+ * daysBack > 0 adds created_after to limit server-side.
+ */
+export async function listAllNoteSummaries(
+  apiKey: string,
+  daysBack: number
+): Promise<NoteSummaryV1[]> {
+  const params = new URLSearchParams({ page_size: String(PAGE_SIZE) });
+  if (daysBack > 0) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysBack);
+    params.set("created_after", cutoff.toISOString());
   }
 
-  log.debug(`Fetched ${docs.length} document(s) in batch`);
-  return docs;
+  const notes: NoteSummaryV1[] = [];
+  let cursor: string | null | undefined = undefined;
+  do {
+    if (cursor) params.set("cursor", cursor);
+    const json = await apiGet(apiKey, `/notes?${params.toString()}`);
+    const page = parseOrThrow(
+      ListNotesResponseSchema,
+      json,
+      "ListNotesResponseSchema"
+    );
+    notes.push(...page.notes);
+    cursor = page.hasMore ? page.cursor : null;
+  } while (cursor);
+
+  log.debug(`Listed ${notes.length} note summary/ies`);
+  return notes;
 }
 
-// ---------------------------------------------------------------------------
-// Public API — high-level functions used by the sync orchestrator
-// ---------------------------------------------------------------------------
-
-/**
- * Fetches all documents the user has access to.
- *
- * When includeShared is true (default):
- * 1. Paginates through v2/get-documents (owned docs with full data)
- * 2. Fetches the document set to discover shared doc IDs
- * 3. Batch-fetches any documents present in the set but missing from step 1
- *
- * When includeShared is false, only owned documents are returned.
- */
-export async function getAllDocuments(
-  accessToken: string,
-  pageSize: number = 100,
-  includeShared: boolean = true
-): Promise<GranolaDoc[]> {
-  const ownedDocs = await fetchAllGranolaDocuments(accessToken, pageSize);
-  if (!includeShared) return ownedDocs;
-  return mergeSharedDocuments(accessToken, ownedDocs);
+/** Fetches one note's full detail, optionally including the transcript. */
+export async function fetchNoteDetail(
+  apiKey: string,
+  noteId: string,
+  includeTranscript: boolean
+): Promise<GranolaDoc> {
+  const query = includeTranscript ? "?include=transcript" : "";
+  const json = await apiGet(apiKey, `/notes/${noteId}${query}`);
+  const detail = parseOrThrow(NoteDetailSchema, json, "NoteDetailSchema");
+  return noteDetailToGranolaDoc(detail);
 }
 
-/**
- * Fetches recent documents (within daysBack).
- * Pass daysBack=0 for a full sync.
- *
- * When includeShared is false, only owned documents are returned.
- */
-export async function getRecentDocuments(
-  accessToken: string,
-  daysBack: number,
-  pageSize: number = 100,
-  includeShared: boolean = true
-): Promise<GranolaDoc[]> {
-  const ownedDocs = await fetchGranolaDocumentsByDaysBack(accessToken, daysBack, pageSize);
-  if (!includeShared) return ownedDocs;
-
-  const cutoffDate = daysBack > 0 ? new Date() : null;
-  if (cutoffDate) cutoffDate.setDate(cutoffDate.getDate() - daysBack);
-
-  return mergeSharedDocuments(accessToken, ownedDocs, cutoffDate);
+/** Lists all folders, following cursors. */
+export async function listAllFolders(apiKey: string): Promise<GranolaFolder[]> {
+  const folders: GranolaFolder[] = [];
+  let cursor: string | null | undefined = undefined;
+  do {
+    const params = new URLSearchParams({ page_size: String(PAGE_SIZE) });
+    if (cursor) params.set("cursor", cursor);
+    const json = await apiGet(apiKey, `/folders?${params.toString()}`);
+    const page = parseOrThrow(
+      ListFoldersResponseSchema,
+      json,
+      "ListFoldersResponseSchema"
+    );
+    folders.push(...page.folders);
+    cursor = page.hasMore ? page.cursor : null;
+  } while (cursor);
+  return folders;
 }
 
-/**
- * Discovers shared documents via the document set and fetches their full data.
- * Merges them into the provided owned documents list.
- *
- * When a cutoffDate is provided, only shared documents updated after that date
- * are included.
- */
-async function mergeSharedDocuments(
-  accessToken: string,
-  ownedDocs: GranolaDoc[],
-  cutoffDate?: Date | null
-): Promise<GranolaDoc[]> {
-  let documentSet: Record<string, DocumentSetEntry>;
+/** Cheap connectivity/auth check used by the settings "Test connection" button. */
+export async function verifyApiKey(
+  apiKey: string
+): Promise<{ ok: true } | { ok: false; status?: number; message: string }> {
   try {
-    documentSet = await fetchDocumentSet(accessToken);
+    const json = await apiGet(apiKey, "/notes?page_size=1");
+    parseOrThrow(ListNotesResponseSchema, json, "ListNotesResponseSchema");
+    return { ok: true };
   } catch (error) {
-    log.error("Failed to fetch document set, continuing with owned docs only:", error);
-    return ownedDocs;
-  }
-
-  const ownedIds = new Set(ownedDocs.map((d) => d.id));
-  let missingIds = Object.keys(documentSet).filter((id) => !ownedIds.has(id));
-
-  if (cutoffDate) {
-    missingIds = missingIds.filter((id) => {
-      const entry = documentSet[id];
-      return new Date(entry.updated_at) >= cutoffDate;
-    });
-  }
-
-  if (missingIds.length === 0) {
-    log.debug("No additional shared documents to fetch");
-    return ownedDocs;
-  }
-
-  log.debug(`Found ${missingIds.length} document(s) missing from owned set, fetching via batch`);
-
-  try {
-    const sharedDocs = await fetchDocumentsBatch(accessToken, missingIds);
-    const activeDocs = sharedDocs.filter((doc) => !doc.deleted_at);
-    if (activeDocs.length < sharedDocs.length) {
-      log.debug(
-        `Filtered out ${sharedDocs.length - activeDocs.length} deleted document(s) from batch`
-      );
+    if (error instanceof GranolaAuthError) {
+      return { ok: false, status: 401, message: "Invalid API key." };
     }
-    log.debug(`Merged ${activeDocs.length} shared document(s)`);
-    return [...ownedDocs, ...activeDocs];
-  } catch (error) {
-    log.error("Failed to fetch shared documents batch, continuing with owned docs only:", error);
-    return ownedDocs;
+    const status = (error as { status?: number }).status;
+    return {
+      ok: false,
+      status,
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
 }
