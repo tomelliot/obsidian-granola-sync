@@ -1,10 +1,27 @@
-import { App, Notice, TFile, normalizePath, requestUrl } from "obsidian";
-import type { GranolaAttachment, GranolaDoc } from "./granolaApi";
+import { App, Notice, TFile, normalizePath } from "obsidian";
+import type { GranolaDoc } from "./granolaApi";
 import type { DocumentProcessor } from "./documentProcessor";
 import { PathResolver } from "./pathResolver";
 import { GranolaSyncSettings } from "../settings";
 import { getNoteDate, formatDateForFilename } from "../utils/dateUtils";
 import { log } from "../utils/logger";
+
+const LEGACY_WEB_URL_RE =
+  /\/d\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+/**
+ * Extracts the legacy internal document UUID from a note's Granola web URL
+ * (https://notes.granola.ai/d/<uuid>). Files synced by pre-public-API versions
+ * carry that UUID as their granola_id, so it lets a first sync after the
+ * migration update those files in place instead of duplicating them.
+ */
+export function extractLegacyIdFromWebUrl(
+  webUrl: string | undefined
+): string | null {
+  if (!webUrl) return null;
+  const match = webUrl.match(LEGACY_WEB_URL_RE);
+  return match ? match[1] : null;
+}
 
 /**
  * Service for handling file synchronization operations including
@@ -190,6 +207,8 @@ export class FileSyncService {
    * @param type - Optional type ('note', 'transcript', or 'combined'). Defaults to 'note' for backward compatibility
    * @param forceOverwrite - If true, always writes the file even if content is unchanged
    * @param noteDate - Used to build a collision-resolved filename if the target path is already taken
+   * @param legacyId - Optional pre-public-API document UUID (from web_url) used
+   *   to match files synced by older plugin versions and update them in place
    * @returns True if the file was created or modified, false if no change or error
    */
   async saveFile(
@@ -198,10 +217,37 @@ export class FileSyncService {
     granolaId: string,
     type: "note" | "transcript" | "combined" = "note",
     forceOverwrite: boolean = false,
-    noteDate: Date = new Date()
+    noteDate: Date = new Date(),
+    legacyId: string | null = null
   ): Promise<boolean> {
     const normalizedPath = normalizePath(filePath);
-    const existingFile = this.findByGranolaId(granolaId, type);
+    let existingFile = this.findByGranolaId(granolaId, type);
+
+    // Migration: match files created by pre-public-API versions, whose
+    // granola_id is the legacy internal UUID. Re-key them to the new id
+    // (the written content carries the new granola_id in frontmatter).
+    if (!existingFile && legacyId) {
+      const legacyFile = this.findByGranolaId(legacyId, type);
+      if (legacyFile) {
+        this.granolaIdCache.delete(`${legacyId}-${type}`);
+        existingFile = legacyFile;
+        log.debug(
+          `Migrating ${type} file ${legacyFile.path} from legacy id ${legacyId} to ${granolaId}`
+        );
+      }
+    }
+
+    // Last-resort migration: a Granola-synced file (present in the id cache)
+    // already sits at the computed target path under some other id.
+    if (!existingFile) {
+      const adopted = this.adoptGranolaFileAtPath(normalizedPath);
+      if (adopted) {
+        existingFile = adopted;
+        log.debug(
+          `Adopting existing Granola file at ${normalizedPath} for id ${granolaId}`
+        );
+      }
+    }
 
     try {
       if (!existingFile) {
@@ -238,6 +284,21 @@ export class FileSyncService {
       );
       return false;
     }
+  }
+
+  /**
+   * Finds a cached (Granola-synced) file at the given normalized path and
+   * removes its stale cache entry so the caller can re-register it under a
+   * new id. Returns null when no Granola-synced file occupies the path.
+   */
+  private adoptGranolaFileAtPath(normalizedPath: string): TFile | null {
+    for (const [cacheKey, file] of this.granolaIdCache) {
+      if (normalizePath(file.path) === normalizedPath) {
+        this.granolaIdCache.delete(cacheKey);
+        return file;
+      }
+    }
+    return null;
   }
 
   /**
@@ -432,7 +493,8 @@ export class FileSyncService {
       granolaId,
       type,
       forceOverwrite,
-      noteDate
+      noteDate,
+      null
     );
   }
 
@@ -504,20 +566,15 @@ export class FileSyncService {
       return { saved: false, path: null };
     }
 
-    const contentWithAttachments = await this.appendImageEmbedsForAttachments(
-      doc,
-      content,
-      filePath
-    );
-
     // Save with type "combined"
     const saved = await this.saveFile(
       filePath,
-      contentWithAttachments,
+      content,
       doc.id,
       "combined",
       forceOverwrite,
-      noteDate
+      noteDate,
+      extractLegacyIdFromWebUrl(doc.web_url)
     );
 
     // Return the actual on-disk path. When we try to rename to the "ideal"
@@ -569,19 +626,14 @@ export class FileSyncService {
       return { saved: false, path: null };
     }
 
-    const contentWithAttachments = await this.appendImageEmbedsForAttachments(
-      doc,
-      content,
-      filePath
-    );
-
     const saved = await this.saveFile(
       filePath,
-      contentWithAttachments,
+      content,
       doc.id,
       "note",
       forceOverwrite,
-      noteDate
+      noteDate,
+      extractLegacyIdFromWebUrl(doc.web_url)
     );
 
     // Return the actual on-disk path. When we try to rename to the "ideal"
@@ -640,7 +692,8 @@ export class FileSyncService {
       doc.id,
       "transcript",
       forceOverwrite,
-      noteDate
+      noteDate,
+      extractLegacyIdFromWebUrl(doc.web_url)
     );
 
     // Return the actual on-disk path. When we try to rename to the "ideal"
@@ -667,177 +720,4 @@ export class FileSyncService {
     return this.granolaIdCache.size;
   }
 
-  /**
-   * Appends image embeds for any image attachments on the given document to the provided content.
-   * Images are downloaded and stored under a predictable `attachments/` folder
-   * in the vault. Only successfully saved images are embedded.
-   *
-   * Images are fetched in parallel for performance.
-   *
-   * @param doc - The Granola document with attachments
-   * @param content - The markdown content to append embeds to
-   * @param sourcePath - The file path (used to determine attachment storage location)
-   * @returns The content with image embeds appended
-   */
-  async appendImageEmbedsForAttachments(
-    doc: GranolaDoc,
-    content: string,
-    sourcePath: string
-  ): Promise<string> {
-    const imageAttachments =
-      doc.attachments?.filter(
-        (attachment) =>
-          attachment &&
-          typeof attachment.url === "string" &&
-          attachment.type === "image"
-      ) ?? [];
-
-    if (imageAttachments.length === 0) {
-      return content;
-    }
-
-    const results = await Promise.allSettled(
-      imageAttachments.map((attachment, index) =>
-        this.downloadAndSaveImageAttachment(
-          doc,
-          attachment,
-          sourcePath,
-          index
-        )
-      )
-    );
-
-    const embedLines: string[] = [];
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value) {
-        embedLines.push(`![[${result.value}]]`);
-      }
-    }
-
-    if (embedLines.length === 0) {
-      return content;
-    }
-
-    const separator = content.endsWith("\n") ? "\n" : "\n\n";
-    return content + separator + embedLines.join("\n") + "\n";
-  }
-
-  /**
-   * Maps a Content-Type header value to a file extension.
-   * Returns null if the content type is missing or unrecognized.
-   */
-  private getExtensionFromContentType(contentType: string | undefined): string | null {
-    if (!contentType) {
-      return null;
-    }
-
-    const mimeType = contentType.split(";")[0].trim().toLowerCase();
-    const mimeToExtension: Record<string, string> = {
-      "image/png": "png",
-      "image/jpeg": "jpg",
-      "image/jpg": "jpg",
-      "image/gif": "gif",
-      "image/webp": "webp",
-      "image/svg+xml": "svg",
-    };
-
-    return mimeToExtension[mimeType] || null;
-  }
-
-  /**
-   * Extracts a file extension from a URL path.
-   * Returns null if no valid extension is found.
-   */
-  private getExtensionFromUrl(url: string): string | null {
-    try {
-      const urlObj = new URL(url);
-      const pathname = urlObj.pathname;
-      const match = pathname.match(/\.([a-z0-9]+)$/i);
-      if (!match) {
-        return null;
-      }
-
-      const extension = match[1].toLowerCase();
-      // Only accept known image extensions
-      const validExtensions = ["png", "jpg", "jpeg", "gif", "webp", "svg"];
-      return validExtensions.includes(extension) ? extension : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Downloads and stores a single image attachment, returning the vault-relative
-   * path to the saved image if successful. If the file already exists, no
-   * network request is made and the existing path is returned.
-   */
-  private async downloadAndSaveImageAttachment(
-    doc: GranolaDoc,
-    attachment: GranolaAttachment,
-    sourcePath: string,
-    index: number
-  ): Promise<string | null> {
-    try {
-      // Download the image first to determine the correct extension from Content-Type
-      const response = await requestUrl({
-        url: attachment.url,
-        method: "GET",
-      });
-
-      // Try to determine extension from Content-Type header first
-      const contentType = response.headers["content-type"];
-      let extension = this.getExtensionFromContentType(contentType);
-
-      // If Content-Type doesn't provide an extension, try the URL
-      if (!extension) {
-        extension = this.getExtensionFromUrl(attachment.url);
-      }
-
-      // If we still can't determine the extension, skip this attachment
-      if (!extension) {
-        log.error(
-          "Cannot determine file extension for image attachment - skipping",
-          {
-            granolaId: doc.id,
-            attachmentId: attachment.id,
-            url: attachment.url,
-            contentType: contentType || "none",
-          }
-        );
-        return null;
-      }
-
-      // Create filename with correct extension
-      const filename = `${doc.id ?? "unknown"}-${
-        attachment.id ?? `attachment-${index}`
-      }.${extension}`;
-
-      const targetPath =
-        (await this.app.fileManager.getAvailablePathForAttachment(
-          filename,
-          sourcePath
-        )) ?? filename;
-      const normalizedPath = normalizePath(targetPath);
-
-      // Check if file already exists at this path
-      const existingFile = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (existingFile instanceof TFile) {
-        return normalizedPath;
-      }
-
-      // Save the downloaded image
-      const buffer = response.arrayBuffer;
-      await this.app.vault.createBinary(normalizedPath, buffer);
-      log.debug(`Saved image attachment: ${normalizedPath} (granolaId=${doc.id})`);
-      return normalizedPath;
-    } catch (error) {
-      log.warn("Failed to download or save attachment image", {
-        granolaId: doc.id,
-        attachmentId: attachment.id,
-        error:
-          error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-  }
 }
