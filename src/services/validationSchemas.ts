@@ -1,121 +1,63 @@
 import * as v from "valibot";
 
-// ProseMirror validation schemas
-export const ProseMirrorNodeSchema: v.GenericSchema = v.lazy(() =>
-  v.object({
-    type: v.string(),
-    content: v.optional(v.array(ProseMirrorNodeSchema)),
-    text: v.optional(v.string()),
-    attrs: v.optional(v.record(v.string(), v.unknown())),
-  })
-);
+// --- Granola public API v1 schemas (https://public-api.granola.ai/v1) ---
+//
+// Schemas are deliberately loose (no object-type literals, unknown keys are
+// ignored) so additive API changes don't break syncs. `calendar_event` and
+// `owner` are intentionally unmodeled — nothing consumes them.
 
-export const ProseMirrorDocSchema = v.object({
-  type: v.literal("doc"),
-  content: v.array(ProseMirrorNodeSchema),
+export const UserSchema = v.object({
+  name: v.nullish(v.string()),
+  email: v.nullish(v.string()),
 });
 
-// Granola API validation schemas
-export const GranolaDocSchema = v.object({
+export const FolderSchema = v.object({
   id: v.string(),
-  title: v.nullish(v.string()),
-  created_at: v.nullish(v.string()),
-  updated_at: v.nullish(v.string()),
-  deleted_at: v.nullish(v.string()),
-  // API may return null for docs with no attachments; optional allows key to be absent
-  attachments: v.optional(
-    v.nullish(
-      v.array(
-        v.object({
-          id: v.string(),
-          url: v.string(),
-          type: v.optional(v.string()),
-          width: v.optional(v.number()),
-          height: v.optional(v.number()),
-        })
-      )
-    )
-  ),
-  people: v.nullish(
-    v.object({
-      attendees: v.optional(
-        v.array(
-          v.object({
-            name: v.optional(v.string()),
-            email: v.optional(v.string()),
-          })
-        )
-      ),
-    })
-  ),
-  last_viewed_panel: v.nullish(
-    v.object({
-      // Content can be either a ProseMirrorDoc object or an HTML string
-      content: v.nullish(v.union([ProseMirrorDocSchema, v.string()])),
-      // Panel-level timestamp; advances when the AI summary content is regenerated,
-      // even when the doc-level updated_at does not change.
-      updated_at: v.nullish(v.string()),
-    })
-  ),
-  notes_markdown: v.nullish(v.string()),
+  name: v.string(),
+  parent_folder_id: v.nullish(v.string()),
 });
 
-export const GranolaApiResponseSchema = v.object({
-  docs: v.array(GranolaDocSchema),
+export const SpeakerSchema = v.object({
+  source: v.string(),
+  diarization_label: v.optional(v.string()),
+  name: v.optional(v.string()),
 });
 
 export const TranscriptEntrySchema = v.object({
-  document_id: v.string(),
-  start_timestamp: v.string(),
+  speaker: SpeakerSchema,
   text: v.string(),
-  source: v.string(),
+  start_time: v.string(),
+  end_time: v.string(),
+});
+
+export const NoteSummarySchema = v.object({
   id: v.string(),
-  is_final: v.boolean(),
-  end_timestamp: v.string(),
-});
-
-export const TranscriptResponseSchema = v.array(TranscriptEntrySchema);
-
-// Document list (folder) validation schemas
-export const DocumentListMetadataEntrySchema = v.object({
-  id: v.string(),
-  title: v.string(),
-  parent_document_list_id: v.nullish(v.string()),
-  created_at: v.nullish(v.string()),
-  updated_at: v.nullish(v.string()),
-  is_default_folder: v.optional(v.boolean()),
-  sort_order: v.optional(v.number()),
-});
-
-export const DocumentListsMetadataResponseSchema = v.object({
-  lists: v.record(v.string(), DocumentListMetadataEntrySchema),
-});
-
-// Document set (get-document-set) validation schemas
-const DocumentSetEntrySchema = v.object({
+  title: v.nullish(v.string()),
+  created_at: v.string(),
   updated_at: v.string(),
-  owner: v.optional(v.literal(true)),
-  shared: v.optional(v.literal(true)),
-  has_shareable_link: v.optional(v.boolean()),
 });
 
-export const DocumentSetResponseSchema = v.object({
-  documents: v.record(v.string(), DocumentSetEntrySchema),
-});
-
-// Batch document fetch (get-documents-batch) — returns same shape as get-documents
-export const DocumentsBatchResponseSchema = v.object({
-  docs: v.array(GranolaDocSchema),
-});
-
-// For get-document-list response, we only need document IDs from the documents array
-const DocumentListDocRefSchema = v.object({
+export const NoteDetailSchema = v.object({
   id: v.string(),
+  title: v.nullish(v.string()),
+  created_at: v.string(),
+  updated_at: v.string(),
+  web_url: v.nullish(v.string()),
+  attendees: v.optional(v.array(UserSchema), []),
+  folder_membership: v.optional(v.array(FolderSchema), []),
+  summary_text: v.nullish(v.string()),
+  summary_markdown: v.nullish(v.string()),
+  transcript: v.nullish(v.array(TranscriptEntrySchema)),
 });
 
-export const DocumentListWithDocsResponseSchema = v.object({
-  id: v.string(),
-  title: v.string(),
-  parent_document_list_id: v.nullish(v.string()),
-  documents: v.optional(v.array(DocumentListDocRefSchema), []),
+export const ListNotesResponseSchema = v.object({
+  notes: v.array(NoteSummarySchema),
+  hasMore: v.boolean(),
+  cursor: v.nullish(v.string()),
+});
+
+export const ListFoldersResponseSchema = v.object({
+  folders: v.array(FolderSchema),
+  hasMore: v.boolean(),
+  cursor: v.nullish(v.string()),
 });
