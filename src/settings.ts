@@ -267,11 +267,13 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Granola API key")
       .setDesc(
+        // eslint-disable-next-line obsidianmd/ui/sentence-case -- 'Settings → Connectors → API keys' is a literal Granola menu path
         "Create a key in the Granola desktop app under Settings → Connectors → API keys (scope: Personal notes), then paste it here."
       )
       .addText((text) => {
         text.inputEl.type = "password";
         text
+          // eslint-disable-next-line obsidianmd/ui/sentence-case -- literal API key prefix
           .setPlaceholder("grn_…")
           .setValue(this.plugin.settings.apiKey)
           .onChange(async (value) => {
@@ -290,7 +292,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           const result = await verifyApiKey(key);
           button.setDisabled(false);
           if (result.ok) {
-            new Notice("Granola API connection OK.");
+            new Notice("Granola API connection succeeded.");
           } else {
             new Notice(
               `Granola API connection failed: ${result.message}`,

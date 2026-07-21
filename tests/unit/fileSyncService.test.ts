@@ -1481,12 +1481,7 @@ describe("FileSyncService", () => {
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
         updated_at: "2024-01-15T12:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: "## Summary",
       };
 
       jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(new Date("2024-01-15"));

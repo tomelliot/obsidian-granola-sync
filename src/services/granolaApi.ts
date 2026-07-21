@@ -40,7 +40,7 @@ export class GranolaAuthError extends Error {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 async function apiGet(apiKey: string, pathAndQuery: string): Promise<unknown> {
@@ -87,7 +87,7 @@ function parseOrThrow<TSchema extends v.GenericSchema>(
     log.error(JSON.stringify(result.issues, null, 2));
     throw new Error(`Invalid response from Granola API (${label})`);
   }
-  return result.output as v.InferOutput<TSchema>;
+  return result.output;
 }
 
 /** Maps a v1 note detail into the internal GranolaDoc domain shape. */

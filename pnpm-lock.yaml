@@ -19,12 +19,6 @@ importers:
 
   .:
     dependencies:
-      '@napi-rs/keyring':
-        specifier: ^1.3.0
-        version: 1.3.0
-      '@primno/dpapi':
-        specifier: ^2.0.1
-        version: 2.0.1
       '@tomelliot/obsidian-logger':
         specifier: github:tomelliot/obsidian-logger
         version: https://codeload.github.com/tomelliot/obsidian-logger/tar.gz/7804a951c8bec74afe1950016ee4fc551bceda11
@@ -724,87 +718,6 @@ packages:
     peerDependencies:
       eslint: ^9
 
-  '@napi-rs/keyring-darwin-arm64@1.3.0':
-    resolution: {integrity: sha512-pl76hJvdYUBn6I24bXiOBMA9nbDapo3I5B+f3OorjDU4dUMSypXeKbOVehJe8fhgTiH24flMyTS3aAIy43xegQ==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@napi-rs/keyring-darwin-x64@1.3.0':
-    resolution: {integrity: sha512-YcJtEV5LA3cvA4z3BurgxH5IhTsW1JfIvcAAcqcecwk06Si9F9NqkxbZVIfDwQ8oRHgaBmT3zZJnLAotCrVahw==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@napi-rs/keyring-freebsd-x64@1.3.0':
-    resolution: {integrity: sha512-vlLf31TGhfRAaxLDBhg8b89ss0HHD/lyNmL5F3UjSaz5CUXElsJmKYq9fqA/B+cZKUEUcLHHGhF0I/CqcFdaVw==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [freebsd]
-
-  '@napi-rs/keyring-linux-arm-gnueabihf@1.3.0':
-    resolution: {integrity: sha512-KiWdMMu/Inz/bHHIAGrnF7r54FZDYXuHO6UFF/rhIrshUsxbMG1Rl9lEymNtqqsVo927G0VYcb02FzWQ3iBQRQ==}
-    engines: {node: '>= 10'}
-    cpu: [arm]
-    os: [linux]
-
-  '@napi-rs/keyring-linux-arm64-gnu@1.3.0':
-    resolution: {integrity: sha512-eyKGpY40lm9Jvs1aD294XRH4y7+TlJM0YVAryZeXA6TX0mb4gMkxVXwSQv7MCwgah7raeUd0dKUb4BPAYIgcMg==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@napi-rs/keyring-linux-arm64-musl@1.3.0':
-    resolution: {integrity: sha512-iIK6JWHXAJqDrEyLY3TmswwloVyt2vj+04TZnew+uSJ9gnDO8EwRbp3/iw3LpWaXiDO7VomGO6y8I0Id8uBZSw==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
-
-  '@napi-rs/keyring-linux-riscv64-gnu@1.3.0':
-    resolution: {integrity: sha512-/PGqrwn6EwgtK6vccASSXJRfOSP4vN1F4ASsIQ+7MdrK6hNvAJ1FZPrIuD5gGGdxezo3F++To2Wq7DbuGIeuNQ==}
-    engines: {node: '>= 10'}
-    cpu: [riscv64]
-    os: [linux]
-    libc: [glibc]
-
-  '@napi-rs/keyring-linux-x64-gnu@1.3.0':
-    resolution: {integrity: sha512-2PDK1WKWTu9lBGq9VvNEkSlQD3O7YwVpmnyN2M3cy4v7NJ/8gDMd9GXv3G+FVXN13uhp4gnnPBS+ScefmEeD2A==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@napi-rs/keyring-linux-x64-musl@1.3.0':
-    resolution: {integrity: sha512-oJ2HkX8YUo46QBkn0pG+HuIKQNqr523q6vBobCn+P95s4C4K6/kLBqHY/1bg5J4ap31DzsznhnFKcfBNBsjCnw==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
-  '@napi-rs/keyring-win32-arm64-msvc@1.3.0':
-    resolution: {integrity: sha512-tOd3c/uAaeoE4ycVlmAdSvygz0Zt3zdca6Y7gokBeIbaRDWpjDIUOpU3MvML59XAaqyuKGsVVu0F/DZb1lHPmw==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@napi-rs/keyring-win32-ia32-msvc@1.3.0':
-    resolution: {integrity: sha512-sPSqeAFZMGqP1R++M2JTza7GQJJ/TpCo6JU6Vcd4jnebvOaEDs9b7eipakU1PJdSvhpC2yXMCNRk9gXfrhuwHQ==}
-    engines: {node: '>= 10'}
-    cpu: [ia32]
-    os: [win32]
-
-  '@napi-rs/keyring-win32-x64-msvc@1.3.0':
-    resolution: {integrity: sha512-4DnCWXwDc0HRKwyRlG5y0VhKZW2tNRQfKKfyj6IX/KWfDNyq9hn4n+GL1auyDcOO/v8PwnhmYo2+rOOqCkvvOg==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [win32]
-
-  '@napi-rs/keyring@1.3.0':
-    resolution: {integrity: sha512-WrOw/bcXm0f9qHkumlT1QlArXSTWqaY9sunsDpOk+yCCorCKMxvWT/a3xko4EYHVdeZoh00yI2TydXn6eyICDA==}
-    engines: {node: '>= 10'}
-
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
     engines: {node: '>= 8'}
@@ -820,10 +733,6 @@ packages:
   '@pkgr/core@0.1.2':
     resolution: {integrity: sha512-fdDH1LSGfZdTH2sxdpVMw31BanV28K/Gry0cVFxaNP77neJSkd82mM8ErPNYs9e+0O7SdHBLTDzDgwUuy18RnQ==}
     engines: {node: ^12.20.0 || ^14.18.0 || >=16.0.0}
-
-  '@primno/dpapi@2.0.1':
-    resolution: {integrity: sha512-uX756jYkiyHHJU1981oRJMg3FtCGlBGpGcztTs7SFxeh0L/c0aLQcooF61HQ9V3MdaCDPIi8yreN7MlISr4mJg==}
-    engines: {node: '>=14'}
 
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
@@ -2232,10 +2141,6 @@ packages:
     resolution: {integrity: sha512-pyFS63ptit/P5WqUkt+UUfe+4oevH+bFeIiPPdfb0pFeYEu/1ELnJu5l+5EcTKYL5M7zaAa7S8ddywgXypqKCw==}
     engines: {node: '>= 0.4'}
 
-  node-gyp-build@4.8.4:
-    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
-    hasBin: true
-
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
 
@@ -3551,57 +3456,6 @@ snapshots:
       eslint-plugin-react: 7.37.3(eslint@9.39.1)
       eslint-plugin-security: 1.4.0
 
-  '@napi-rs/keyring-darwin-arm64@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-darwin-x64@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-freebsd-x64@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-arm-gnueabihf@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-arm64-gnu@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-arm64-musl@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-riscv64-gnu@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-x64-gnu@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-x64-musl@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-win32-arm64-msvc@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-win32-ia32-msvc@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-win32-x64-msvc@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring@1.3.0':
-    optionalDependencies:
-      '@napi-rs/keyring-darwin-arm64': 1.3.0
-      '@napi-rs/keyring-darwin-x64': 1.3.0
-      '@napi-rs/keyring-freebsd-x64': 1.3.0
-      '@napi-rs/keyring-linux-arm-gnueabihf': 1.3.0
-      '@napi-rs/keyring-linux-arm64-gnu': 1.3.0
-      '@napi-rs/keyring-linux-arm64-musl': 1.3.0
-      '@napi-rs/keyring-linux-riscv64-gnu': 1.3.0
-      '@napi-rs/keyring-linux-x64-gnu': 1.3.0
-      '@napi-rs/keyring-linux-x64-musl': 1.3.0
-      '@napi-rs/keyring-win32-arm64-msvc': 1.3.0
-      '@napi-rs/keyring-win32-ia32-msvc': 1.3.0
-      '@napi-rs/keyring-win32-x64-msvc': 1.3.0
-
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -3615,10 +3469,6 @@ snapshots:
       fastq: 1.19.1
 
   '@pkgr/core@0.1.2': {}
-
-  '@primno/dpapi@2.0.1':
-    dependencies:
-      node-gyp-build: 4.8.4
 
   '@rtsao/scc@1.1.0': {}
 
@@ -5591,8 +5441,6 @@ snapshots:
       es-errors: 1.3.0
       object.entries: 1.1.9
       semver: 6.3.1
-
-  node-gyp-build@4.8.4: {}
 
   node-int64@0.4.0: {}
 
