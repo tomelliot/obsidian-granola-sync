@@ -1,8 +1,8 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import { notifySync } from "./utils/notify";
+import { verifyApiKey } from "./services/granolaApi";
 import type GranolaSync from "./main";
 import type { FolderMapData } from "./services/folderMapBuilder";
-import bmcButtonSvg from "../assets/bmc-button.svg";
 import githubLogoSvg from "../assets/github-logo.svg";
 
 function appendSvg(target: HTMLElement, svgMarkup: string): void {
@@ -37,14 +37,12 @@ export enum TranscriptDestination {
 
 export interface FilterSettings {
   syncDaysBack: number;
-  includeSharedNotes: boolean;
   titleFilterMode: "disabled" | "include" | "exclude";
   titleFilterKeyword: string;
 }
 
 export interface NoteSettings {
   syncNotes: boolean;
-  includePrivateNotes: boolean;
   saveAsIndividualFiles: boolean; // true = files, false = sections
 
   // Only if saveAsIndividualFiles = true:
@@ -114,6 +112,8 @@ export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
   AutomaticSyncSettings &
   FilterSettings & {
+    /** Granola public API key (grn_…), created in Granola → Settings → Connectors → API keys. */
+    apiKey: string;
     enableDebugLogging: boolean;
     showSyncNotifications: boolean;
     // Persisted folder map for detecting renames across syncs
@@ -123,18 +123,18 @@ export type GranolaSyncSettings = NoteSettings &
   };
 
 export const DEFAULT_SETTINGS: GranolaSyncSettings = {
+  // Authentication
+  apiKey: "",
   // AutomaticSyncSettings
   latestSyncTime: 0,
   isSyncEnabled: false,
   syncInterval: 30 * 60, // every 30 minutes
   // FilterSettings
   syncDaysBack: 7, // sync notes from last 7 days
-  includeSharedNotes: true,
   titleFilterMode: "disabled",
   titleFilterKeyword: "",
   // NoteSettings
   syncNotes: true,
-  includePrivateNotes: false,
   saveAsIndividualFiles: false, // Default to daily notes (sections)
   baseFolderType: "custom",
   customBaseFolder: "Granola",
@@ -154,6 +154,16 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   // Notifications
   showSyncNotifications: true,
 };
+
+/**
+ * Settings removed in the public-API rewrite; deleted from loaded data on
+ * startup. The public API has no owned/shared or private-notes distinction —
+ * the API key's scope governs what is accessible.
+ */
+export function scrubRemovedSettings(loaded: Record<string, unknown>): void {
+  delete loaded.includePrivateNotes;
+  delete loaded.includeSharedNotes;
+}
 
 /**
  * Migrates old settings format to new format.
@@ -255,6 +265,42 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
 
     // General settings (no heading per Obsidian conventions)
     new Setting(containerEl)
+      .setName("Granola API key")
+      .setDesc(
+        "Create a key in the Granola desktop app under Settings → Connectors → API keys (scope: Personal notes), then paste it here."
+      )
+      .addText((text) => {
+        text.inputEl.type = "password";
+        text
+          .setPlaceholder("grn_…")
+          .setValue(this.plugin.settings.apiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.apiKey = value.trim();
+            await this.plugin.saveSettings();
+          });
+      })
+      .addButton((button) =>
+        button.setButtonText("Test connection").onClick(async () => {
+          const key = this.plugin.settings.apiKey;
+          if (!key) {
+            new Notice("Enter an API key first.");
+            return;
+          }
+          button.setDisabled(true);
+          const result = await verifyApiKey(key);
+          button.setDisabled(false);
+          if (result.ok) {
+            new Notice("Granola API connection OK.");
+          } else {
+            new Notice(
+              `Granola API connection failed: ${result.message}`,
+              8000
+            );
+          }
+        })
+      );
+
+    new Setting(containerEl)
       .setName("Periodic sync enabled")
       .setDesc(
         "Automatically sync your Granola notes at regular intervals. When disabled, you'll need to manually run the sync command."
@@ -338,21 +384,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     // Notes Section
     if (this.plugin.settings.syncNotes) {
       new Setting(containerEl).setName("Notes").setHeading();
-
-      new Setting(containerEl)
-        .setName("Include private notes")
-        .setDesc(
-          // eslint-disable-next-line obsidianmd/ui/sentence-case -- '## Private Notes' / '## Enhanced Notes' are literal heading labels written into the output
-          "Include your raw private notes at the top of each synced note. Private notes appear in a '## Private Notes' section above the '## Enhanced Notes' section."
-        )
-        .addToggle((toggle) =>
-          toggle
-            .setValue(this.plugin.settings.includePrivateNotes)
-            .onChange(async (value) => {
-              this.plugin.settings.includePrivateNotes = value;
-              await this.plugin.saveSettings();
-            })
-        );
 
       new Setting(containerEl)
         .setName("Save notes as")
@@ -686,20 +717,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         );
 
       new Setting(containerEl)
-        .setName("Include shared notes")
-        .setDesc(
-          "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
-        )
-        .addToggle((toggle) =>
-          toggle
-            .setValue(this.plugin.settings.includeSharedNotes)
-            .onChange(async (value) => {
-              this.plugin.settings.includeSharedNotes = value;
-              await this.plugin.saveSettings();
-            })
-        );
-
-      new Setting(containerEl)
         .setName("Title filter")
         .setDesc(
           "Filter which notes are synced based on their title."
@@ -799,20 +816,8 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
         button.buttonEl.addClass("granola-sync-support-icon");
         appendSvg(button.buttonEl, githubLogoSvg);
         button.onClick(() => {
-          window.open("https://github.com/tomelliot/obsidian-granola-sync/");
+          window.open("https://github.com/kayacancode/obsidian-granola-sync/");
         });
       });
-
-    new Setting(containerEl)
-      .setName("Show your support")
-      .addButton((button) => {
-      button.buttonEl.addClass("mod-cta");
-      button.buttonEl.addClass("granola-sync-bmc-icon");
-      button.buttonEl.empty();
-      appendSvg(button.buttonEl, bmcButtonSvg);
-      button.onClick(() => {
-        window.open("https://buymeacoffee.com/tomelliot");
-      });
-    });
   }
 }
