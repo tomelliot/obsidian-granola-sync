@@ -40,6 +40,22 @@ If you used the original Granola Sync plugin:
 - Your existing synced files are **updated in place, not duplicated**. The public API uses new note IDs, but each note's `web_url` carries the old internal ID, so the first sync re-keys existing files (matched by their `granola_id` frontmatter, with a target-path fallback) to the new IDs.
 - The "Include private notes" and "Include shared notes" settings were removed — access is governed by your API key's scope instead.
 
+### Carrying over your settings
+
+Your folder choices, filename patterns, transcript handling, sync interval, and filters can be copied straight from the original plugin — each plugin stores its settings at `.obsidian/plugins/<plugin-id>/data.json` inside your vault:
+
+1. Install Granola API Sync via BRAT and enable it once (this creates the `.obsidian/plugins/granola-api-sync/` folder), then **disable it** — Obsidian writes settings on unload, so copying while it's active can get overwritten.
+2. Copy the old settings file over the new one (show hidden files in Finder with `Cmd+Shift+.`, or use a terminal):
+
+   ```bash
+   cp "<YourVault>/.obsidian/plugins/granola-sync/data.json" \
+      "<YourVault>/.obsidian/plugins/granola-api-sync/data.json"
+   ```
+
+3. Re-enable Granola API Sync and paste your API key in its settings.
+
+The plugin cleans up the copied file automatically: removed settings are deleted on load, the API key starts empty until you paste one, and the old plugin's cached folder map is replaced on the first sync.
+
 ## Features
 
 - Sync notes to daily-note sections or individual files, with configurable folders, subfolder patterns, and filename patterns
