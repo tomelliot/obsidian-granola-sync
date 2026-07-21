@@ -1,11 +1,10 @@
 {
-  "id": "granola-sync",
-  "name": "Granola Sync",
-  "version": "2.0.28",
+  "id": "granola-api-sync",
+  "name": "Granola API Sync",
+  "version": "0.1.0",
   "minAppVersion": "1.5.7",
-  "description": "Sync Granola notes to your vault.",
-  "author": "Tom Elliot",
-  "authorUrl": "https://www.tomelliot.net/",
-  "isDesktopOnly": true,
-  "fundingUrl": "https://buymeacoffee.com/tomelliot"
+  "description": "Sync Granola meeting notes into your vault using the official Granola API.",
+  "author": "Kaya Jones",
+  "authorUrl": "https://github.com/kayacancode",
+  "isDesktopOnly": true
 }
