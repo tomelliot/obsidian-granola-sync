@@ -1,5 +1,7 @@
 # Obsidian Granola Sync
 
+> **⚠️ Deprecated.** Granola **7.427.0** (macOS) broke this plugin. That release deleted the on-disk `storage.dek` file and moved the data-encryption key into a Keychain item locked to Granola's own app - any other process, Obsidian included, can't read it. The plugin decrypts Granola's credentials by unwrapping `storage.dek`, so once it's gone the plugin can't authenticate, and the lock can't be lifted by approving a prompt. There is no workaround. Windows and Linux are unaffected so far. Full detail in [docs/CREDENTIALS.md](docs/CREDENTIALS.md).
+
 [![Release](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml)
 [![codecov](https://codecov.io/gh/tomelliot/obsidian-granola-sync/graph/badge.svg?token=UALN2224PQ)](https://codecov.io/gh/tomelliot/obsidian-granola-sync)
 
@@ -7,7 +9,7 @@
 
 This plugin pulls your [Granola](https://granola.ai) meeting notes and transcripts into your Obsidian vault as plain Markdown - so they're searchable, linkable, and yours to keep, instead of locked away in Granola, separate from everything else you know.
 
-It's the most actively maintained Granola sync plugin out there, and the one you can trust to get the details right: it syncs reliably, never leaves you with duplicate notes, and keeps everything neatly organised the way you set it up. It's built on a clean, well-tested codebase, so syncs just work and stay working.
+The most actively maintained Granola sync plugin, and the one that gets the details right: it syncs reliably, never leaves you with duplicate notes, and keeps everything neatly organised the way you set it up. It's built on a clean, well-tested codebase, so syncs just work and stay working.
 
 ## Features
 
