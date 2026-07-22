@@ -1,6 +1,6 @@
 {
   "id": "granola-api-sync",
-  "name": "Granola API Sync",
+  "name": "Granola OAuth sync",
   "version": "0.1.0",
   "minAppVersion": "1.5.7",
   "description": "Sync Granola meeting notes into your vault using the official Granola API.",
