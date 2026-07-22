@@ -1,6 +1,6 @@
 {
   "name": "granola-api-sync",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sync Granola meeting notes into your vault using the official Granola API.",
   "main": "main.js",
   "scripts": {
