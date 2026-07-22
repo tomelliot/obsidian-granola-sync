@@ -1,5 +1,7 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
+import type { TextComponent } from "obsidian";
 import { notifySync } from "./utils/notify";
+import { validatePattern } from "./utils/filenameUtils";
 import { verifyApiKey } from "./services/granolaApi";
 import type GranolaSync from "./main";
 import type { FolderMapData } from "./services/folderMapBuilder";
@@ -249,6 +251,9 @@ export function migrateSettingsToNewFormat(
   return Object.assign({}, DEFAULT_SETTINGS, newSettings);
 }
 
+/** Variables resolveSubfolderPattern actually substitutes. */
+const SUBFOLDER_VARIABLES = ["year", "month", "day", "quarter"];
+
 export class GranolaSyncSettingTab extends PluginSettingTab {
   plugin: GranolaSync;
   private showAdvanced = false;
@@ -256,6 +261,46 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
   constructor(app: App, plugin: GranolaSync) {
     super(app, plugin);
     this.plugin = plugin;
+  }
+
+  /**
+   * Wires inline validation into a pattern text field. Invalid patterns
+   * (unknown variables, mistyped braces like "{year)") show an error under
+   * the setting and are not saved; the last valid value stays in effect.
+   * An empty value is allowed — callers fall back to their default.
+   */
+  private bindValidatedPattern(
+    setting: Setting,
+    text: TextComponent,
+    allowedVariables: string[] | undefined,
+    save: (value: string) => Promise<void>
+  ): void {
+    const errorEl = setting.infoEl.createDiv({
+      cls: "granola-sync-pattern-error",
+    });
+
+    const check = (value: string): boolean => {
+      if (!value) {
+        errorEl.setText("");
+        return true;
+      }
+      const validation = validatePattern(value, allowedVariables);
+      errorEl.setText(validation.isValid ? "" : validation.error ?? "");
+      text.inputEl.toggleClass(
+        "granola-sync-pattern-input-invalid",
+        !validation.isValid
+      );
+      return validation.isValid;
+    };
+
+    // Surface problems with the stored value as soon as settings open
+    check(text.getValue());
+
+    text.onChange(async (value) => {
+      if (check(value)) {
+        await save(value);
+      }
+    });
   }
 
   display(): void {
@@ -463,36 +508,46 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           );
 
         if (this.plugin.settings.subfolderPattern === "custom") {
-          new Setting(containerEl)
+          const subfolderSetting = new Setting(containerEl)
             .setName("Custom subfolder pattern")
             .setDesc(
               "Use variables: {year}, {month}, {day}, {quarter}. Example: {year}/{month}"
-            )
-            .addText((text) =>
-              text
-                .setPlaceholder("{year}/{month}")
-                .setValue(this.plugin.settings.customSubfolderPattern || "")
-                .onChange(async (value) => {
-                  this.plugin.settings.customSubfolderPattern = value;
-                  await this.plugin.saveSettings();
-                })
             );
+          subfolderSetting.addText((text) => {
+            text
+              .setPlaceholder("{year}/{month}")
+              .setValue(this.plugin.settings.customSubfolderPattern || "");
+            this.bindValidatedPattern(
+              subfolderSetting,
+              text,
+              SUBFOLDER_VARIABLES,
+              async (value) => {
+                this.plugin.settings.customSubfolderPattern = value;
+                await this.plugin.saveSettings();
+              }
+            );
+          });
         }
 
-        new Setting(containerEl)
+        const filenameSetting = new Setting(containerEl)
           .setName("Filename pattern")
           .setDesc(
             "Customize note filenames. Variables: {title}, {date}, {time}, {year}, {month}, {day}"
-          )
-          .addText((text) =>
-            text
-              .setPlaceholder("{title}")
-              .setValue(this.plugin.settings.filenamePattern)
-              .onChange(async (value) => {
-                this.plugin.settings.filenamePattern = value || "{title}";
-                await this.plugin.saveSettings();
-              })
           );
+        filenameSetting.addText((text) => {
+          text
+            .setPlaceholder("{title}")
+            .setValue(this.plugin.settings.filenamePattern);
+          this.bindValidatedPattern(
+            filenameSetting,
+            text,
+            undefined,
+            async (value) => {
+              this.plugin.settings.filenamePattern = value || "{title}";
+              await this.plugin.saveSettings();
+            }
+          );
+        });
 
         new Setting(containerEl)
           .setName("Link from daily notes")
@@ -624,42 +679,52 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           );
 
         if (this.plugin.settings.transcriptSubfolderPattern === "custom") {
-          new Setting(containerEl)
+          const transcriptSubfolderSetting = new Setting(containerEl)
             .setName("Custom transcript subfolder pattern")
             .setDesc(
               "Use variables: {year}, {month}, {day}, {quarter}. Example: {year}/{month}"
-            )
-            .addText((text) =>
-              text
-                .setPlaceholder("{year}/{month}")
-                .setValue(
-                  this.plugin.settings.customTranscriptSubfolderPattern || ""
-                )
-                .onChange(async (value) => {
-                  this.plugin.settings.customTranscriptSubfolderPattern = value;
-                  await this.plugin.saveSettings();
-                })
             );
+          transcriptSubfolderSetting.addText((text) => {
+            text
+              .setPlaceholder("{year}/{month}")
+              .setValue(
+                this.plugin.settings.customTranscriptSubfolderPattern || ""
+              );
+            this.bindValidatedPattern(
+              transcriptSubfolderSetting,
+              text,
+              SUBFOLDER_VARIABLES,
+              async (value) => {
+                this.plugin.settings.customTranscriptSubfolderPattern = value;
+                await this.plugin.saveSettings();
+              }
+            );
+          });
         }
 
-        new Setting(containerEl)
+        const transcriptFilenameSetting = new Setting(containerEl)
           .setName("Transcript filename pattern")
           .setDesc(
             "Customize transcript filenames. Variables: {title}, {date}, {time}, {year}, {month}, {day}"
-          )
-          .addText((text) =>
-            text
-              .setPlaceholder("{title}-transcript")
-              .setValue(
-                this.plugin.settings.transcriptFilenamePattern ||
-                  "{title}-transcript"
-              )
-              .onChange(async (value) => {
-                this.plugin.settings.transcriptFilenamePattern =
-                  value || "{title}-transcript";
-                await this.plugin.saveSettings();
-              })
           );
+        transcriptFilenameSetting.addText((text) => {
+          text
+            .setPlaceholder("{title}-transcript")
+            .setValue(
+              this.plugin.settings.transcriptFilenamePattern ||
+                "{title}-transcript"
+            );
+          this.bindValidatedPattern(
+            transcriptFilenameSetting,
+            text,
+            undefined,
+            async (value) => {
+              this.plugin.settings.transcriptFilenamePattern =
+                value || "{title}-transcript";
+              await this.plugin.saveSettings();
+            }
+          );
+        });
       }
     }
 
