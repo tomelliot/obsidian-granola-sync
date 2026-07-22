@@ -6,7 +6,24 @@ Everything described here runs locally inside the Obsidian process. No part of t
 
 The source of truth for the implementation is [`src/services/granolaCredentialsCrypto.ts`](../src/services/granolaCredentialsCrypto.ts) and [`src/services/credentials.ts`](../src/services/credentials.ts). The code is authoritative; this page is a high-level map.
 
+> **Breaking change — macOS, Granola ≥ 7.427.0.** Granola deleted the `storage.dek` file and moved the data-encryption key into an iCloud (data-protection) keychain item, `com.granola.app.dek`, that only the Granola app can read. The macOS chain described below unwraps `storage.dek`, so it no longer works on that version. The `.enc` file formats are unchanged — only the key's location moved. See the [change log](#change-log--granolas-on-disk-credential-storage) for detail.
+
+## Where Granola keeps the tokens
+
+Granola writes your account state — including the WorkOS access and refresh tokens — to two encrypted files. Both decrypt with the same `storage.dek` and carry the same token payload:
+
+| File | Shape | Role |
+| --- | --- | --- |
+| `supabase.json.enc` | `workos_tokens` as a top-level JSON-encoded string, alongside `session_id` and `user_info`. | Granola's primary store. The desktop app opens this first at launch. |
+| `stored-accounts.json.enc` | An `accounts` array (a JSON-encoded string); the first account carries a `tokens` object. | Secondary copy, kept in sync. The file this plugin reads. |
+
+The plugin reads `stored-accounts.json.enc`. If a future Granola release stops maintaining it, the same tokens remain in `supabase.json.enc` in the shape above — the DEK and decrypt step are identical; only the JSON parsing differs. (On Granola ≥ 7.427.0 the DEK itself is no longer reachable from disk; see the breaking-change note above.)
+
+Other files in the same directory (`user-preferences.json.enc`, `cache-v6.json.enc`, `window-state.json.enc`) are encrypted with the same DEK but hold UI preferences and cached app data. They carry no tokens.
+
 ## macOS and Linux: the keychain chain
+
+This is the chain the plugin implements today. It holds on Linux and on macOS up to Granola 7.394.x; on macOS 7.427.0 and later, step 2 fails because `storage.dek` no longer exists (see the breaking-change note near the top).
 
 Granola writes two files into its per-user data directory:
 
@@ -67,3 +84,23 @@ The plugin uses [`@primno/dpapi`](https://www.npmjs.com/package/@primno/dpapi)'s
 - **The file format changed.** A future Granola update could change the encryption scheme or the JSON shape. The plugin will fail with a clear "could not decrypt" or "missing field" error and you can file an issue.
 
 For the exact algorithms, IV lengths, and key derivation parameters, read the source files linked above.
+
+## Change log — Granola's on-disk credential storage
+
+Concise notes on how Granola's credential storage has changed and where the plugin stands against it. Newest first.
+
+### 2026-07-16 — Granola 7.427.0 (macOS) — breaking
+
+- **`storage.dek` deleted; the DEK moved into the keychain.** Granola removed the on-disk `storage.dek` file and now holds the 32-byte data-encryption key in an **iCloud (data-protection) keychain** item named `com.granola.app.dek` (a synchronizable generic / "application password").
+- **The plugin's macOS decryption breaks on this version.** Its chain unwraps `storage.dek`, which no longer exists. The DEK now lives in a keychain domain gated by Granola's keychain access group: a process without Granola's entitlement gets `errSecItemNotFound` and can enumerate zero items there. Obsidian runs under a different team ID, so the plugin cannot read it — and this is access-group gating, not an "Always Allow" prompt the user can approve. Verified with an `fs_usage` capture (`storage.dek` gone) and a Swift `SecItemCopyMatching` probe against the data-protection keychain.
+- **The old `Granola Safe Storage` login-keychain item still exists but is now vestigial** — it holds a 16-byte OSCrypt value that does not decrypt the `.enc` files.
+- **`.enc` formats unchanged.** `stored-accounts.json.enc` and `supabase.json.enc` are still bare AES-256-GCM with the same JSON shapes; only the key source moved out of reach.
+- **Open questions:** whether `storage.dek` deletion is universal or per-machine; whether the Windows (DPAPI) and Linux paths changed too; whether Granola's companion CLI is the sanctioned external credential path going forward.
+
+### 2026-07-16 — Granola 7.394.x
+
+- **Two token stores now exist** under the single `storage.dek`: `supabase.json.enc` (primary) and `stored-accounts.json.enc` (secondary). Confirmed with `fs_usage` at app launch — Granola opens `storage.dek`, then `supabase.json.enc`, then `stored-accounts.json.enc`, all read-only. Reproduce with [`scripts/watch-granola-fs.sh`](../scripts/watch-granola-fs.sh).
+- **`supabase.json.enc` is the flatter, canonical shape** — `workos_tokens` as a top-level JSON-encoded string, no `accounts[]` wrapper. Same token payload as `stored-accounts.json.enc`.
+- **The plaintext `stored-accounts.json` is gone** on macOS; recent Granola writes only the `.enc` form. The plugin's plaintext fallback is now effectively dead on macOS.
+- **Encryption spread to more state files** — `user-preferences.json.enc`, `cache-v6.json.enc`, and `window-state.json.enc` replaced their plaintext predecessors, all under the same DEK. None carry tokens (`cache-v6.json.enc` does hold third-party integration keys such as Affinity and Zapier).
+- **Plugin status:** reads `stored-accounts.json.enc` and works. Reading `supabase.json.enc` first, with `stored-accounts.json.enc` as fallback, is the more future-proof order and is a tracked consideration.
