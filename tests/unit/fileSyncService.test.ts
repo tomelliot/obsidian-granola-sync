@@ -30,6 +30,7 @@ describe("FileSyncService", () => {
       vault: {
         getMarkdownFiles: jest.fn(),
         getAbstractFileByPath: jest.fn(),
+        getFileByPath: jest.fn(),
         createFolder: jest.fn(),
         create: jest.fn(),
         createBinary: jest.fn(),
@@ -1114,6 +1115,131 @@ describe("FileSyncService", () => {
       expect(fileSyncService.findByGranolaId("e7b12999", "transcript")).toBe(
         createdFile
       );
+    });
+
+    it("caches the file re-resolved from the vault when create resolves null", async () => {
+      // Obsidian's `vault.create` writes the file, then looks it up in the
+      // in-memory index and returns null when the lookup misses — despite its
+      // `Promise<TFile>` type.
+      const createdFile = new TFile("granola-folder/note.md");
+      mockApp.vault.create.mockResolvedValue(null as unknown as TFile);
+      (mockApp.vault.getFileByPath as jest.Mock).mockReturnValue(createdFile);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      expect(result).toBe(true);
+      expect(fileSyncService.findByGranolaId("id-1", "note")).toBe(createdFile);
+    });
+
+    it("never caches null when create resolves null and the file is unresolvable", async () => {
+      mockApp.vault.create.mockResolvedValue(null as unknown as TFile);
+      (mockApp.vault.getFileByPath as jest.Mock).mockReturnValue(null);
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      // The file was written to disk, so the save succeeded...
+      expect(result).toBe(true);
+      // ...but the cache must not hold a null entry.
+      expect(fileSyncService.findByGranolaId("id-1", "note")).toBeNull();
+      expect(fileSyncService.getCacheSize()).toBe(0);
+    });
+
+    it("keeps syncing subsequent documents after an unresolvable create", async () => {
+      // Regression: a null cached by an earlier save made every later save
+      // throw "Cannot read properties of null (reading 'path')" while scanning
+      // the cache, aborting the whole sync.
+      mockApp.vault.create.mockResolvedValueOnce(null as unknown as TFile);
+      (mockApp.vault.getFileByPath as jest.Mock).mockReturnValue(null);
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+
+      await fileSyncService.saveFile(
+        "granola-folder/first.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      const secondFile = new TFile("granola-folder/second.md");
+      mockApp.vault.create.mockResolvedValueOnce(secondFile);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/second.md",
+        "content",
+        "id-2",
+        "note",
+        false,
+        new Date()
+      );
+
+      expect(result).toBe(true);
+      expect(fileSyncService.findByGranolaId("id-2", "note")).toBe(secondFile);
+    });
+
+    it("tolerates a pre-poisoned cache entry without throwing", async () => {
+      // Defense in depth: whatever the origin of a malformed entry, scanning
+      // the cache must not crash the sync. Poke the private map directly so the
+      // scan guards are exercised even though updateCache now rejects nulls.
+      (
+        fileSyncService as unknown as { granolaIdCache: Map<string, unknown> }
+      ).granolaIdCache.set("stale-id-note", null);
+
+      const createdFile = new TFile("granola-folder/note.md");
+      mockApp.vault.create.mockResolvedValue(createdFile);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      expect(result).toBe(true);
+      expect(fileSyncService.getGranolaIdByPath("granola-folder/note.md")).toBe(
+        "id-1"
+      );
+    });
+
+    it("contains an unexpected cache-scan failure to the one document", async () => {
+      // An entry that blows up on access stands in for any future defect in the
+      // scan: saveFile must report the failure, not reject and abort the sync.
+      const hostile = {
+        get path(): string {
+          throw new Error("boom");
+        },
+      };
+      (
+        fileSyncService as unknown as { granolaIdCache: Map<string, unknown> }
+      ).granolaIdCache.set("hostile-note", hostile);
+
+      await expect(
+        fileSyncService.saveFile(
+          "granola-folder/note.md",
+          "content",
+          "id-1",
+          "note",
+          false,
+          new Date()
+        )
+      ).resolves.toBe(false);
     });
 
     it("does not retry on a non-collision error", async () => {

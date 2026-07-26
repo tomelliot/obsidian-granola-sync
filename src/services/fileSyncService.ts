@@ -91,7 +91,7 @@ export class FileSyncService {
       "combined",
     ];
     for (const [cacheKey, file] of this.granolaIdCache) {
-      if (normalizePath(file.path) !== normalizedPath) {
+      if (!file?.path || normalizePath(file.path) !== normalizedPath) {
         continue;
       }
       for (const type of types) {
@@ -169,7 +169,9 @@ export class FileSyncService {
     file: TFile,
     type: "note" | "transcript" | "combined" = "note"
   ): void {
-    if (granolaId) {
+    // A null/undefined file poisons every later cache scan, so refuse it here
+    // even though the signature says it cannot happen.
+    if (granolaId && file) {
       const cacheKey = `${granolaId}-${type}`;
       this.granolaIdCache.set(cacheKey, file);
     }
@@ -237,19 +239,20 @@ export class FileSyncService {
       }
     }
 
-    // Last-resort migration: a Granola-synced file (present in the id cache)
-    // already sits at the computed target path under some other id.
-    if (!existingFile) {
-      const adopted = this.adoptGranolaFileAtPath(normalizedPath);
-      if (adopted) {
-        existingFile = adopted;
-        log.debug(
-          `Adopting existing Granola file at ${normalizedPath} for id ${granolaId}`
-        );
-      }
-    }
-
     try {
+      // Last-resort migration: a Granola-synced file (present in the id cache)
+      // already sits at the computed target path under some other id. This runs
+      // inside the try so a failure costs one document, not the whole sync.
+      if (!existingFile) {
+        const adopted = this.adoptGranolaFileAtPath(normalizedPath);
+        if (adopted) {
+          existingFile = adopted;
+          log.debug(
+            `Adopting existing Granola file at ${normalizedPath} for id ${granolaId}`
+          );
+        }
+      }
+
       if (!existingFile) {
         return await this.createNewFile(
           normalizedPath,
@@ -293,6 +296,12 @@ export class FileSyncService {
    */
   private adoptGranolaFileAtPath(normalizedPath: string): TFile | null {
     for (const [cacheKey, file] of this.granolaIdCache) {
+      // Drop any malformed entry rather than dereferencing it: one bad value
+      // would otherwise abort every remaining save in the sync.
+      if (!file?.path) {
+        this.granolaIdCache.delete(cacheKey);
+        continue;
+      }
       if (normalizePath(file.path) === normalizedPath) {
         this.granolaIdCache.delete(cacheKey);
         return file;
@@ -323,7 +332,7 @@ export class FileSyncService {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const newFile = await this.app.vault.create(candidate, content);
-        this.updateCache(granolaId, newFile, type);
+        this.cacheCreatedFile(granolaId, newFile, candidate, type);
         if (candidate === normalizedPath) {
           log.debug(`Created ${type} file: ${candidate} (granolaId=${granolaId})`);
         } else {
@@ -345,6 +354,35 @@ export class FileSyncService {
 
     throw new Error(
       `Could not find an available filename for ${normalizedPath} after ${maxAttempts} attempts`
+    );
+  }
+
+  /**
+   * Caches a freshly created file, working around `vault.create` resolving null.
+   *
+   * Obsidian writes the file through the vault adapter and then looks the path
+   * up in its in-memory file index, returning `null` when that lookup misses —
+   * even though the declared return type is `Promise<TFile>`. The index is
+   * populated from a filesystem watcher event, so the miss is a timing window,
+   * not a failed write. Caching that null poisoned `granolaIdCache` and made
+   * every later cache scan throw `Cannot read properties of null`.
+   */
+  private cacheCreatedFile(
+    granolaId: string,
+    created: TFile | null,
+    candidate: string,
+    type: "note" | "transcript" | "combined"
+  ): void {
+    const file = created ?? this.app.vault.getFileByPath(candidate);
+    if (file) {
+      this.updateCache(granolaId, file, type);
+      return;
+    }
+
+    // The file is on disk but not yet indexed. Leave it out of the cache: the
+    // next sync rebuilds the cache from frontmatter and picks it up in place.
+    log.warn(
+      `Created ${type} file ${candidate} (granolaId=${granolaId}) but the vault has not indexed it yet — skipping cache entry`
     );
   }
 
