@@ -29,6 +29,10 @@ import {
   formatTranscriptBySpeaker,
   formatTranscriptBody,
 } from "./services/transcriptFormatter";
+import {
+  importLegacySettings,
+  hasNoExistingSettings,
+} from "./services/legacySettingsImport";
 import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
@@ -100,9 +104,22 @@ export default class GranolaSync extends Plugin {
   }
 
   async loadSettings() {
-    const loadedData = (await this.loadData()) as
+    let loadedData = (await this.loadData()) as
       | (Partial<GranolaSyncSettings> & LegacySettings)
       | null;
+
+    // On a fresh install, adopt settings left behind in a plugin folder we
+    // previously shipped under, so an id change doesn't reset the user.
+    let importedFrom: string | null = null;
+    if (hasNoExistingSettings(loadedData)) {
+      const imported = await this.importSettingsFromPreviousPluginId();
+      if (imported) {
+        loadedData = imported.settings as Partial<GranolaSyncSettings> &
+          LegacySettings;
+        importedFrom = imported.pluginId;
+      }
+    }
+
     const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
     scrubRemovedSettings(mergedSettings as unknown as Record<string, unknown>);
 
@@ -116,6 +133,35 @@ export default class GranolaSync extends Plugin {
     } else {
       // Already in new format
       this.settings = mergedSettings;
+    }
+
+    if (importedFrom) {
+      // Persist immediately so the import runs exactly once.
+      await this.saveData(this.settings);
+      log.info(`Imported settings from previous plugin id "${importedFrom}"`);
+      new Notice(
+        `Granola sync: imported your settings from the previous "${importedFrom}" plugin folder.`
+      );
+    }
+  }
+
+  /**
+   * Reads settings from a plugin folder this plugin used to live under.
+   * Best-effort: any failure leaves the user on defaults rather than blocking
+   * plugin load.
+   */
+  private async importSettingsFromPreviousPluginId(): Promise<{
+    pluginId: string;
+    settings: Record<string, unknown>;
+  } | null> {
+    try {
+      const vault = this.app?.vault;
+      const adapter = vault?.adapter;
+      if (!adapter?.exists || !adapter?.read || !vault?.configDir) return null;
+      return await importLegacySettings(adapter, vault.configDir);
+    } catch (error) {
+      log.warn("Could not import settings from a previous plugin id", error);
+      return null;
     }
   }
 

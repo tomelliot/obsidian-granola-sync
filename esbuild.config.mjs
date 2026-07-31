@@ -28,7 +28,7 @@ const DEV_PLUGIN_PATH =
   process.env.DEV_PLUGIN_PATH ||
   path.join(
     process.env.HOME,
-    "obsidian/Everything/.obsidian/plugins/granola-api-sync/main.js"
+    "obsidian/Everything/.obsidian/plugins/granola-oauth-sync/main.js"
   );
 
 function copyToOutput() {

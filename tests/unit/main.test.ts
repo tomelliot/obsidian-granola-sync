@@ -881,4 +881,75 @@ describe("GranolaSync", () => {
     });
   });
 
+  describe("loadSettings — import from a previous plugin id", () => {
+    const LEGACY_DATA = {
+      apiKey: "grn_carried_over",
+      saveAsIndividualFiles: true,
+      customBaseFolder: "Meetings",
+      subfolderPattern: "year-month",
+      titleFilterMode: "disabled",
+    };
+
+    function withAdapter(files: Record<string, string>) {
+      (mockApp.vault as any).configDir = ".obsidian";
+      (mockApp.vault as any).adapter = {
+        exists: jest.fn(async (p: string) => p in files),
+        read: jest.fn(async (p: string) => files[p]),
+      };
+    }
+
+    it("adopts settings from the old granola-api-sync folder on a fresh install", async () => {
+      withAdapter({
+        ".obsidian/plugins/granola-api-sync/data.json": JSON.stringify(LEGACY_DATA),
+      });
+      plugin.loadData = jest.fn().mockResolvedValue(null);
+      plugin.saveData = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.loadSettings();
+
+      expect(plugin.settings.customBaseFolder).toBe("Meetings");
+      expect(plugin.settings.subfolderPattern).toBe("year-month");
+      expect(plugin.settings.apiKey).toBe("grn_carried_over");
+      // Persisted immediately so the import runs exactly once.
+      expect(plugin.saveData).toHaveBeenCalledWith(plugin.settings);
+    });
+
+    it("ignores the old folder once this plugin has its own settings", async () => {
+      withAdapter({
+        ".obsidian/plugins/granola-api-sync/data.json": JSON.stringify(LEGACY_DATA),
+      });
+      plugin.loadData = jest.fn().mockResolvedValue({ customBaseFolder: "Mine" });
+      plugin.saveData = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.loadSettings();
+
+      expect(plugin.settings.customBaseFolder).toBe("Mine");
+      expect(plugin.saveData).not.toHaveBeenCalled();
+    });
+
+    it("does not adopt a colliding plugin's settings", async () => {
+      withAdapter({
+        ".obsidian/plugins/granola-api-sync/data.json": JSON.stringify({
+          apiKey: "grn_theirs",
+          outputFolder: "Meetings",
+        }),
+      });
+      plugin.loadData = jest.fn().mockResolvedValue(null);
+      plugin.saveData = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.loadSettings();
+
+      expect(plugin.settings.apiKey).toBe("");
+      expect(plugin.settings.customBaseFolder).toBe(DEFAULT_SETTINGS.customBaseFolder);
+    });
+
+    it("falls back to defaults when the vault adapter is unavailable", async () => {
+      plugin.loadData = jest.fn().mockResolvedValue(null);
+      plugin.saveData = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.loadSettings();
+
+      expect(plugin.settings).toEqual(DEFAULT_SETTINGS);
+    });
+  });
 });

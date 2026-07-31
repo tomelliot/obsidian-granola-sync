@@ -1,4 +1,4 @@
-# Granola API Sync for Obsidian
+# Granola OAuth sync for Obsidian
 
 Sync your [Granola](https://granola.ai) meeting notes and transcripts into your Obsidian vault as plain Markdown — searchable, linkable, and yours to keep — using the **official Granola API** with an API key you create yourself.
 
@@ -19,7 +19,9 @@ This plugin is currently distributed via [BRAT](https://github.com/TfTHacker/obs
 1. In Obsidian, install **BRAT** from Community Plugins and enable it.
 2. Run the command **BRAT: Add a beta plugin for testing** (or BRAT settings → *Add beta plugin*).
 3. Enter `kayacancode/obsidian-granola-sync` and install.
-4. Enable **Granola API Sync** in Settings → Community plugins.
+4. Enable **Granola OAuth sync** in Settings → Community plugins.
+
+> **Upgrading from 0.1.x?** Versions 0.1.0–0.1.2 shipped with the plugin id `granola-api-sync`, which is also the id of an unrelated community-store plugin of the same name. Obsidian keys plugins by id, so "Check for updates" kept replacing this plugin with that one and leaving you without your settings. Version 0.2.0 moves to the id `granola-oauth-sync`, which ends the collision. Install 0.2.0, then **remove the old beta from BRAT and delete `.obsidian/plugins/granola-api-sync/`** if you don't want the other plugin — your settings are carried over automatically on first load (see below).
 
 ## Setup
 
@@ -46,19 +48,18 @@ If you used the original Granola Sync plugin:
 
 ### Carrying over your settings
 
-Your folder choices, filename patterns, transcript handling, sync interval, and filters can be copied straight from the original plugin — each plugin stores its settings at `.obsidian/plugins/<plugin-id>/data.json` inside your vault:
+This happens automatically. Each plugin stores its settings at `.obsidian/plugins/<plugin-id>/data.json` inside your vault, and on its **first load with no settings of its own**, Granola OAuth sync looks for settings left behind by a plugin id it previously shipped under — first `granola-api-sync` (versions 0.1.x), then `granola-sync` (Tom Elliot's original) — and adopts the first one it finds, including your API key. You'll see a notice confirming which folder it read from.
 
-1. Install Granola API Sync via BRAT and enable it once (this creates the `.obsidian/plugins/granola-api-sync/` folder), then **disable it** — Obsidian writes settings on unload, so copying while it's active can get overwritten.
-2. Copy the old settings file over the new one (show hidden files in Finder with `Cmd+Shift+.`, or use a terminal):
+Because `granola-api-sync` is also the id of an unrelated community-store plugin, the import only adopts a `data.json` that carries this plugin's own setting keys; if that folder now belongs to the other plugin, it is skipped rather than imported.
 
-   ```bash
-   cp "<YourVault>/.obsidian/plugins/granola-sync/data.json" \
-      "<YourVault>/.obsidian/plugins/granola-api-sync/data.json"
-   ```
+If you'd rather do it by hand — or the automatic import already ran and you want to redo it — copy the file yourself with the plugin **disabled** (Obsidian writes settings on unload, so copying while it's active can get overwritten):
 
-3. Re-enable Granola API Sync and paste your API key in its settings.
+```bash
+cp "<YourVault>/.obsidian/plugins/granola-sync/data.json" \
+   "<YourVault>/.obsidian/plugins/granola-oauth-sync/data.json"
+```
 
-The plugin cleans up the copied file automatically: removed settings are deleted on load, the API key starts empty until you paste one, and the old plugin's cached folder map is replaced on the first sync.
+Either way the plugin cleans up on load: removed settings are deleted, and the old plugin's cached folder map is replaced on the first sync.
 
 ## Features
 
