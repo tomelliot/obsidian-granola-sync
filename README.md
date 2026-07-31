@@ -21,7 +21,9 @@ This plugin is currently distributed via [BRAT](https://github.com/TfTHacker/obs
 3. Enter `kayacancode/obsidian-granola-sync` and install.
 4. Enable **Granola OAuth sync** in Settings → Community plugins.
 
-> **Upgrading from 0.1.x?** Versions 0.1.0–0.1.2 shipped with the plugin id `granola-api-sync`, which is also the id of an unrelated community-store plugin of the same name. Obsidian keys plugins by id, so "Check for updates" kept replacing this plugin with that one and leaving you without your settings. Version 0.2.0 moves to the id `granola-oauth-sync`, which ends the collision. Install 0.2.0, then **remove the old beta from BRAT and delete `.obsidian/plugins/granola-api-sync/`** if you don't want the other plugin — your settings are carried over automatically on first load (see below).
+> **Upgrading from 0.1.x?** Versions 0.1.0–0.1.2 shipped with the plugin id `granola-api-sync`, which is also the id of an unrelated community-store plugin of the same name. Obsidian keys plugins by id, so "Check for updates" kept replacing this plugin with that one and leaving you without your settings. Version 0.2.0 moves to the id `granola-oauth-sync`, which ends the collision.
+>
+> Just run BRAT's update check — it tracks this plugin by repository, not by id, so it installs 0.2.0 into the new folder and enables it for you. No need to remove and re-add the beta. Your settings, including your API key, are carried over automatically on first load (see below). Afterwards, **delete `.obsidian/plugins/granola-api-sync/`** from your vault, since nothing removes it and Obsidian will keep reinstalling the other plugin there.
 
 ## Setup
 
