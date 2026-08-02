@@ -1,6 +1,13 @@
 # Obsidian Granola Sync
 
 > **⚠️ Deprecated.** Granola **7.427.0** (macOS) broke this plugin. That release deleted the on-disk `storage.dek` file and moved the data-encryption key into a Keychain item locked to Granola's own app - any other process, Obsidian included, can't read it. The plugin decrypts Granola's credentials by unwrapping `storage.dek`, so once it's gone the plugin can't authenticate, and the lock can't be lifted by approving a prompt. There is no workaround. Windows and Linux are unaffected so far. Full detail in [docs/CREDENTIALS.md](docs/CREDENTIALS.md).
+>
+> **Successor: [All Ears](https://github.com/tomelliot/all-ears)** — local, composable, split by source (instead of untangled later). A small daemon continuously records every audio source you configure (microphone, system audio, per-app audio, meeting-tab audio) into a rolling local buffer, transcribes live while you're in the meeting, then cleans up and summarises when it ends.
+>
+> - **Small tools, not one app.** Capture, transcription, cleanup, and summarisation are separate command-line tools that read and write plain files, instead of one inscrutable binary. Script them, replace one, extend them.
+> - **Knows who said what, by name, on Google Meet.** The browser extension isolates each remote participant's audio into its own stream and reads their real display name straight off the call UI, without manual labelling or voice-print guessing. Zoom gets the same per-participant separation from the call's own tracks. Teams gets attributed Speaker N streams instead.
+> - **Sources are separated before transcription, not after.** Mic, system audio, each app, and each meeting participant are captured as distinct streams from the start. Transcription and diarization run on a clean single-speaker signal instead of untangling a blended recording after the fact, so accuracy and speaker attribution are both better for it.
+> - **Local-first.** Audio and transcripts stay on disk on your Mac; transcription runs on the Neural Engine. The only network calls are the one-time speech-model download and whichever LLM you configure for cleanup and summaries.
 
 [![Release](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml)
 [![codecov](https://codecov.io/gh/tomelliot/obsidian-granola-sync/graph/badge.svg?token=UALN2224PQ)](https://codecov.io/gh/tomelliot/obsidian-granola-sync)
