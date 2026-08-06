@@ -56,6 +56,55 @@ function updatePackageVersion(newVersion) {
   log(`Updated package.json version to: ${newVersion}`, colors.green);
 }
 
+/**
+ * Records the new version in versions.json, which Obsidian reads to decide
+ * which plugin release a given app version may install. A release missing its
+ * entry here is invisible to older Obsidian versions.
+ */
+function updateVersionsJson(newVersion) {
+  const versionsPath = path.join(__dirname, "..", "versions.json");
+  const manifestPath = path.join(__dirname, "..", "manifest.json");
+  const { minAppVersion } = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const versions = JSON.parse(fs.readFileSync(versionsPath, "utf8"));
+  const isNewEntry = !(newVersion in versions);
+  versions[newVersion] = minAppVersion;
+  fs.writeFileSync(versionsPath, JSON.stringify(versions, null, 2) + "\n");
+  log(
+    `Updated versions.json: ${newVersion} -> minAppVersion ${minAppVersion}`,
+    colors.green
+  );
+  return isNewEntry;
+}
+
+function removeVersionFromVersionsJson(version) {
+  const versionsPath = path.join(__dirname, "..", "versions.json");
+  const versions = JSON.parse(fs.readFileSync(versionsPath, "utf8"));
+  delete versions[version];
+  fs.writeFileSync(versionsPath, JSON.stringify(versions, null, 2) + "\n");
+}
+
+function branchExists(branch) {
+  try {
+    execSync(`git show-ref --verify --quiet refs/heads/${branch}`, {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tagExists(tag) {
+  try {
+    execSync(`git rev-parse --verify --quiet refs/tags/${tag}`, {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function bumpPatchVersion(currentVersion) {
   const [major, minor, patch] = currentVersion.split(".").map(Number);
   return `${major}.${minor}.${patch + 1}`;
@@ -85,20 +134,52 @@ function checkWorkingDirectory() {
   }
 }
 
-function checkBranch() {
+/**
+ * Asks a yes/no question. With --yes, or when there is no terminal to prompt
+ * on, falls back to `autoAnswer` instead of throwing — a release run from CI
+ * or a pipe must not hang waiting on stdin.
+ */
+function confirm(question, { assumeYes, autoAnswer = false }) {
+  if (assumeYes) {
+    log(`${question} y (--yes)`, colors.cyan);
+    return true;
+  }
+  if (!process.stdin.isTTY) {
+    log(
+      `${question} — no terminal to prompt on; pass --yes to confirm.`,
+      colors.yellow
+    );
+    return autoAnswer;
+  }
+  const response = require("readline-sync").question(question);
+  return response.toLowerCase() === "y";
+}
+
+function checkBranch(assumeYes) {
   const currentBranch = exec("git branch --show-current").trim();
   if (currentBranch !== "main") {
     log(
       `You are not on the main branch (current: ${currentBranch})`,
       colors.yellow
     );
-    const response = require("readline-sync").question(
-      "Continue anyway? (y/N): "
-    );
-    if (response.toLowerCase() !== "y") {
+    if (!confirm("Continue anyway? (y/N): ", { assumeYes })) {
       log("Release cancelled.", colors.red);
       process.exit(1);
     }
+  }
+}
+
+function checkTagAvailable(version) {
+  if (tagExists(version)) {
+    log(
+      `Tag ${version} already exists — that version has already been released.`,
+      colors.red
+    );
+    log(
+      `Pick a new version number, or delete the tag if the release was aborted.`,
+      colors.yellow
+    );
+    process.exit(1);
   }
 }
 
@@ -118,32 +199,42 @@ function commitAndTag(version) {
   const tagName = version; // Use version directly without 'v' prefix
 
   log(`Committing changes...`, colors.blue);
-  exec(`git add manifest.json package.json`);
+  exec(`git add manifest.json package.json versions.json`);
   exec(`git commit -m "Release ${version}"`);
 
   log(`Creating tag ${tagName}...`, colors.blue);
   exec(`git tag ${tagName}`);
 
-  log(`Fast-forwarding develop branch...`, colors.blue);
-  // Switch to develop branch
-  exec(`git checkout develop`);
-  // Fast-forward develop to match main
-  exec(`git merge --ff-only main`);
-  // Switch back to main
-  exec(`git checkout main`);
-  log(`✓ develop branch fast-forwarded to main`, colors.green);
+  // develop is optional — it does not exist in every clone of this repo.
+  if (branchExists("develop")) {
+    log(`Fast-forwarding develop branch...`, colors.blue);
+    exec(`git checkout develop`);
+    exec(`git merge --ff-only main`);
+    exec(`git checkout main`);
+    log(`✓ develop branch fast-forwarded to main`, colors.green);
+  } else {
+    log(`No develop branch — skipping fast-forward`, colors.cyan);
+  }
 
   log(`Pushing changes and tag...`, colors.blue);
   exec(`git push origin main`);
   exec(`git push origin ${tagName}`);
-  exec(`git push origin develop`);
+  if (branchExists("develop")) {
+    exec(`git push origin develop`);
+  }
 
   log(`✓ Successfully released ${tagName}`, colors.green);
+  log(
+    `The GitHub Action will build a DRAFT release — add notes and publish it.`,
+    colors.yellow
+  );
 }
 
 function main() {
+  const args = process.argv.slice(2);
+  const assumeYes = args.includes("--yes") || args.includes("-y");
   const currentVersion = getCurrentVersion();
-  let version = process.argv[2];
+  let version = args.find((arg) => !arg.startsWith("-"));
 
   log(`🚀 Starting release process...`, colors.bright);
 
@@ -158,12 +249,14 @@ function main() {
 
   // Validate inputs
   validateVersion(version);
+  checkTagAvailable(version);
   checkWorkingDirectory();
-  checkBranch();
+  checkBranch(assumeYes);
 
-  // Update versions in both files
+  // Update the three files that carry the version
   updateManifestVersion(version);
   updatePackageVersion(version);
+  const addedVersionsEntry = updateVersionsJson(version);
 
   // Run tests and build
   runTests();
@@ -171,14 +264,13 @@ function main() {
 
   // Confirm before pushing
   log(`\nReady to release version ${version}`, colors.bright);
-  const response = require("readline-sync").question(
-    "Continue with commit, tag, and push? (y/N): "
-  );
-
-  if (response.toLowerCase() !== "y") {
+  if (
+    !confirm("Continue with commit, tag, and push? (y/N): ", { assumeYes })
+  ) {
     log("Release cancelled. Reverting changes...", colors.yellow);
     updateManifestVersion(currentVersion);
     updatePackageVersion(currentVersion);
+    if (addedVersionsEntry) removeVersionFromVersionsJson(version);
     process.exit(0);
   }
 
@@ -186,15 +278,17 @@ function main() {
   commitAndTag(version);
 
   log(`\n🎉 Release ${version} completed!`, colors.green);
-  log("The GitHub Action will now create the release draft.", colors.cyan);
 }
 
-// Check if readline-sync is available, if not provide fallback
+// readline-sync is a devDependency, but only needed for interactive prompts —
+// a --yes run must not fail (or install anything) when it is missing.
 try {
   require.resolve("readline-sync");
 } catch (e) {
-  log("Installing readline-sync for interactive prompts...", colors.yellow);
-  exec("npm install --save-dev readline-sync");
+  log(
+    "readline-sync is not installed — run with --yes, or `pnpm install`.",
+    colors.yellow
+  );
 }
 
 main();

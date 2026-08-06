@@ -15,15 +15,17 @@ export function formatTranscriptBody(
   let currentSpeaker: string | null = null;
   let currentStart: string | null = null;
   let currentText: string[] = [];
-  const getSpeaker = (source: string) =>
-    source === "microphone" ? "You" : "Guest";
+  const getSpeaker = (entry: TranscriptEntry) =>
+    entry.speaker.name ??
+    entry.speaker.diarization_label ??
+    (entry.speaker.source === "microphone" ? "You" : "Guest");
 
   for (let i = 0; i < transcriptData.length; i++) {
     const entry = transcriptData[i];
-    const speaker = getSpeaker(entry.source);
+    const speaker = getSpeaker(entry);
     if (currentSpeaker === null) {
       currentSpeaker = speaker;
-      currentStart = entry.start_timestamp;
+      currentStart = entry.start_time;
       currentText = [entry.text];
     } else if (speaker === currentSpeaker) {
       currentText.push(entry.text);
@@ -37,7 +39,7 @@ export function formatTranscriptBody(
       transcriptMd += currentText.join(" ") + "\n\n";
       // Start new block
       currentSpeaker = speaker;
-      currentStart = entry.start_timestamp;
+      currentStart = entry.start_time;
       currentText = [entry.text];
     }
   }

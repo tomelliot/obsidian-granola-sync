@@ -1,12 +1,11 @@
 import GranolaSync from "../../src/main";
 import { DEFAULT_SETTINGS, migrateSettingsToNewFormat } from "../../src/settings";
 import {
-  getAllDocuments,
-  getRecentDocuments,
-  fetchGranolaTranscript,
+  listAllNoteSummaries,
+  fetchNoteDetail,
+  GranolaAuthError,
   GranolaDoc,
 } from "../../src/services/granolaApi";
-import { loadCredentials } from "../../src/services/credentials";
 import { FileSyncService } from "../../src/services/fileSyncService";
 import { DocumentProcessor } from "../../src/services/documentProcessor";
 import { DailyNoteBuilder } from "../../src/services/dailyNoteBuilder";
@@ -21,8 +20,16 @@ import moment from "moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
 
 // Mock dependencies with side effects
-jest.mock("../../src/services/granolaApi");
-jest.mock("../../src/services/credentials");
+jest.mock("../../src/services/granolaApi", () => {
+  const actual = jest.requireActual("../../src/services/granolaApi");
+  return {
+    ...actual,
+    listAllNoteSummaries: jest.fn(),
+    fetchNoteDetail: jest.fn(),
+    listAllFolders: jest.fn(),
+    verifyApiKey: jest.fn(),
+  };
+});
 jest.mock("../../src/services/fileSyncService");
 jest.mock("../../src/services/documentProcessor");
 jest.mock("../../src/services/dailyNoteBuilder");
@@ -152,7 +159,6 @@ describe("GranolaSync", () => {
       plugin.settings = {
         ...DEFAULT_SETTINGS,
         syncTranscripts: true,
-        includePrivateNotes: true,
       };
 
       // Access private method via type assertion
@@ -165,10 +171,7 @@ describe("GranolaSync", () => {
         expect.any(Function)
       );
       expect(DocumentProcessor).toHaveBeenCalledWith(
-        {
-          syncTranscripts: true,
-          includePrivateNotes: true,
-        },
+        { syncTranscripts: true },
         mockPathResolver
       );
       expect(DailyNoteBuilder).toHaveBeenCalledWith(mockApp, mockDocumentProcessor);
@@ -310,86 +313,66 @@ describe("GranolaSync", () => {
   });
 
   describe("sync", () => {
-    const mockAccessToken = "test-token";
+    const mockApiKey = "grn_testkey";
+    const mockSummary = {
+      id: "doc-1",
+      title: "Test Note",
+      created_at: "2024-01-15T10:00:00Z",
+      updated_at: "2024-01-15T12:00:00Z",
+    };
     const mockDoc: GranolaDoc = {
       id: "doc-1",
       title: "Test Note",
       created_at: "2024-01-15T10:00:00Z",
       updated_at: "2024-01-15T12:00:00Z",
-      last_viewed_panel: {
-        content: {
-          type: "doc",
-          content: [],
+      summary_markdown: "## Summary",
+      transcript: [
+        {
+          speaker: { source: "microphone" },
+          text: "hello",
+          start_time: "2024-01-15T10:00:00Z",
+          end_time: "2024-01-15T10:00:05Z",
         },
-      },
+      ],
     };
 
     beforeEach(() => {
-      (loadCredentials as jest.Mock).mockResolvedValue({
-        accessToken: mockAccessToken,
-        error: null,
-      });
-      (getRecentDocuments as jest.Mock).mockResolvedValue([mockDoc]);
-      (getAllDocuments as jest.Mock).mockResolvedValue([mockDoc]);
+      plugin.settings = { ...DEFAULT_SETTINGS, apiKey: mockApiKey };
+      (listAllNoteSummaries as jest.Mock).mockResolvedValue([mockSummary]);
+      (fetchNoteDetail as jest.Mock).mockResolvedValue(mockDoc);
       (plugin as any).initializeServices();
     });
 
-    it("should handle credential loading failure", async () => {
-      (loadCredentials as jest.Mock).mockResolvedValue({
-        accessToken: null,
-        error: "No credentials found",
-      });
+    it("should refuse to sync without an API key", async () => {
+      plugin.settings.apiKey = "";
 
       await plugin.sync();
 
       expect(Notice).toHaveBeenCalledWith(
-        "Granola sync error: No credentials found",
+        expect.stringContaining("No API key configured"),
+        10000
+      );
+      expect(listAllNoteSummaries).not.toHaveBeenCalled();
+    });
+
+    it("should handle a rejected API key", async () => {
+      (listAllNoteSummaries as jest.Mock).mockRejectedValue(
+        new GranolaAuthError()
+      );
+
+      await plugin.sync();
+
+      expect(Notice).toHaveBeenCalledWith(
+        expect.stringContaining("rejected your API key"),
         10000
       );
       expect(hideStatusBar).toHaveBeenCalledWith(plugin);
-      expect(getRecentDocuments).not.toHaveBeenCalled();
-    });
-
-    it("should handle 401 authentication error", async () => {
-      const error = { status: 401 };
-      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
-
-      await plugin.sync();
-
-      expect(Notice).toHaveBeenCalledWith(
-        expect.stringContaining("Authentication failed"),
-        10000
-      );
-      expect(hideStatusBar).toHaveBeenCalledWith(plugin);
-    });
-
-    it("should handle 403 forbidden error", async () => {
-      const error = { status: 403 };
-      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
-
-      await plugin.sync();
-
-      expect(Notice).toHaveBeenCalledWith(
-        expect.stringContaining("Access forbidden"),
-        10000
-      );
-    });
-
-    it("should handle 404 not found error", async () => {
-      const error = { status: 404 };
-      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
-
-      await plugin.sync();
-
-      expect(Notice).toHaveBeenCalledWith(
-        expect.stringContaining("API endpoint not found"),
-        10000
-      );
     });
 
     it("should handle 500+ server errors", async () => {
-      const error = { status: 500 };
-      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
+      const error = new Error("server");
+      (error as any).status = 500;
+      (listAllNoteSummaries as jest.Mock).mockRejectedValue(error);
 
       await plugin.sync();
 
@@ -401,51 +384,67 @@ describe("GranolaSync", () => {
 
     it("should handle network errors", async () => {
       const error = new Error("Network error");
-      (getRecentDocuments as jest.Mock).mockRejectedValue(error);
+      (listAllNoteSummaries as jest.Mock).mockRejectedValue(error);
 
       await plugin.sync();
 
       expect(Notice).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to fetch documents"),
+        expect.stringContaining("Failed to fetch notes"),
         10000
       );
     });
 
-    it("should handle empty document responses in standard mode", async () => {
-      (getRecentDocuments as jest.Mock).mockResolvedValue([]);
+    it("should notify when everything is up to date", async () => {
+      (listAllNoteSummaries as jest.Mock).mockResolvedValue([]);
 
       await plugin.sync();
 
       expect(Notice).toHaveBeenCalledWith(
-        expect.stringContaining("No documents found within the last"),
+        expect.stringContaining("Everything up to date"),
         5000
       );
       expect(hideStatusBar).toHaveBeenCalledWith(plugin);
     });
 
-    it("should handle empty document responses in full mode", async () => {
-      (getAllDocuments as jest.Mock).mockResolvedValue([]);
+    it("should skip hydrating notes whose local copy is up to date", async () => {
+      mockFileSyncService.findByGranolaId.mockReturnValue({
+        path: "Notes/Test Note.md",
+      } as any);
+      mockFileSyncService.isRemoteNewer.mockReturnValue(false);
 
-      await plugin.sync({ mode: "full" });
+      await plugin.sync();
 
-      expect(Notice).toHaveBeenCalledWith(
-        expect.stringContaining("No documents returned from Granola API"),
-        5000
-      );
+      expect(fetchNoteDetail).not.toHaveBeenCalled();
     });
 
-    it("should use full sync mode when specified", async () => {
-      plugin.settings = { ...DEFAULT_SETTINGS, syncNotes: true, syncTranscripts: false };
-
-      await plugin.sync({ mode: "full" });
-
-      expect(getAllDocuments).toHaveBeenCalledWith(mockAccessToken, 100, true);
-      expect(getRecentDocuments).not.toHaveBeenCalled();
-    });
-
-    it("should use standard mode by default", async () => {
+    it("should list all notes in full sync mode", async () => {
       plugin.settings = {
         ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
+        syncNotes: true,
+        syncTranscripts: false,
+      };
+
+      await plugin.sync({ mode: "full" });
+
+      expect(listAllNoteSummaries).toHaveBeenCalledWith(mockApiKey, 0);
+    });
+
+    it("should hydrate all notes in full sync mode even when local copies exist", async () => {
+      mockFileSyncService.findByGranolaId.mockReturnValue({
+        path: "Notes/Test Note.md",
+      } as any);
+      mockFileSyncService.isRemoteNewer.mockReturnValue(false);
+
+      await plugin.sync({ mode: "full" });
+
+      expect(fetchNoteDetail).toHaveBeenCalledWith(mockApiKey, "doc-1", false);
+    });
+
+    it("should pass syncDaysBack in standard mode", async () => {
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
         syncNotes: true,
         syncTranscripts: false,
         syncDaysBack: 7,
@@ -453,39 +452,48 @@ describe("GranolaSync", () => {
 
       await plugin.sync();
 
-      expect(getRecentDocuments).toHaveBeenCalledWith(
-        mockAccessToken,
-        7,
-        100,
-        true
-      );
-      expect(getAllDocuments).not.toHaveBeenCalled();
+      expect(listAllNoteSummaries).toHaveBeenCalledWith(mockApiKey, 7);
     });
 
-    it("should sync both notes and transcripts when both enabled", async () => {
+    it("should request transcripts with note detail when transcripts enabled", async () => {
       plugin.settings = {
         ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
         syncNotes: true,
         syncTranscripts: true,
       };
-      const mockTranscriptMap = new Map([["doc-1", []]]);
-      (plugin as any).syncTranscripts = jest.fn().mockResolvedValue({
-        transcriptDataMap: mockTranscriptMap,
-      });
+      (plugin as any).saveTranscriptFiles = jest.fn().mockResolvedValue(undefined);
       (plugin as any).syncNotes = jest.fn().mockResolvedValue(undefined);
       (plugin as any).updateCrossLinks = jest.fn().mockResolvedValue(undefined);
 
       await plugin.sync();
 
-      expect((plugin as any).syncTranscripts).toHaveBeenCalledWith(
+      expect(fetchNoteDetail).toHaveBeenCalledWith(mockApiKey, "doc-1", true);
+    });
+
+    it("should sync both notes and transcripts when both enabled", async () => {
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
+        syncNotes: true,
+        syncTranscripts: true,
+      };
+      (plugin as any).saveTranscriptFiles = jest.fn().mockResolvedValue(undefined);
+      (plugin as any).syncNotes = jest.fn().mockResolvedValue(undefined);
+      (plugin as any).updateCrossLinks = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.sync();
+
+      const expectedMap = new Map([["doc-1", mockDoc.transcript]]);
+      expect((plugin as any).saveTranscriptFiles).toHaveBeenCalledWith(
         [mockDoc],
-        mockAccessToken,
+        expectedMap,
         false
       );
       expect((plugin as any).syncNotes).toHaveBeenCalledWith(
         [mockDoc],
         false,
-        mockTranscriptMap,
+        expectedMap,
         {}
       );
       expect((plugin as any).updateCrossLinks).toHaveBeenCalledWith([mockDoc]);
@@ -494,34 +502,53 @@ describe("GranolaSync", () => {
     it("should use forceOverwrite in full sync mode", async () => {
       plugin.settings = {
         ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
         syncNotes: true,
         syncTranscripts: true,
       };
-      const mockTranscriptMap = new Map([["doc-1", []]]);
-      (plugin as any).syncTranscripts = jest.fn().mockResolvedValue({
-        transcriptDataMap: mockTranscriptMap,
-      });
+      (plugin as any).saveTranscriptFiles = jest.fn().mockResolvedValue(undefined);
       (plugin as any).syncNotes = jest.fn().mockResolvedValue(undefined);
       (plugin as any).updateCrossLinks = jest.fn().mockResolvedValue(undefined);
 
       await plugin.sync({ mode: "full" });
 
-      expect((plugin as any).syncTranscripts).toHaveBeenCalledWith(
+      const expectedMap = new Map([["doc-1", mockDoc.transcript]]);
+      expect((plugin as any).saveTranscriptFiles).toHaveBeenCalledWith(
         [mockDoc],
-        mockAccessToken,
+        expectedMap,
         true
       );
       expect((plugin as any).syncNotes).toHaveBeenCalledWith(
         [mockDoc],
         true,
-        mockTranscriptMap,
+        expectedMap,
         {}
       );
+    });
+
+    it("should not save separate transcript files in combined mode", async () => {
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
+        syncNotes: true,
+        syncTranscripts: true,
+        saveAsIndividualFiles: true,
+        transcriptHandling: "combined",
+      };
+      (plugin as any).saveTranscriptFiles = jest.fn().mockResolvedValue(undefined);
+      (plugin as any).syncNotes = jest.fn().mockResolvedValue(undefined);
+      (plugin as any).updateCrossLinks = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.sync();
+
+      expect((plugin as any).saveTranscriptFiles).not.toHaveBeenCalled();
+      expect((plugin as any).syncNotes).toHaveBeenCalled();
     });
 
     it("should show success message after sync", async () => {
       plugin.settings = {
         ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
         syncNotes: true,
         syncTranscripts: false,
       };
@@ -541,6 +568,7 @@ describe("GranolaSync", () => {
       // updateCrossLinks, every cache lookup in updateCrossLinks misses.
       plugin.settings = {
         ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
         syncNotes: true,
         syncTranscripts: false,
       };
@@ -556,6 +584,7 @@ describe("GranolaSync", () => {
       // so updateCrossLinks finds no transcripts and writes no cross-links.
       plugin.settings = {
         ...DEFAULT_SETTINGS,
+        apiKey: mockApiKey,
         syncNotes: true,
         syncTranscripts: false,
       };
@@ -573,12 +602,7 @@ describe("GranolaSync", () => {
       title: "Transcript Link Test",
       created_at: "2024-01-15T10:00:00Z",
       updated_at: "2024-01-15T12:00:00Z",
-      last_viewed_panel: {
-        content: {
-          type: "doc",
-          content: [],
-        },
-      },
+      summary_markdown: "## Summary",
     };
 
     beforeEach(() => {
@@ -620,9 +644,7 @@ describe("GranolaSync", () => {
       title: "Cross Link Test",
       created_at: "2024-01-15T10:00:00Z",
       updated_at: "2024-01-15T12:00:00Z",
-      last_viewed_panel: {
-        content: { type: "doc", content: [] },
-      },
+      summary_markdown: "## Summary",
     };
 
     // Captures `processFrontMatter` calls as `{ file, fm }` after the callback ran.
@@ -797,12 +819,7 @@ describe("GranolaSync", () => {
       title: "Daily Scrum",
       created_at: "2024-01-15T10:00:00Z",
       updated_at: "2024-01-15T12:00:00Z",
-      last_viewed_panel: {
-        content: {
-          type: "doc",
-          content: [],
-        },
-      },
+      summary_markdown: "## Summary",
     };
 
     beforeEach(() => {
@@ -864,4 +881,75 @@ describe("GranolaSync", () => {
     });
   });
 
+  describe("loadSettings — import from a previous plugin id", () => {
+    const LEGACY_DATA = {
+      apiKey: "grn_carried_over",
+      saveAsIndividualFiles: true,
+      customBaseFolder: "Meetings",
+      subfolderPattern: "year-month",
+      titleFilterMode: "disabled",
+    };
+
+    function withAdapter(files: Record<string, string>) {
+      (mockApp.vault as any).configDir = ".obsidian";
+      (mockApp.vault as any).adapter = {
+        exists: jest.fn(async (p: string) => p in files),
+        read: jest.fn(async (p: string) => files[p]),
+      };
+    }
+
+    it("adopts settings from the old granola-api-sync folder on a fresh install", async () => {
+      withAdapter({
+        ".obsidian/plugins/granola-api-sync/data.json": JSON.stringify(LEGACY_DATA),
+      });
+      plugin.loadData = jest.fn().mockResolvedValue(null);
+      plugin.saveData = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.loadSettings();
+
+      expect(plugin.settings.customBaseFolder).toBe("Meetings");
+      expect(plugin.settings.subfolderPattern).toBe("year-month");
+      expect(plugin.settings.apiKey).toBe("grn_carried_over");
+      // Persisted immediately so the import runs exactly once.
+      expect(plugin.saveData).toHaveBeenCalledWith(plugin.settings);
+    });
+
+    it("ignores the old folder once this plugin has its own settings", async () => {
+      withAdapter({
+        ".obsidian/plugins/granola-api-sync/data.json": JSON.stringify(LEGACY_DATA),
+      });
+      plugin.loadData = jest.fn().mockResolvedValue({ customBaseFolder: "Mine" });
+      plugin.saveData = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.loadSettings();
+
+      expect(plugin.settings.customBaseFolder).toBe("Mine");
+      expect(plugin.saveData).not.toHaveBeenCalled();
+    });
+
+    it("does not adopt a colliding plugin's settings", async () => {
+      withAdapter({
+        ".obsidian/plugins/granola-api-sync/data.json": JSON.stringify({
+          apiKey: "grn_theirs",
+          outputFolder: "Meetings",
+        }),
+      });
+      plugin.loadData = jest.fn().mockResolvedValue(null);
+      plugin.saveData = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.loadSettings();
+
+      expect(plugin.settings.apiKey).toBe("");
+      expect(plugin.settings.customBaseFolder).toBe(DEFAULT_SETTINGS.customBaseFolder);
+    });
+
+    it("falls back to defaults when the vault adapter is unavailable", async () => {
+      plugin.loadData = jest.fn().mockResolvedValue(null);
+      plugin.saveData = jest.fn().mockResolvedValue(undefined);
+
+      await plugin.loadSettings();
+
+      expect(plugin.settings).toEqual(DEFAULT_SETTINGS);
+    });
+  });
 });

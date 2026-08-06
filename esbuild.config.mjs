@@ -4,7 +4,6 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from "node:module";
-import { execFileSync } from "node:child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -31,25 +30,6 @@ const DEV_PLUGIN_PATH =
     process.env.HOME,
     "obsidian/Everything/.obsidian/plugins/granola-sync/main.js"
   );
-
-// Regenerate src/services/embedded{Keyring,Dpapi}Binaries.ts before each build
-// so the bundle picks up the current native binaries. Both files are large
-// (~8 MB / ~350 KB of base64) and not committed — this keeps them fresh after
-// `pnpm install`.
-function regenerateEmbeddedBinaries() {
-  console.log("Regenerating embedded keyring binaries…");
-  execFileSync(
-    process.execPath,
-    [path.join(__dirname, "scripts/generateEmbeddedKeyringBinaries.mjs")],
-    { stdio: "inherit" }
-  );
-  console.log("Regenerating embedded DPAPI binaries…");
-  execFileSync(
-    process.execPath,
-    [path.join(__dirname, "scripts/generateEmbeddedDpapiBinaries.mjs")],
-    { stdio: "inherit" }
-  );
-}
 
 function copyToOutput() {
   const outputDir = path.join(__dirname, "output");
@@ -119,8 +99,6 @@ const copyPlugin = {
     });
   },
 };
-
-regenerateEmbeddedBinaries();
 
 const context = await esbuild.context({
   banner: {

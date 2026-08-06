@@ -17,3 +17,17 @@
   width: auto;
   display: block;
 }
+
+.granola-sync-pattern-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  padding-top: var(--size-2-1);
+}
+
+.granola-sync-pattern-error:empty {
+  display: none;
+}
+
+.granola-sync-pattern-input-invalid {
+  border-color: var(--text-error) !important;
+}

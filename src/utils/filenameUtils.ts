@@ -47,12 +47,19 @@ export const PATTERN_VARIABLES = {
 } as const;
 
 /**
- * Validates a custom pattern string to ensure it only contains valid variables.
+ * Validates a custom pattern string to ensure it only contains valid variables
+ * and no mistyped braces (e.g. "{year)" — which would otherwise pass through
+ * into filenames unsubstituted).
  *
  * @param pattern - The pattern string to validate
+ * @param allowedVariables - Optional subset of variable names to allow
+ *   (defaults to all of PATTERN_VARIABLES)
  * @returns An object with isValid flag and optional error message
  */
-export function validatePattern(pattern: string): {
+export function validatePattern(
+  pattern: string,
+  allowedVariables?: string[]
+): {
   isValid: boolean;
   error?: string;
 } {
@@ -60,21 +67,31 @@ export function validatePattern(pattern: string): {
     return { isValid: false, error: "Pattern cannot be empty" };
   }
 
+  const validVariables = allowedVariables ?? Object.keys(PATTERN_VARIABLES);
+  const validList = validVariables.map((v) => `{${v}}`).join(", ");
+
   // Extract all variables from the pattern
   const variableRegex = /\{([^}]+)\}/g;
   const matches = pattern.matchAll(variableRegex);
-  const validVariables = Object.keys(PATTERN_VARIABLES);
 
   for (const match of matches) {
     const variable = match[1];
     if (!validVariables.includes(variable)) {
       return {
         isValid: false,
-        error: `Invalid variable: {${variable}}. Valid variables are: ${validVariables
-          .map((v) => `{${v}}`)
-          .join(", ")}`,
+        error: `Invalid variable: {${variable}}. Valid variables are: ${validList}`,
       };
     }
+  }
+
+  // Any brace left over after removing valid variables is unmatched or
+  // mistyped (e.g. "{year)" or "(month}") and would end up in filenames.
+  const withoutVariables = pattern.replace(variableRegex, "");
+  if (withoutVariables.includes("{") || withoutVariables.includes("}")) {
+    return {
+      isValid: false,
+      error: `Unmatched brace in pattern. Check that every variable is written like ${validList}`,
+    };
   }
 
   return { isValid: true };

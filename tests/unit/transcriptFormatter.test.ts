@@ -5,16 +5,21 @@ import {
 import { TranscriptEntry } from "../../src/services/granolaApi";
 import { parseFrontmatter, TRICKY_TITLES } from "../helpers/frontmatter";
 
+/** Builds a v1 transcript entry. */
+const entry = (
+  source: string,
+  text: string,
+  start: string,
+  speakerExtras: { name?: string; diarization_label?: string } = {}
+): TranscriptEntry => ({
+  speaker: { source, ...speakerExtras },
+  text,
+  start_time: start,
+  end_time: start,
+});
+
 const SINGLE_ENTRY: TranscriptEntry[] = [
-  {
-    document_id: "doc1",
-    start_timestamp: "00:00:01",
-    end_timestamp: "00:00:05",
-    text: "Test text",
-    source: "microphone",
-    id: "entry1",
-    is_final: true,
-  },
+  entry("microphone", "Test text", "00:00:01"),
 ];
 
 describe("formatTranscriptBySpeaker", () => {
@@ -27,26 +32,11 @@ describe("formatTranscriptBySpeaker", () => {
   afterEach(() => {
     jest.useRealTimers();
   });
+
   it("should format a basic transcript with alternating speakers", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Hello, how are you?",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:06",
-        end_timestamp: "00:00:10",
-        text: "I'm doing great, thanks!",
-        source: "speaker",
-        id: "entry2",
-        is_final: true,
-      },
+      entry("microphone", "Hello, how are you?", "00:00:01"),
+      entry("speaker", "I'm doing great, thanks!", "00:00:06"),
     ];
 
     const result = formatTranscriptBySpeaker(
@@ -68,33 +58,9 @@ describe("formatTranscriptBySpeaker", () => {
 
   it("should group consecutive entries from the same speaker", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:03",
-        text: "First sentence.",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:04",
-        end_timestamp: "00:00:06",
-        text: "Second sentence.",
-        source: "microphone",
-        id: "entry2",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:07",
-        end_timestamp: "00:00:09",
-        text: "Third sentence.",
-        source: "microphone",
-        id: "entry3",
-        is_final: true,
-      },
+      entry("microphone", "First sentence.", "00:00:01"),
+      entry("microphone", "Second sentence.", "00:00:04"),
+      entry("microphone", "Third sentence.", "00:00:07"),
     ];
 
     const result = formatTranscriptBySpeaker(
@@ -113,13 +79,7 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should handle empty transcript data", () => {
-    const transcriptData: TranscriptEntry[] = [];
-
-    const result = formatTranscriptBySpeaker(
-      transcriptData,
-      "Empty",
-      "empty-id"
-    );
+    const result = formatTranscriptBySpeaker([], "Empty", "empty-id");
 
     expect(result).toContain("---");
     expect(result).toContain("granola_id: empty-id");
@@ -157,33 +117,9 @@ describe("formatTranscriptBySpeaker", () => {
 
   it("should distinguish between microphone and speaker sources", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:03",
-        text: "I'm speaking.",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:04",
-        end_timestamp: "00:00:06",
-        text: "I'm the guest.",
-        source: "speaker",
-        id: "entry2",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:07",
-        end_timestamp: "00:00:09",
-        text: "Another source.",
-        source: "other-source",
-        id: "entry3",
-        is_final: true,
-      },
+      entry("microphone", "I'm speaking.", "00:00:01"),
+      entry("speaker", "I'm the guest.", "00:00:04"),
+      entry("other-source", "Another source.", "00:00:07"),
     ];
 
     const result = formatTranscriptBySpeaker(
@@ -201,42 +137,10 @@ describe("formatTranscriptBySpeaker", () => {
 
   it("should handle multiple speaker switches", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:02",
-        text: "A",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:03",
-        end_timestamp: "00:00:04",
-        text: "B",
-        source: "speaker",
-        id: "entry2",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:05",
-        end_timestamp: "00:00:06",
-        text: "C",
-        source: "microphone",
-        id: "entry3",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:07",
-        end_timestamp: "00:00:08",
-        text: "D",
-        source: "speaker",
-        id: "entry4",
-        is_final: true,
-      },
+      entry("microphone", "A", "00:00:01"),
+      entry("speaker", "B", "00:00:03"),
+      entry("microphone", "C", "00:00:05"),
+      entry("speaker", "D", "00:00:07"),
     ];
 
     const result = formatTranscriptBySpeaker(
@@ -252,20 +156,8 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should preserve timestamp in speaker headers", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "01:23:45",
-        end_timestamp: "01:23:50",
-        text: "Long timestamp test",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
     const result = formatTranscriptBySpeaker(
-      transcriptData,
+      [entry("microphone", "Long timestamp test", "01:23:45")],
       "Timestamp Test",
       "ts-id"
     );
@@ -274,23 +166,11 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should include created_at and updated_at in frontmatter when provided", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Test text",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
     const createdAt = "2024-01-15T10:00:00Z";
     const updatedAt = "2024-01-15T12:00:00Z";
 
     const result = formatTranscriptBySpeaker(
-      transcriptData,
+      SINGLE_ENTRY,
       "Meeting with Timestamps",
       "meeting-123",
       createdAt,
@@ -306,20 +186,8 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should not include timestamps in frontmatter when not provided", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Test text",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
     const result = formatTranscriptBySpeaker(
-      transcriptData,
+      SINGLE_ENTRY,
       "Meeting without Timestamps",
       "meeting-456"
     );
@@ -333,20 +201,8 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should add note field to frontmatter when path provided", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Test text",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
     const result = formatTranscriptBySpeaker(
-      transcriptData,
+      SINGLE_ENTRY,
       "Test Meeting",
       "test-id",
       undefined,
@@ -359,20 +215,8 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should not add note field when path not provided", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Test text",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
     const result = formatTranscriptBySpeaker(
-      transcriptData,
+      SINGLE_ENTRY,
       "Test Meeting",
       "test-id",
       undefined,
@@ -385,20 +229,8 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should use wiki-style links for note paths in frontmatter", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Test text",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
     const result = formatTranscriptBySpeaker(
-      transcriptData,
+      SINGLE_ENTRY,
       "Test Meeting",
       "test-id",
       undefined,
@@ -411,20 +243,8 @@ describe("formatTranscriptBySpeaker", () => {
   });
 
   it("should support includeFrontmatter parameter", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Test text",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
     const resultWithFrontmatter = formatTranscriptBySpeaker(
-      transcriptData,
+      SINGLE_ENTRY,
       "Test Meeting",
       "test-id",
       undefined,
@@ -435,7 +255,7 @@ describe("formatTranscriptBySpeaker", () => {
     );
 
     const resultWithoutFrontmatter = formatTranscriptBySpeaker(
-      transcriptData,
+      SINGLE_ENTRY,
       "Test Meeting",
       "test-id",
       undefined,
@@ -466,24 +286,8 @@ describe("formatTranscriptBody", () => {
 
   it("should format transcript body without frontmatter", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Hello, how are you?",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:06",
-        end_timestamp: "00:00:10",
-        text: "I'm doing great, thanks!",
-        source: "speaker",
-        id: "entry2",
-        is_final: true,
-      },
+      entry("microphone", "Hello, how are you?", "00:00:01"),
+      entry("speaker", "I'm doing great, thanks!", "00:00:06"),
     ];
 
     const result = formatTranscriptBody(transcriptData);
@@ -499,33 +303,9 @@ describe("formatTranscriptBody", () => {
 
   it("should group consecutive entries from the same speaker", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:03",
-        text: "First sentence.",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:04",
-        end_timestamp: "00:00:06",
-        text: "Second sentence.",
-        source: "microphone",
-        id: "entry2",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:07",
-        end_timestamp: "00:00:09",
-        text: "Third sentence.",
-        source: "microphone",
-        id: "entry3",
-        is_final: true,
-      },
+      entry("microphone", "First sentence.", "00:00:01"),
+      entry("microphone", "Second sentence.", "00:00:04"),
+      entry("microphone", "Third sentence.", "00:00:07"),
     ];
 
     const result = formatTranscriptBody(transcriptData);
@@ -539,44 +319,45 @@ describe("formatTranscriptBody", () => {
   });
 
   it("should handle empty transcript data", () => {
-    const transcriptData: TranscriptEntry[] = [];
-
-    const result = formatTranscriptBody(transcriptData);
+    const result = formatTranscriptBody([]);
 
     expect(result).toBe("");
     expect(result).not.toContain("## You");
     expect(result).not.toContain("## Guest");
   });
 
+  it("should use resolved speaker names when present", () => {
+    const transcriptData: TranscriptEntry[] = [
+      entry("speaker", "Hi there.", "00:00:01", { name: "Alice Smith" }),
+      entry("speaker", "Welcome.", "00:00:04", { name: "Alice Smith" }),
+      entry("microphone", "Thanks!", "00:00:07"),
+    ];
+
+    const result = formatTranscriptBody(transcriptData);
+
+    expect(result).toContain("### Alice Smith (00:00:01)");
+    expect(result).toContain("Hi there. Welcome.");
+    expect(result).toContain("### You (00:00:07)");
+    expect(result).not.toContain("### Guest");
+  });
+
+  it("should fall back to diarization labels before generic Guest", () => {
+    const transcriptData: TranscriptEntry[] = [
+      entry("speaker", "One.", "00:00:01", { diarization_label: "Speaker A" }),
+      entry("speaker", "Two.", "00:00:04", { diarization_label: "Speaker B" }),
+    ];
+
+    const result = formatTranscriptBody(transcriptData);
+
+    expect(result).toContain("### Speaker A (00:00:01)");
+    expect(result).toContain("### Speaker B (00:00:04)");
+  });
+
   it("should distinguish between microphone and speaker sources", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:03",
-        text: "I'm speaking.",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:04",
-        end_timestamp: "00:00:06",
-        text: "I'm the guest.",
-        source: "speaker",
-        id: "entry2",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:07",
-        end_timestamp: "00:00:09",
-        text: "Another source.",
-        source: "other-source",
-        id: "entry3",
-        is_final: true,
-      },
+      entry("microphone", "I'm speaking.", "00:00:01"),
+      entry("speaker", "I'm the guest.", "00:00:04"),
+      entry("other-source", "Another source.", "00:00:07"),
     ];
 
     const result = formatTranscriptBody(transcriptData);
@@ -589,42 +370,10 @@ describe("formatTranscriptBody", () => {
 
   it("should handle multiple speaker switches", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:02",
-        text: "A",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:03",
-        end_timestamp: "00:00:04",
-        text: "B",
-        source: "speaker",
-        id: "entry2",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:05",
-        end_timestamp: "00:00:06",
-        text: "C",
-        source: "microphone",
-        id: "entry3",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:07",
-        end_timestamp: "00:00:08",
-        text: "D",
-        source: "speaker",
-        id: "entry4",
-        is_final: true,
-      },
+      entry("microphone", "A", "00:00:01"),
+      entry("speaker", "B", "00:00:03"),
+      entry("microphone", "C", "00:00:05"),
+      entry("speaker", "D", "00:00:07"),
     ];
 
     const result = formatTranscriptBody(transcriptData);
@@ -636,43 +385,17 @@ describe("formatTranscriptBody", () => {
   });
 
   it("should preserve timestamp in speaker headers", () => {
-    const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "01:23:45",
-        end_timestamp: "01:23:50",
-        text: "Long timestamp test",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-    ];
-
-    const result = formatTranscriptBody(transcriptData);
+    const result = formatTranscriptBody([
+      entry("microphone", "Long timestamp test", "01:23:45"),
+    ]);
 
     expect(result).toContain("## You (01:23:45)");
   });
 
   it("should use level 3 headings (###) for speaker headings", () => {
     const transcriptData: TranscriptEntry[] = [
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:01",
-        end_timestamp: "00:00:05",
-        text: "Hello, how are you?",
-        source: "microphone",
-        id: "entry1",
-        is_final: true,
-      },
-      {
-        document_id: "doc1",
-        start_timestamp: "00:00:06",
-        end_timestamp: "00:00:10",
-        text: "I'm doing great, thanks!",
-        source: "speaker",
-        id: "entry2",
-        is_final: true,
-      },
+      entry("microphone", "Hello, how are you?", "00:00:01"),
+      entry("speaker", "I'm doing great, thanks!", "00:00:06"),
     ];
 
     const result = formatTranscriptBody(transcriptData);

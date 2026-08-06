@@ -1,7 +1,5 @@
-import {
-  fetchDocumentListsMetadata,
-  fetchDocumentList,
-} from "./granolaApi";
+import { listAllFolders } from "./granolaApi";
+import type { GranolaDoc } from "./granolaApi";
 import { log } from "../utils/logger";
 
 /**
@@ -59,46 +57,32 @@ export function resolveFolderPath(
 }
 
 /**
- * Builds a fresh FolderMapData by fetching all folder metadata and memberships
- * from the Granola API.
+ * Builds a fresh FolderMapData from the v1 folders list and each note's
+ * folder membership (notes carry their folder IDs inline, so no per-folder
+ * membership fetch is needed).
  */
 export async function buildFolderMap(
-  accessToken: string
+  apiKey: string,
+  docs: GranolaDoc[]
 ): Promise<FolderMapData> {
-  // Step 1: Fetch all folder metadata
-  const listsMetadata = await fetchDocumentListsMetadata(accessToken);
+  const folderList = await listAllFolders(apiKey);
 
-  // Build folders record
   const folders: Record<string, FolderInfo> = {};
-  for (const [id, meta] of Object.entries(listsMetadata)) {
-    folders[id] = {
-      title: meta.title,
-      parentId: meta.parent_document_list_id ?? null,
+  for (const folder of folderList) {
+    folders[folder.id] = {
+      title: folder.name,
+      parentId: folder.parent_folder_id ?? null,
     };
   }
 
   log.debug(`buildFolderMap — found ${Object.keys(folders).length} folder(s)`);
 
-  // Step 2: Fetch document memberships for each folder
   const docFolders: Record<string, string[]> = {};
-  const folderIds = Object.keys(folders);
-
-  for (const folderId of folderIds) {
-    try {
-      const listData = await fetchDocumentList(accessToken, folderId);
+  for (const doc of docs) {
+    for (const folderId of doc.folder_ids ?? []) {
       const folderPath = resolveFolderPath(folderId, folders);
-      const docCount = listData.documents?.length ?? 0;
-      log.debug(`Folder "${folderPath}" (${folderId}) — ${docCount} document(s)`);
-
-      for (const doc of listData.documents ?? []) {
-        if (!docFolders[doc.id]) {
-          docFolders[doc.id] = [];
-        }
-        docFolders[doc.id].push(folderPath);
-      }
-    } catch (error) {
-      log.error(`Failed to fetch document list ${folderId}:`, error);
-      // Continue with other folders — don't let one failure block everything
+      if (!folderPath) continue;
+      (docFolders[doc.id] ??= []).push(folderPath);
     }
   }
 

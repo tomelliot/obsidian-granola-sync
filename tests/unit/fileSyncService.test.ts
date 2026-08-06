@@ -1,6 +1,9 @@
 import { App, TFile } from "obsidian";
 import * as obsidian from "obsidian";
-import { FileSyncService } from "../../src/services/fileSyncService";
+import {
+  FileSyncService,
+  extractLegacyIdFromWebUrl,
+} from "../../src/services/fileSyncService";
 import type { GranolaDoc } from "../../src/services/granolaApi";
 import type { DocumentProcessor } from "../../src/services/documentProcessor";
 import type { PathResolver } from "../../src/services/pathResolver";
@@ -27,6 +30,7 @@ describe("FileSyncService", () => {
       vault: {
         getMarkdownFiles: jest.fn(),
         getAbstractFileByPath: jest.fn(),
+        getFileByPath: jest.fn(),
         createFolder: jest.fn(),
         create: jest.fn(),
         createBinary: jest.fn(),
@@ -541,7 +545,8 @@ describe("FileSyncService", () => {
         "doc-1",
         "note",
         false,
-        expect.any(Date)
+        expect.any(Date),
+        null
       );
     });
 
@@ -572,7 +577,8 @@ describe("FileSyncService", () => {
         "doc-1",
         "note",
         false,
-        expect.any(Date)
+        expect.any(Date),
+        null
       );
     });
 
@@ -728,615 +734,9 @@ describe("FileSyncService", () => {
         "doc-1",
         "note",
         false,
-        expect.any(Date)
+        expect.any(Date),
+        null
       );
-    });
-
-    it("should download image attachments and append embeds at end of note content", async () => {
-      const doc: GranolaDoc = {
-        id: "doc-attachments",
-        title: "Note With Attachments",
-        attachments: [
-          {
-            id: "att-1",
-            url: "https://example.com/image-1",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note-with-attachments.md",
-        content: "Base content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      const requestUrlSpy = jest
-        .spyOn(obsidian as any, "requestUrl")
-        .mockResolvedValue({
-          arrayBuffer: new ArrayBuffer(8),
-          headers: { "content-type": "image/png" },
-        });
-
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-
-      let savedContent = "";
-      const saveFileSpy = jest
-        .spyOn(fileSyncService, "saveFile")
-        .mockImplementation(
-          async (
-            _filePath: string,
-            content: string,
-            _granolaId: string,
-            _forceOverwrite: boolean
-          ) => {
-            savedContent = content;
-            return true;
-          }
-        );
-
-      await fileSyncService.saveNoteToDisk(doc, mockDocumentProcessor, false);
-
-      expect(mockDocumentProcessor.prepareNote).toHaveBeenCalledWith(
-        doc,
-        undefined
-      );
-      expect(requestUrlSpy).toHaveBeenCalledTimes(1);
-      expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(1);
-      expect(savedContent).toContain("Base content");
-      expect(savedContent.trim().endsWith("]]")).toBe(true);
-      expect(savedContent).toMatch(/!\[\[\s*attachments\/doc-attachments-att-1\.png\s*\]\]/);
-      expect(saveFileSpy).toHaveBeenCalled();
-    });
-
-    it("should handle attachment without Content-Type by falling back to URL extension", async () => {
-      const doc: GranolaDoc = {
-        id: "doc-url-ext",
-        title: "Note With URL Extension",
-        attachments: [
-          {
-            id: "att-1",
-            url: "https://example.com/image.jpg",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      // Response without Content-Type header
-      jest.spyOn(obsidian as any, "requestUrl").mockResolvedValue({
-        arrayBuffer: new ArrayBuffer(8),
-        headers: {},
-      });
-
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should extract .jpg from URL and save the file
-      expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-        expect.stringContaining(".jpg"),
-        expect.any(ArrayBuffer)
-      );
-      expect(savedContent).toMatch(/!\[\[.*\.jpg\]\]/);
-    });
-
-    it("should skip attachment when no extension can be determined", async () => {
-      const doc: GranolaDoc = {
-        id: "doc-no-ext",
-        title: "Note With Unknown Extension",
-        attachments: [
-          {
-            id: "att-1",
-            url: "https://example.com/image-no-extension",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      // Response with unknown content type and URL without extension
-      jest.spyOn(obsidian as any, "requestUrl").mockResolvedValue({
-        arrayBuffer: new ArrayBuffer(8),
-        headers: { "content-type": "application/octet-stream" },
-      });
-
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should not create any file or embed
-      expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
-      expect(savedContent).toBe("Content");
-      expect(console.error).toHaveBeenCalledWith(
-        "[Granola Sync]",
-        expect.stringContaining("Cannot determine file extension"),
-        expect.any(Object)
-      );
-    });
-
-    it("should handle invalid URL in attachment", async () => {
-      const doc: GranolaDoc = {
-        id: "doc-invalid-url",
-        title: "Note With Invalid URL",
-        attachments: [
-          {
-            id: "att-1",
-            url: "not-a-valid-url",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      // requestUrl will throw error for invalid URL
-      jest
-        .spyOn(obsidian as any, "requestUrl")
-        .mockRejectedValue(new Error("Invalid URL"));
-
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should not create any file or embed
-      expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
-      expect(savedContent).toBe("Content");
-      expect(console.warn).toHaveBeenCalledWith(
-        "[Granola Sync]",
-        expect.stringContaining("Failed to download or save attachment image"),
-        expect.any(Object)
-      );
-    });
-
-    it("should skip re-downloading if file already exists", async () => {
-      const doc: GranolaDoc = {
-        id: "doc-existing",
-        title: "Note With Existing File",
-        attachments: [
-          {
-            id: "att-1",
-            url: "https://example.com/image.png",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      const requestUrlSpy = jest
-        .spyOn(obsidian as any, "requestUrl")
-        .mockResolvedValue({
-          arrayBuffer: new ArrayBuffer(8),
-          headers: { "content-type": "image/png" },
-        });
-
-      // Mock existing file as TFile instance
-      const mockExistingFile = new TFile();
-      mockExistingFile.path = "attachments/doc-existing-att-1.png";
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(
-        mockExistingFile
-      );
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should download to check extension but not create file
-      expect(requestUrlSpy).toHaveBeenCalled();
-      expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
-      // Should still embed the existing file
-      expect(savedContent).toMatch(/!\[\[.*\.png\]\]/);
-    });
-
-    it("should handle multiple attachments with mixed success", async () => {
-      jest.clearAllMocks();
-
-      const doc: GranolaDoc = {
-        id: "doc-mixed",
-        title: "Note With Mixed Attachments",
-        attachments: [
-          {
-            id: "att-1",
-            url: "https://example.com/image1.png",
-            type: "image",
-          },
-          {
-            id: "att-2",
-            url: "https://example.com/invalid",
-            type: "image",
-          },
-          {
-            id: "att-3",
-            url: "https://example.com/image3.jpg",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      const requestUrlSpy = jest
-        .spyOn(obsidian as any, "requestUrl")
-        .mockImplementation((options: any) => {
-          if (options.url.includes("image1")) {
-            return Promise.resolve({
-              arrayBuffer: new ArrayBuffer(8),
-              headers: { "content-type": "image/png" },
-            });
-          } else if (options.url.includes("invalid")) {
-            return Promise.reject(new Error("Download failed"));
-          } else {
-            return Promise.resolve({
-              arrayBuffer: new ArrayBuffer(8),
-              headers: { "content-type": "image/jpeg" },
-            });
-          }
-        });
-
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should download all three
-      expect(requestUrlSpy).toHaveBeenCalledTimes(3);
-      // Should only create files for successful downloads
-      expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(2);
-      // Should only embed successful ones
-      expect(savedContent.match(/!\[\[/g)?.length).toBe(2);
-      expect(savedContent).toMatch(/att-1\.png/);
-      expect(savedContent).toMatch(/att-3\.jpg/);
-      expect(savedContent).not.toMatch(/att-2/);
-    });
-
-    it("should return original content when all attachments fail", async () => {
-      const doc: GranolaDoc = {
-        id: "doc-all-fail",
-        title: "Note With Failed Attachments",
-        attachments: [
-          {
-            id: "att-1",
-            url: "https://example.com/fail1",
-            type: "image",
-          },
-          {
-            id: "att-2",
-            url: "https://example.com/fail2",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Original content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      // All downloads fail
-      jest
-        .spyOn(obsidian as any, "requestUrl")
-        .mockRejectedValue(new Error("Network error"));
-
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should not create any files
-      expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
-      // Should return original content without embeds
-      expect(savedContent).toBe("Original content");
-    });
-
-    it("should filter non-image attachments", async () => {
-      jest.clearAllMocks();
-
-      const doc: GranolaDoc = {
-        id: "doc-non-image",
-        title: "Note With Non-Image Attachments",
-        attachments: [
-          {
-            id: "att-1",
-            url: "https://example.com/document.pdf",
-            type: "document",
-          },
-          {
-            id: "att-2",
-            url: "https://example.com/image.png",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      const requestUrlSpy = jest
-        .spyOn(obsidian as any, "requestUrl")
-        .mockResolvedValue({
-          arrayBuffer: new ArrayBuffer(8),
-          headers: { "content-type": "image/png" },
-        });
-
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-
-      jest.spyOn(fileSyncService, "saveFile").mockResolvedValue(true);
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should only download the image attachment, not the document
-      expect(requestUrlSpy).toHaveBeenCalledTimes(1);
-      expect(requestUrlSpy).toHaveBeenCalledWith({
-        url: "https://example.com/image.png",
-        method: "GET",
-      });
-    });
-
-    it("should handle note without attachments field", async () => {
-      jest.clearAllMocks();
-
-      const doc: GranolaDoc = {
-        id: "doc-no-attachments",
-        title: "Note Without Attachments",
-        // No attachments field
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      const requestUrlSpy = jest.spyOn(obsidian as any, "requestUrl");
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should not attempt any downloads
-      expect(requestUrlSpy).not.toHaveBeenCalled();
-      expect(savedContent).toBe("Content");
-    });
-
-    it("should handle empty attachments array", async () => {
-      jest.clearAllMocks();
-
-      const doc: GranolaDoc = {
-        id: "doc-empty-attachments",
-        title: "Note With Empty Attachments",
-        attachments: [],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      const requestUrlSpy = jest.spyOn(obsidian as any, "requestUrl");
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      // Should not attempt any downloads
-      expect(requestUrlSpy).not.toHaveBeenCalled();
-      expect(savedContent).toBe("Content");
-    });
-
-    it("should handle various image Content-Type formats", async () => {
-      jest.clearAllMocks();
-
-      const doc: GranolaDoc = {
-        id: "doc-content-types",
-        title: "Note With Various Content Types",
-        attachments: [
-          {
-            id: "att-jpeg",
-            url: "https://example.com/image1",
-            type: "image",
-          },
-          {
-            id: "att-webp",
-            url: "https://example.com/image2",
-            type: "image",
-          },
-          {
-            id: "att-gif",
-            url: "https://example.com/image3",
-            type: "image",
-          },
-        ],
-      };
-
-      const noteDate = new Date("2024-01-02T12:00:00Z");
-      mockDocumentProcessor.prepareNote.mockReturnValue({
-        filename: "note.md",
-        content: "Content",
-      });
-      jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(noteDate);
-
-      const requestUrlSpy = jest
-        .spyOn(obsidian as any, "requestUrl")
-        .mockImplementation((options: any) => {
-          if (options.url.includes("image1")) {
-            return Promise.resolve({
-              arrayBuffer: new ArrayBuffer(8),
-              headers: { "content-type": "image/jpeg; charset=utf-8" },
-            });
-          } else if (options.url.includes("image2")) {
-            return Promise.resolve({
-              arrayBuffer: new ArrayBuffer(8),
-              headers: { "content-type": "image/webp" },
-            });
-          } else {
-            return Promise.resolve({
-              arrayBuffer: new ArrayBuffer(8),
-              headers: { "content-type": "image/gif" },
-            });
-          }
-        });
-
-      (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
-
-      let savedContent = "";
-      jest.spyOn(fileSyncService, "saveFile").mockImplementation(
-        async (_filePath: string, content: string) => {
-          savedContent = content;
-          return true;
-        }
-      );
-
-      await fileSyncService.saveNoteToDisk(
-        doc,
-        mockDocumentProcessor,
-        false,
-        undefined
-      );
-
-      expect(requestUrlSpy).toHaveBeenCalledTimes(3);
-      expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
-      expect(savedContent).toMatch(/att-jpeg\.jpg/);
-      expect(savedContent).toMatch(/att-webp\.webp/);
-      expect(savedContent).toMatch(/att-gif\.gif/);
     });
 
     it("should return saved:false and path:null when folder path cannot be resolved", async () => {
@@ -1717,6 +1117,131 @@ describe("FileSyncService", () => {
       );
     });
 
+    it("caches the file re-resolved from the vault when create resolves null", async () => {
+      // Obsidian's `vault.create` writes the file, then looks it up in the
+      // in-memory index and returns null when the lookup misses — despite its
+      // `Promise<TFile>` type.
+      const createdFile = new TFile("granola-folder/note.md");
+      mockApp.vault.create.mockResolvedValue(null as unknown as TFile);
+      (mockApp.vault.getFileByPath as jest.Mock).mockReturnValue(createdFile);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      expect(result).toBe(true);
+      expect(fileSyncService.findByGranolaId("id-1", "note")).toBe(createdFile);
+    });
+
+    it("never caches null when create resolves null and the file is unresolvable", async () => {
+      mockApp.vault.create.mockResolvedValue(null as unknown as TFile);
+      (mockApp.vault.getFileByPath as jest.Mock).mockReturnValue(null);
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      // The file was written to disk, so the save succeeded...
+      expect(result).toBe(true);
+      // ...but the cache must not hold a null entry.
+      expect(fileSyncService.findByGranolaId("id-1", "note")).toBeNull();
+      expect(fileSyncService.getCacheSize()).toBe(0);
+    });
+
+    it("keeps syncing subsequent documents after an unresolvable create", async () => {
+      // Regression: a null cached by an earlier save made every later save
+      // throw "Cannot read properties of null (reading 'path')" while scanning
+      // the cache, aborting the whole sync.
+      mockApp.vault.create.mockResolvedValueOnce(null as unknown as TFile);
+      (mockApp.vault.getFileByPath as jest.Mock).mockReturnValue(null);
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+
+      await fileSyncService.saveFile(
+        "granola-folder/first.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      const secondFile = new TFile("granola-folder/second.md");
+      mockApp.vault.create.mockResolvedValueOnce(secondFile);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/second.md",
+        "content",
+        "id-2",
+        "note",
+        false,
+        new Date()
+      );
+
+      expect(result).toBe(true);
+      expect(fileSyncService.findByGranolaId("id-2", "note")).toBe(secondFile);
+    });
+
+    it("tolerates a pre-poisoned cache entry without throwing", async () => {
+      // Defense in depth: whatever the origin of a malformed entry, scanning
+      // the cache must not crash the sync. Poke the private map directly so the
+      // scan guards are exercised even though updateCache now rejects nulls.
+      (
+        fileSyncService as unknown as { granolaIdCache: Map<string, unknown> }
+      ).granolaIdCache.set("stale-id-note", null);
+
+      const createdFile = new TFile("granola-folder/note.md");
+      mockApp.vault.create.mockResolvedValue(createdFile);
+
+      const result = await fileSyncService.saveFile(
+        "granola-folder/note.md",
+        "content",
+        "id-1",
+        "note",
+        false,
+        new Date()
+      );
+
+      expect(result).toBe(true);
+      expect(fileSyncService.getGranolaIdByPath("granola-folder/note.md")).toBe(
+        "id-1"
+      );
+    });
+
+    it("contains an unexpected cache-scan failure to the one document", async () => {
+      // An entry that blows up on access stands in for any future defect in the
+      // scan: saveFile must report the failure, not reject and abort the sync.
+      const hostile = {
+        get path(): string {
+          throw new Error("boom");
+        },
+      };
+      (
+        fileSyncService as unknown as { granolaIdCache: Map<string, unknown> }
+      ).granolaIdCache.set("hostile-note", hostile);
+
+      await expect(
+        fileSyncService.saveFile(
+          "granola-folder/note.md",
+          "content",
+          "id-1",
+          "note",
+          false,
+          new Date()
+        )
+      ).resolves.toBe(false);
+    });
+
     it("does not retry on a non-collision error", async () => {
       mockApp.vault.create.mockRejectedValue(new Error("Disk full"));
 
@@ -1811,7 +1336,8 @@ describe("FileSyncService", () => {
         "doc-1",
         "note",
         true, // forceOverwrite should be passed through
-        expect.any(Date)
+        expect.any(Date),
+        null
       );
     });
 
@@ -1840,7 +1366,8 @@ describe("FileSyncService", () => {
         "doc-1",
         "note",
         true, // forceOverwrite should be passed through
-        expect.any(Date)
+        expect.any(Date),
+        null
       );
     });
 
@@ -1874,7 +1401,8 @@ describe("FileSyncService", () => {
         "doc-1",
         "transcript",
         true, // forceOverwrite should be passed through
-        expect.any(Date)
+        expect.any(Date),
+        null
       );
     });
   });
@@ -2079,12 +1607,7 @@ describe("FileSyncService", () => {
         title: "Test Note",
         created_at: "2024-01-15T10:00:00Z",
         updated_at: "2024-01-15T12:00:00Z",
-        last_viewed_panel: {
-          content: {
-            type: "doc",
-            content: [],
-          },
-        },
+        summary_markdown: "## Summary",
       };
 
       jest.spyOn(dateUtils, "getNoteDate").mockReturnValue(new Date("2024-01-15"));
@@ -2289,4 +1812,110 @@ describe("FileSyncService", () => {
       expect(mockDocumentProcessor.prepareCombinedNote).toHaveBeenCalled();
     });
   });
+
+  describe("legacy ID migration (public API rewrite)", () => {
+    const LEGACY_UUID = "f3e45e0f-24cc-480b-9a6c-8b1f5e3d7a2c";
+    const WEB_URL = `https://notes.granola.ai/d/${LEGACY_UUID}`;
+
+    it("extractLegacyIdFromWebUrl returns the UUID for a valid URL", () => {
+      expect(extractLegacyIdFromWebUrl(WEB_URL)).toBe(LEGACY_UUID);
+    });
+
+    it("extractLegacyIdFromWebUrl returns null for undefined or malformed URLs", () => {
+      expect(extractLegacyIdFromWebUrl(undefined)).toBeNull();
+      expect(extractLegacyIdFromWebUrl("https://notes.granola.ai/d/not-a-uuid")).toBeNull();
+      expect(extractLegacyIdFromWebUrl("")).toBeNull();
+    });
+
+    it("updates the legacy-id file in place instead of creating a duplicate", async () => {
+      const legacyFile = { path: "granola-folder/Standup.md" } as TFile;
+      mockApp.vault.getMarkdownFiles.mockReturnValue([legacyFile]);
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: { granola_id: LEGACY_UUID, type: "note" },
+      } as any);
+      await fileSyncService.buildCache();
+
+      mockApp.vault.read.mockResolvedValue("old content");
+      mockApp.vault.modify.mockResolvedValue(undefined as any);
+
+      const saved = await fileSyncService.saveFile(
+        "granola-folder/Standup.md",
+        "new content with new id",
+        "not_newid12345",
+        "note",
+        false,
+        new Date("2024-01-15T10:00:00Z"),
+        LEGACY_UUID
+      );
+
+      expect(saved).toBe(true);
+      expect(mockApp.vault.create).not.toHaveBeenCalled();
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(
+        legacyFile,
+        "new content with new id"
+      );
+      // Cache now resolves the new id to the same file; old id is gone.
+      expect(fileSyncService.findByGranolaId("not_newid12345", "note")).toBe(
+        legacyFile
+      );
+      expect(fileSyncService.findByGranolaId(LEGACY_UUID, "note")).toBeNull();
+    });
+
+    it("falls back to adopting a Granola-synced file at the target path", async () => {
+      const existing = { path: "granola-folder/Standup.md" } as TFile;
+      mockApp.vault.getMarkdownFiles.mockReturnValue([existing]);
+      mockApp.metadataCache.getFileCache.mockReturnValue({
+        frontmatter: { granola_id: "some-other-old-id", type: "note" },
+      } as any);
+      await fileSyncService.buildCache();
+
+      mockApp.vault.read.mockResolvedValue("old content");
+      mockApp.vault.modify.mockResolvedValue(undefined as any);
+
+      const saved = await fileSyncService.saveFile(
+        "granola-folder/Standup.md",
+        "new content",
+        "not_newid12345",
+        "note",
+        false,
+        new Date("2024-01-15T10:00:00Z"),
+        null
+      );
+
+      expect(saved).toBe(true);
+      expect(mockApp.vault.create).not.toHaveBeenCalled();
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(existing, "new content");
+      expect(fileSyncService.findByGranolaId("not_newid12345", "note")).toBe(
+        existing
+      );
+    });
+
+    it("creates a new file when there is no legacy or path match", async () => {
+      mockApp.vault.getMarkdownFiles.mockReturnValue([]);
+      await fileSyncService.buildCache();
+
+      const created = { path: "granola-folder/Fresh.md" } as TFile;
+      mockApp.vault.create.mockResolvedValue(created);
+
+      const saved = await fileSyncService.saveFile(
+        "granola-folder/Fresh.md",
+        "content",
+        "not_brandnew123",
+        "note",
+        false,
+        new Date("2024-01-15T10:00:00Z"),
+        LEGACY_UUID
+      );
+
+      expect(saved).toBe(true);
+      expect(mockApp.vault.create).toHaveBeenCalledWith(
+        "granola-folder/Fresh.md",
+        "content"
+      );
+      expect(fileSyncService.findByGranolaId("not_brandnew123", "note")).toBe(
+        created
+      );
+    });
+  });
+
 });

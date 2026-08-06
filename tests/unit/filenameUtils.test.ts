@@ -133,6 +133,52 @@ describe("validatePattern", () => {
     );
     expect(result.isValid).toBe(true);
   });
+
+  it("should reject variables closed with a parenthesis instead of a brace", () => {
+    // Regression: a user's pattern "{year)-(month}-{day), {title}" passed
+    // through to filenames with the placeholders unsubstituted.
+    const result = validatePattern("{year)-(month}-{day), {title}");
+    expect(result.isValid).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  it("should reject a lone unclosed brace", () => {
+    const result = validatePattern("{year)");
+    expect(result.isValid).toBe(false);
+    expect(result.error).toContain("brace");
+  });
+
+  it("should reject a stray closing brace", () => {
+    const result = validatePattern("(month}-{title}");
+    expect(result.isValid).toBe(false);
+    expect(result.error).toContain("brace");
+  });
+
+  it("should accept literal parentheses outside variables", () => {
+    const result = validatePattern("{date} meeting (notes) {title}");
+    expect(result.isValid).toBe(true);
+  });
+
+  it("should reject variables outside the allowed list when one is given", () => {
+    const result = validatePattern("{year}/{title}", [
+      "year",
+      "month",
+      "day",
+      "quarter",
+    ]);
+    expect(result.isValid).toBe(false);
+    expect(result.error).toContain("{title}");
+  });
+
+  it("should accept allowed variables when an allowed list is given", () => {
+    const result = validatePattern("{year}/{month}", [
+      "year",
+      "month",
+      "day",
+      "quarter",
+    ]);
+    expect(result.isValid).toBe(true);
+  });
 });
 
 describe("resolveFilenamePattern", () => {

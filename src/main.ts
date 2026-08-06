@@ -12,11 +12,12 @@ import {
   DEFAULT_SETTINGS,
   GranolaSyncSettingTab,
   migrateSettingsToNewFormat,
+  scrubRemovedSettings,
 } from "./settings";
 import {
-  getAllDocuments,
-  getRecentDocuments,
-  fetchGranolaTranscript,
+  listAllNoteSummaries,
+  fetchNoteDetail,
+  GranolaAuthError,
   GranolaDoc,
   TranscriptEntry,
 } from "./services/granolaApi";
@@ -25,15 +26,13 @@ import {
   diffFolderMaps,
 } from "./services/folderMapBuilder";
 import {
-  loadCredentials as loadGranolaCredentials,
-} from "./services/credentials";
-import { presentCredentialsError } from "./services/credentialsErrorPresenter";
-import { setPluginDirectory } from "./services/granolaCredentialsCrypto";
-import { KeychainPermissionModal } from "./ui/keychainPermissionModal";
-import {
   formatTranscriptBySpeaker,
   formatTranscriptBody,
 } from "./services/transcriptFormatter";
+import {
+  importLegacySettings,
+  hasNoExistingSettings,
+} from "./services/legacySettingsImport";
 import { PathResolver } from "./services/pathResolver";
 import { FileSyncService } from "./services/fileSyncService";
 import { DocumentProcessor } from "./services/documentProcessor";
@@ -61,14 +60,6 @@ export default class GranolaSync extends Plugin {
     await this.loadSettings();
 
     this.initializeLogger();
-
-    // Tell the credentials crypto module where the plugin lives so it can
-    // resolve its bundled native dependency by absolute path. Obsidian's
-    // plugin require doesn't search the plugin's own node_modules.
-    const adapter = this.app.vault.adapter;
-    if (adapter instanceof FileSystemAdapter && this.manifest.dir) {
-      setPluginDirectory(path.join(adapter.getBasePath(), this.manifest.dir));
-    }
 
     // Initialize services
     this.initializeServices();
@@ -113,10 +104,24 @@ export default class GranolaSync extends Plugin {
   }
 
   async loadSettings() {
-    const loadedData = (await this.loadData()) as
+    let loadedData = (await this.loadData()) as
       | (Partial<GranolaSyncSettings> & LegacySettings)
       | null;
+
+    // On a fresh install, adopt settings left behind in a plugin folder we
+    // previously shipped under, so an id change doesn't reset the user.
+    let importedFrom: string | null = null;
+    if (hasNoExistingSettings(loadedData)) {
+      const imported = await this.importSettingsFromPreviousPluginId();
+      if (imported) {
+        loadedData = imported.settings as Partial<GranolaSyncSettings> &
+          LegacySettings;
+        importedFrom = imported.pluginId;
+      }
+    }
+
     const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+    scrubRemovedSettings(mergedSettings as unknown as Record<string, unknown>);
 
     // Check if migration is needed
     if (mergedSettings.syncDestination) {
@@ -128,6 +133,35 @@ export default class GranolaSync extends Plugin {
     } else {
       // Already in new format
       this.settings = mergedSettings;
+    }
+
+    if (importedFrom) {
+      // Persist immediately so the import runs exactly once.
+      await this.saveData(this.settings);
+      log.info(`Imported settings from previous plugin id "${importedFrom}"`);
+      new Notice(
+        `Granola sync: imported your settings from the previous "${importedFrom}" plugin folder.`
+      );
+    }
+  }
+
+  /**
+   * Reads settings from a plugin folder this plugin used to live under.
+   * Best-effort: any failure leaves the user on defaults rather than blocking
+   * plugin load.
+   */
+  private async importSettingsFromPreviousPluginId(): Promise<{
+    pluginId: string;
+    settings: Record<string, unknown>;
+  } | null> {
+    try {
+      const vault = this.app?.vault;
+      const adapter = vault?.adapter;
+      if (!adapter?.exists || !adapter?.read || !vault?.configDir) return null;
+      return await importLegacySettings(adapter, vault.configDir);
+    } catch (error) {
+      log.warn("Could not import settings from a previous plugin id", error);
+      return null;
     }
   }
 
@@ -156,10 +190,7 @@ export default class GranolaSync extends Plugin {
 
     // Initialize DocumentProcessor with current settings
     this.documentProcessor = new DocumentProcessor(
-      {
-        syncTranscripts: this.settings.syncTranscripts,
-        includePrivateNotes: this.settings.includePrivateNotes,
-      },
+      { syncTranscripts: this.settings.syncTranscripts },
       this.pathResolver
     );
 
@@ -437,112 +468,113 @@ export default class GranolaSync extends Plugin {
   async sync(options: { mode?: "standard" | "full" } = {}) {
     const mode = options.mode ?? "standard";
     log.debug(`Sync started — mode=${mode}, daysBack=${this.settings.syncDaysBack}`);
-    showStatusBar(this, "Granola sync: Syncing...");
 
-    // Load credentials at the start of each sync
-    const credentialsResult = await loadGranolaCredentials();
-    const { accessToken } = credentialsResult;
-    if (!accessToken || credentialsResult.error) {
-      log.error("Error loading Granola credentials:", credentialsResult.error);
-      presentCredentialsError(
-        {
-          ...credentialsResult,
-          error: credentialsResult.error ?? "No access token loaded.",
-        },
-        {
-          onKeychainDenied: () =>
-            new KeychainPermissionModal(this.app).open(),
-          onDpapiFailed: (message) =>
-            new Notice(`Granola sync error: ${message}`, 15000),
-          onOtherError: (message) =>
-            new Notice(`Granola sync error: ${message}`, 10000),
-        }
+    const apiKey = this.settings.apiKey;
+    if (!apiKey) {
+      new Notice(
+        // eslint-disable-next-line obsidianmd/ui/sentence-case -- 'Settings → Connectors → API keys' is a literal Granola menu path
+        "Granola sync: No API key configured. Create one in Granola → Settings → Connectors → API keys, then paste it in the plugin settings.",
+        10000
       );
-      hideStatusBar(this);
       return;
     }
+
+    showStatusBar(this, "Granola sync: Syncing...");
 
     // Build the Granola ID cache before syncing
     await this.fileSyncService.buildCache();
 
-    // Fetch documents
-    let documents: GranolaDoc[] = [];
-    const includeShared = this.settings.includeSharedNotes;
+    const needTranscripts = this.settings.syncTranscripts;
+    const isCombinedMode =
+      needTranscripts && this.settings.transcriptHandling === "combined";
+    const noteType = isCombinedMode ? "combined" : "note";
+
+    const documents: GranolaDoc[] = [];
     try {
-      if (mode === "full") {
-        documents = await getAllDocuments(accessToken, 100, includeShared);
-      } else {
-        documents = await getRecentDocuments(
-          accessToken,
-          this.settings.syncDaysBack,
-          100,
-          includeShared
+      // Phase 1: cheap summary listing (id/title/timestamps only)
+      let summaries = await listAllNoteSummaries(
+        apiKey,
+        mode === "full" ? 0 : this.settings.syncDaysBack
+      );
+      summaries = filterDocumentsByTitle(
+        summaries,
+        this.settings.titleFilterMode,
+        this.settings.titleFilterKeyword
+      );
+
+      // Phase 2: hydrate only notes that need work (rate-limit friendly)
+      const toHydrate = summaries.filter((summary) => {
+        if (mode === "full") return true;
+        const existing = this.fileSyncService.findByGranolaId(
+          summary.id,
+          noteType
+        );
+        // New note — or a legacy-id file, which is resolved at save time.
+        if (!existing) return true;
+        return this.fileSyncService.isRemoteNewer(
+          summary.id,
+          summary.updated_at,
+          noteType
+        );
+      });
+      log.debug(
+        `Hydrating ${toHydrate.length} of ${summaries.length} note(s)`
+      );
+
+      let hydratedCount = 0;
+      for (const summary of toHydrate) {
+        hydratedCount++;
+        showStatusBar(
+          this,
+          `Granola sync: Fetching ${hydratedCount}/${toHydrate.length}`
+        );
+        documents.push(
+          await fetchNoteDetail(apiKey, summary.id, needTranscripts)
         );
       }
     } catch (error: unknown) {
-      const errorStatus = (error as { status?: number })?.status;
-      if (errorStatus === 401) {
+      if (error instanceof GranolaAuthError) {
         new Notice(
-          "Granola sync error: Authentication failed. Your access token may have expired. Please reload Granola to update your credentials file.",
-          10000
-        );
-      } else if (errorStatus === 403) {
-        new Notice(
-          "Granola sync error: Access forbidden. Please check your permissions.",
-          10000
-        );
-      } else if (errorStatus === 404) {
-        new Notice(
-          "Granola sync error: API endpoint not found. Please check for updates.",
-          10000
-        );
-      } else if (errorStatus && errorStatus >= 500) {
-        new Notice(
-          "Granola sync error: Granola API server error. Please try again later.",
+          "Granola sync error: The Granola API rejected your API key. Check it in the plugin settings.",
           10000
         );
       } else {
-        new Notice(
-          "Granola sync error: Failed to fetch documents from Granola API. Please check your internet connection.",
-          10000
-        );
+        const errorStatus = (error as { status?: number })?.status;
+        if (errorStatus && errorStatus >= 500) {
+          new Notice(
+            "Granola sync error: Granola API server error. Please try again later.",
+            10000
+          );
+        } else {
+          new Notice(
+            "Granola sync error: Failed to fetch notes from the Granola API. Please check your internet connection.",
+            10000
+          );
+        }
       }
-      log.error("Error fetching Granola documents:", error);
+      log.error("Error fetching Granola notes:", error);
       hideStatusBar(this);
       return;
     }
 
-    // Apply title filter
-    documents = filterDocumentsByTitle(
-      documents,
-      this.settings.titleFilterMode,
-      this.settings.titleFilterKeyword
-    );
-
     if (documents.length === 0) {
       notifySync(
         this.settings.showSyncNotifications,
-        mode === "full"
-          ? "Granola sync: No documents returned from Granola API."
-          : `Granola sync: No documents found within the last ${this.settings.syncDaysBack} days.`,
+        "Granola sync: Everything up to date.",
         5000
       );
       hideStatusBar(this);
       return;
     }
 
-    showStatusBar(this, `Granola sync: Syncing ${documents.length} documents`);
-    log.debug(
-      mode === "full"
-        ? `Granola API: fetched ${documents.length} documents (full sync)`
-        : `Granola API: fetched ${documents.length} documents within ${this.settings.syncDaysBack} day(s)`
-    );
+    showStatusBar(this, `Granola sync: Syncing ${documents.length} notes`);
+    log.debug(`Granola API: hydrated ${documents.length} note(s) (mode=${mode})`);
 
     // Build folder map (document → folder paths)
     let docFolders: Record<string, string[]> = {};
     try {
       showStatusBar(this, "Granola sync: Fetching folders...");
-      const freshFolderMap = await buildFolderMap(accessToken);
+      const freshFolderMap = await buildFolderMap(apiKey, documents);
       const previousFolderMap = this.settings._folderMapCache ?? null;
 
       // Detect folder renames and update affected notes
@@ -571,14 +603,23 @@ export default class GranolaSync extends Plugin {
     }
 
     const forceOverwrite = mode === "full";
+
+    // Transcripts arrive with the note detail — no separate fetch phase.
     let transcriptDataMap: Map<string, TranscriptEntry[]> | null = null;
     if (this.settings.syncTranscripts) {
-      const transcriptResult = await this.syncTranscripts(
-        documents,
-        accessToken,
-        forceOverwrite
-      );
-      transcriptDataMap = transcriptResult.transcriptDataMap;
+      transcriptDataMap = new Map();
+      for (const doc of documents) {
+        if (doc.transcript && doc.transcript.length > 0) {
+          transcriptDataMap.set(doc.id, doc.transcript);
+        }
+      }
+      if (!isCombinedMode) {
+        await this.saveTranscriptFiles(
+          documents,
+          transcriptDataMap,
+          forceOverwrite
+        );
+      }
     }
     if (this.settings.syncNotes) {
       await this.syncNotes(documents, forceOverwrite, transcriptDataMap, docFolders);
@@ -690,41 +731,26 @@ export default class GranolaSync extends Plugin {
         }
       }
 
-      // Process image attachments and transcripts for each note
-      const notesWithImages = await Promise.all(
-        notesWithDocs.map(async ({ noteData, doc }) => {
-          // Append image embeds to the note's markdown
-          let markdownWithImages =
-            await this.fileSyncService.appendImageEmbedsForAttachments(
-              doc,
-              noteData.markdown,
-              dailyNoteFile.path
-            );
-
-          // If combined mode and transcript available, append transcript content
-          if (isCombinedMode && transcriptDataMap) {
-            const transcriptData = transcriptDataMap.get(doc.id || "");
-            if (transcriptData && transcriptData.length > 0) {
-              const transcriptBody = formatTranscriptBody(transcriptData);
-              markdownWithImages += "\n\n### Transcript\n\n" + transcriptBody;
-              // Set transcript link to heading within the same section
-              return {
-                ...noteData,
-                markdown: markdownWithImages,
-                transcript: "[[#Transcript]]",
-              };
-            }
+      // Append transcript content for combined mode
+      const notesWithTranscripts = notesWithDocs.map(({ noteData, doc }) => {
+        if (isCombinedMode && transcriptDataMap) {
+          const transcriptData = transcriptDataMap.get(doc.id || "");
+          if (transcriptData && transcriptData.length > 0) {
+            const transcriptBody = formatTranscriptBody(transcriptData);
+            // Set transcript link to heading within the same section
+            return {
+              ...noteData,
+              markdown:
+                noteData.markdown + "\n\n### Transcript\n\n" + transcriptBody,
+              transcript: "[[#Transcript]]",
+            };
           }
-
-          return {
-            ...noteData,
-            markdown: markdownWithImages,
-          };
-        })
-      );
+        }
+        return noteData;
+      });
 
       const sectionContent = this.dailyNoteBuilder.buildDailyNoteSectionContent(
-        notesWithImages,
+        notesWithTranscripts,
         sectionHeadingSetting
       );
 
@@ -912,61 +938,46 @@ export default class GranolaSync extends Plugin {
     }
   }
 
-  private async syncTranscripts(
+  /**
+   * Saves separate transcript files for documents whose transcript arrived
+   * with the note detail. Not used in combined mode (the transcript is
+   * embedded into the note file there).
+   */
+  private async saveTranscriptFiles(
     documents: GranolaDoc[],
-    accessToken: string,
+    transcriptDataMap: Map<string, TranscriptEntry[]>,
     forceOverwrite: boolean = false
-  ): Promise<{ transcriptDataMap: Map<string, TranscriptEntry[]> }> {
-    const transcriptDataMap = new Map<string, TranscriptEntry[]>();
-    const isCombinedMode = this.settings.transcriptHandling === "combined";
-
+  ): Promise<void> {
     let processedCount = 0;
     let syncedCount = 0;
 
     for (const doc of documents) {
       const docId = doc.id;
       const title = getTitleOrDefault(doc);
+      const transcriptData = transcriptDataMap.get(docId);
+      if (!transcriptData || transcriptData.length === 0) {
+        log.debug(`Skipping transcript for doc ${docId} — no transcript data`);
+        continue;
+      }
+
       try {
-        // Skip fetching if transcript already exists locally and is up-to-date (unless forceOverwrite is true)
-        // In combined mode, check for combined files instead of transcript files
+        // Skip if transcript already exists locally and is up-to-date (unless forceOverwrite is true)
         if (!forceOverwrite) {
           const existingTranscript = this.fileSyncService.findByGranolaId(
             docId,
-            isCombinedMode ? "combined" : "transcript"
+            "transcript"
           );
-          if (existingTranscript) {
-            if (
-              !this.fileSyncService.isRemoteNewer(
-                docId,
-                getEffectiveUpdatedAt(doc),
-                isCombinedMode ? "combined" : "transcript"
-              )
-            ) {
-              log.debug(`Skipping transcript for doc ${docId} — local copy is up-to-date`);
-              continue;
-            }
+          if (
+            existingTranscript &&
+            !this.fileSyncService.isRemoteNewer(
+              docId,
+              getEffectiveUpdatedAt(doc),
+              "transcript"
+            )
+          ) {
+            log.debug(`Skipping transcript for doc ${docId} — local copy is up-to-date`);
+            continue;
           }
-        }
-
-        const transcriptData: TranscriptEntry[] = await fetchGranolaTranscript(
-          accessToken,
-          docId
-        );
-        if (transcriptData.length === 0) {
-          log.debug(`Skipping transcript for doc ${docId} — API returned empty transcript`);
-          continue;
-        }
-
-        // Store transcript data for use in combined mode
-        if (docId) {
-          transcriptDataMap.set(docId, transcriptData);
-        }
-
-        // In combined mode, skip saving separate transcript files
-        if (isCombinedMode) {
-          processedCount++;
-          this.updateSyncStatus("Transcript", processedCount, documents.length);
-          continue;
         }
 
         // Save transcript without cross-links; frontmatter linking is done
@@ -996,15 +1007,14 @@ export default class GranolaSync extends Plugin {
         }
       } catch (e) {
         new Notice(
-          `Error fetching transcript for document: ${title}. Check console.`,
+          `Error saving transcript for document: ${title}. Check console.`,
           7000
         );
-        log.error(`Transcript fetch error for doc ${docId}:`, e);
+        log.error(`Transcript save error for doc ${docId}:`, e);
       }
     }
     log.debug(
-      `syncTranscripts - Completed: ${syncedCount} saved out of ${processedCount} processed`
+      `saveTranscriptFiles - Completed: ${syncedCount} saved out of ${processedCount} processed`
     );
-    return { transcriptDataMap };
   }
 }

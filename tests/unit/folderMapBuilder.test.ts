@@ -5,10 +5,7 @@ import {
   FolderMapData,
   FolderInfo,
 } from "../../src/services/folderMapBuilder";
-import {
-  fetchDocumentListsMetadata,
-  fetchDocumentList,
-} from "../../src/services/granolaApi";
+import { listAllFolders } from "../../src/services/granolaApi";
 
 jest.mock("../../src/services/granolaApi");
 jest.mock("../../src/utils/logger", () => ({
@@ -81,46 +78,21 @@ describe("folderMapBuilder", () => {
   });
 
   describe("buildFolderMap", () => {
-    it("should build a complete folder map from API data", async () => {
-      (fetchDocumentListsMetadata as jest.Mock).mockResolvedValue({
-        "folder-1": {
-          id: "folder-1",
-          title: "Marlu",
-          parent_document_list_id: null,
-        },
-        "folder-2": {
-          id: "folder-2",
-          title: "Good2Go",
-          parent_document_list_id: "folder-3",
-        },
-        "folder-3": {
-          id: "folder-3",
-          title: "Clients",
-          parent_document_list_id: null,
-        },
-      });
+    it("should build a complete folder map from folders and note membership", async () => {
+      (listAllFolders as jest.Mock).mockResolvedValue([
+        { id: "folder-1", name: "Marlu", parent_folder_id: null },
+        { id: "folder-2", name: "Good2Go", parent_folder_id: "folder-3" },
+        { id: "folder-3", name: "Clients", parent_folder_id: null },
+      ]);
 
-      (fetchDocumentList as jest.Mock)
-        .mockResolvedValueOnce({
-          id: "folder-1",
-          title: "Marlu",
-          parent_document_list_id: null,
-          documents: [{ id: "doc-1" }, { id: "doc-2" }],
-        })
-        .mockResolvedValueOnce({
-          id: "folder-2",
-          title: "Good2Go",
-          parent_document_list_id: "folder-3",
-          documents: [{ id: "doc-2" }, { id: "doc-3" }],
-        })
-        .mockResolvedValueOnce({
-          id: "folder-3",
-          title: "Clients",
-          parent_document_list_id: null,
-          documents: [],
-        });
+      const docs = [
+        { id: "doc-1", title: "a", folder_ids: ["folder-1"] },
+        { id: "doc-2", title: "b", folder_ids: ["folder-1", "folder-2"] },
+        { id: "doc-3", title: "c", folder_ids: ["folder-2"] },
+        { id: "doc-4", title: "d" },
+      ];
 
-      const result = await buildFolderMap("test-token");
+      const result = await buildFolderMap("grn_key", docs);
 
       expect(result.folders).toEqual({
         "folder-1": { title: "Marlu", parentId: null },
@@ -136,68 +108,33 @@ describe("folderMapBuilder", () => {
       );
       // doc-3 is only in Clients/Good2Go
       expect(result.docFolders["doc-3"]).toEqual(["Clients/Good2Go"]);
+      // doc-4 has no folders
+      expect(result.docFolders["doc-4"]).toBeUndefined();
 
       expect(result.lastUpdated).toBeGreaterThan(0);
     });
 
     it("should handle empty folder list", async () => {
-      (fetchDocumentListsMetadata as jest.Mock).mockResolvedValue({});
+      (listAllFolders as jest.Mock).mockResolvedValue([]);
 
-      const result = await buildFolderMap("test-token");
+      const result = await buildFolderMap("grn_key", [
+        { id: "doc-1", title: "a", folder_ids: ["fol_unknown"] },
+      ]);
 
       expect(result.folders).toEqual({});
       expect(result.docFolders).toEqual({});
-      expect(fetchDocumentList).not.toHaveBeenCalled();
     });
 
-    it("should continue when a single folder fetch fails", async () => {
-      (fetchDocumentListsMetadata as jest.Mock).mockResolvedValue({
-        "folder-1": {
-          id: "folder-1",
-          title: "Working",
-          parent_document_list_id: null,
-        },
-        "folder-2": {
-          id: "folder-2",
-          title: "Broken",
-          parent_document_list_id: null,
-        },
-      });
+    it("should skip folder ids that are not in the folder list", async () => {
+      (listAllFolders as jest.Mock).mockResolvedValue([
+        { id: "folder-1", name: "Known", parent_folder_id: null },
+      ]);
 
-      (fetchDocumentList as jest.Mock)
-        .mockResolvedValueOnce({
-          id: "folder-1",
-          title: "Working",
-          parent_document_list_id: null,
-          documents: [{ id: "doc-1" }],
-        })
-        .mockRejectedValueOnce(new Error("API error"));
+      const result = await buildFolderMap("grn_key", [
+        { id: "doc-1", title: "a", folder_ids: ["folder-1", "fol_gone"] },
+      ]);
 
-      const result = await buildFolderMap("test-token");
-
-      expect(result.docFolders["doc-1"]).toEqual(["Working"]);
-      expect(Object.keys(result.folders)).toHaveLength(2);
-    });
-
-    it("should handle folders with no documents array", async () => {
-      (fetchDocumentListsMetadata as jest.Mock).mockResolvedValue({
-        "folder-1": {
-          id: "folder-1",
-          title: "Empty",
-          parent_document_list_id: null,
-        },
-      });
-
-      (fetchDocumentList as jest.Mock).mockResolvedValue({
-        id: "folder-1",
-        title: "Empty",
-        parent_document_list_id: null,
-        documents: [],
-      });
-
-      const result = await buildFolderMap("test-token");
-
-      expect(result.docFolders).toEqual({});
+      expect(result.docFolders["doc-1"]).toEqual(["Known"]);
     });
   });
 

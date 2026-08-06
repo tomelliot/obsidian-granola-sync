@@ -1,6 +1,4 @@
 import { GranolaDoc } from "./granolaApi";
-import { convertProsemirrorToMarkdown } from "./prosemirrorMarkdown";
-import { convertHtmlToMarkdown } from "./htmlMarkdown";
 import {
   getTitleOrDefault,
   resolveFilenamePattern,
@@ -15,7 +13,6 @@ import {
 
 export interface DocumentProcessorSettings {
   syncTranscripts: boolean;
-  includePrivateNotes: boolean;
 }
 
 /**
@@ -30,6 +27,7 @@ export interface NoteMetadata {
   attendees: string[];
   transcript?: string;
   folders?: string[];
+  webUrl?: string;
 }
 
 /**
@@ -80,6 +78,7 @@ export class DocumentProcessor {
       createdAt: doc.created_at,
       updatedAt: getEffectiveUpdatedAt(doc),
       attendees,
+      webUrl: doc.web_url,
     };
 
     // Add transcript link if provided (only for individual note files)
@@ -96,48 +95,24 @@ export class DocumentProcessor {
   }
 
   /**
-   * Builds the body content for a note with appropriate heading levels.
+   * Builds the body content for a note.
+   *
+   * The public API returns the AI summary as ready-made markdown, so the body
+   * is `summary_markdown` verbatim, falling back to the plain `summary_text`.
    *
    * @param doc - The Granola document to process
-   * @param options - Body options including heading level
-   * @returns The formatted markdown body
+   * @param _options - Kept for signature stability; the API's own markdown
+   *   defines heading levels now.
+   * @returns The markdown body, or null when the note has no summary content
    */
-  buildNoteBody(doc: GranolaDoc, options: BodyOptions): string | null {
-    const contentToParse = doc.last_viewed_panel?.content;
-    if (!contentToParse) {
-      return null;
+  buildNoteBody(doc: GranolaDoc, _options: BodyOptions): string | null {
+    if (doc.summary_markdown?.trim()) {
+      return doc.summary_markdown;
     }
-
-    // The Granola API may return content as either a ProseMirror JSON document
-    // or an HTML string. Handle both formats.
-    let markdownContent: string;
-    if (typeof contentToParse === "string") {
-      markdownContent = convertHtmlToMarkdown(contentToParse);
-    } else if (contentToParse.type === "doc") {
-      markdownContent = convertProsemirrorToMarkdown(contentToParse);
-    } else {
-      return null;
+    if (doc.summary_text?.trim()) {
+      return doc.summary_text;
     }
-    const headingPrefix = "#".repeat(options.headingLevel);
-
-    // Add private notes section if enabled and content exists
-    const hasPrivateNotes =
-      this.settings.includePrivateNotes &&
-      doc.notes_markdown &&
-      doc.notes_markdown.trim() !== "";
-
-    let body = "";
-    if (hasPrivateNotes) {
-      body += `${headingPrefix} Private Notes\n\n`;
-      body += doc.notes_markdown;
-      body += "\n\n";
-      // Add enhanced notes section heading when private notes are present
-      body += `${headingPrefix} Enhanced Notes\n\n`;
-    }
-
-    body += markdownContent;
-
-    return body;
+    return null;
   }
 
   /**
@@ -154,7 +129,7 @@ export class DocumentProcessor {
     doc: GranolaDoc,
     folders?: string[]
   ): { filename: string; content: string } | null {
-    // Build body first — if there's no parseable content, bail out early
+    // Build body first — if there's no summary content, bail out early
     const body = this.buildNoteBody(doc, { headingLevel: 2 });
     if (body === null) {
       return null;
@@ -176,6 +151,7 @@ export class DocumentProcessor {
     if (metadata.createdAt) frontmatterLines.push(`created: ${metadata.createdAt}`);
     if (metadata.updatedAt) frontmatterLines.push(`updated: ${metadata.updatedAt}`);
     frontmatterLines.push(`attendees: ${formatAttendeesAsYaml(metadata.attendees)}`);
+    if (metadata.webUrl) frontmatterLines.push(`web_url: ${metadata.webUrl}`);
 
     // Add transcript link to frontmatter if provided
     if (metadata.transcript) {
@@ -230,7 +206,7 @@ export class DocumentProcessor {
     transcriptContent: string,
     folders?: string[]
   ): { filename: string; content: string } | null {
-    // Build body first — if there's no parseable content, bail out early
+    // Build body first — if there's no summary content, bail out early
     const body = this.buildNoteBody(doc, { headingLevel: 2 });
     if (body === null) {
       return null;
@@ -249,6 +225,7 @@ export class DocumentProcessor {
     if (metadata.createdAt) frontmatterLines.push(`created: ${metadata.createdAt}`);
     if (metadata.updatedAt) frontmatterLines.push(`updated: ${metadata.updatedAt}`);
     frontmatterLines.push(`attendees: ${formatAttendeesAsYaml(metadata.attendees)}`);
+    if (metadata.webUrl) frontmatterLines.push(`web_url: ${metadata.webUrl}`);
 
     // Note: Combined files do NOT include transcript or note link fields in frontmatter
 
@@ -263,17 +240,7 @@ export class DocumentProcessor {
 
     let finalMarkdown = frontmatterLines.join("\n");
 
-    // Check if private notes were added
-    const hasPrivateNotes =
-      this.settings.includePrivateNotes &&
-      doc.notes_markdown &&
-      doc.notes_markdown.trim() !== "";
-
-    if (!hasPrivateNotes) {
-      // When no private notes, use the original "## Note" heading for combined notes
-      finalMarkdown += "## Note\n\n";
-    }
-
+    finalMarkdown += "## Note\n\n";
     finalMarkdown += body;
     finalMarkdown += "\n\n";
 
@@ -309,7 +276,7 @@ export class DocumentProcessor {
     folders?: string[];
     markdown: string;
   } | null {
-    // Build body first — if there's no parseable content, bail out early
+    // Build body first — if there's no summary content, bail out early
     const body = this.buildNoteBody(doc, { headingLevel: 3 });
     if (body === null) {
       return null;

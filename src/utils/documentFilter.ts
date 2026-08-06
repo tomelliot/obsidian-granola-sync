@@ -34,11 +34,11 @@ export function filterDocumentsByDate(
  * @param keyword - The keyword to match against document titles (case-insensitive)
  * @returns Filtered array of documents
  */
-export function filterDocumentsByTitle(
-  documents: GranolaDoc[],
+export function filterDocumentsByTitle<T extends { title?: string | null }>(
+  documents: T[],
   mode: "disabled" | "include" | "exclude",
   keyword: string
-): GranolaDoc[] {
+): T[] {
   if (mode === "disabled" || !keyword.trim()) {
     return documents;
   }

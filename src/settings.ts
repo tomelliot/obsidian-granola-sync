@@ -1,8 +1,10 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
+import type { TextComponent } from "obsidian";
 import { notifySync } from "./utils/notify";
+import { validatePattern } from "./utils/filenameUtils";
+import { verifyApiKey } from "./services/granolaApi";
 import type GranolaSync from "./main";
 import type { FolderMapData } from "./services/folderMapBuilder";
-import bmcButtonSvg from "../assets/bmc-button.svg";
 import githubLogoSvg from "../assets/github-logo.svg";
 
 function appendSvg(target: HTMLElement, svgMarkup: string): void {
@@ -37,14 +39,12 @@ export enum TranscriptDestination {
 
 export interface FilterSettings {
   syncDaysBack: number;
-  includeSharedNotes: boolean;
   titleFilterMode: "disabled" | "include" | "exclude";
   titleFilterKeyword: string;
 }
 
 export interface NoteSettings {
   syncNotes: boolean;
-  includePrivateNotes: boolean;
   saveAsIndividualFiles: boolean; // true = files, false = sections
 
   // Only if saveAsIndividualFiles = true:
@@ -114,6 +114,8 @@ export type GranolaSyncSettings = NoteSettings &
   TranscriptSettings &
   AutomaticSyncSettings &
   FilterSettings & {
+    /** Granola public API key (grn_…), created in Granola → Settings → Connectors → API keys. */
+    apiKey: string;
     enableDebugLogging: boolean;
     showSyncNotifications: boolean;
     // Persisted folder map for detecting renames across syncs
@@ -123,18 +125,18 @@ export type GranolaSyncSettings = NoteSettings &
   };
 
 export const DEFAULT_SETTINGS: GranolaSyncSettings = {
+  // Authentication
+  apiKey: "",
   // AutomaticSyncSettings
   latestSyncTime: 0,
   isSyncEnabled: false,
   syncInterval: 30 * 60, // every 30 minutes
   // FilterSettings
   syncDaysBack: 7, // sync notes from last 7 days
-  includeSharedNotes: true,
   titleFilterMode: "disabled",
   titleFilterKeyword: "",
   // NoteSettings
   syncNotes: true,
-  includePrivateNotes: false,
   saveAsIndividualFiles: false, // Default to daily notes (sections)
   baseFolderType: "custom",
   customBaseFolder: "Granola",
@@ -154,6 +156,16 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   // Notifications
   showSyncNotifications: true,
 };
+
+/**
+ * Settings removed in the public-API rewrite; deleted from loaded data on
+ * startup. The public API has no owned/shared or private-notes distinction —
+ * the API key's scope governs what is accessible.
+ */
+export function scrubRemovedSettings(loaded: Record<string, unknown>): void {
+  delete loaded.includePrivateNotes;
+  delete loaded.includeSharedNotes;
+}
 
 /**
  * Migrates old settings format to new format.
@@ -239,6 +251,9 @@ export function migrateSettingsToNewFormat(
   return Object.assign({}, DEFAULT_SETTINGS, newSettings);
 }
 
+/** Variables resolveSubfolderPattern actually substitutes. */
+const SUBFOLDER_VARIABLES = ["year", "month", "day", "quarter"];
+
 export class GranolaSyncSettingTab extends PluginSettingTab {
   plugin: GranolaSync;
   private showAdvanced = false;
@@ -248,12 +263,90 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  /**
+   * Wires inline validation into a pattern text field. Invalid patterns
+   * (unknown variables, mistyped braces like "{year)") show an error under
+   * the setting and are not saved; the last valid value stays in effect.
+   * An empty value is allowed — callers fall back to their default.
+   */
+  private bindValidatedPattern(
+    setting: Setting,
+    text: TextComponent,
+    allowedVariables: string[] | undefined,
+    save: (value: string) => Promise<void>
+  ): void {
+    const errorEl = setting.infoEl.createDiv({
+      cls: "granola-sync-pattern-error",
+    });
+
+    const check = (value: string): boolean => {
+      if (!value) {
+        errorEl.setText("");
+        return true;
+      }
+      const validation = validatePattern(value, allowedVariables);
+      errorEl.setText(validation.isValid ? "" : validation.error ?? "");
+      text.inputEl.toggleClass(
+        "granola-sync-pattern-input-invalid",
+        !validation.isValid
+      );
+      return validation.isValid;
+    };
+
+    // Surface problems with the stored value as soon as settings open
+    check(text.getValue());
+
+    text.onChange(async (value) => {
+      if (check(value)) {
+        await save(value);
+      }
+    });
+  }
+
   display(): void {
     const { containerEl } = this;
 
     containerEl.empty();
 
     // General settings (no heading per Obsidian conventions)
+    new Setting(containerEl)
+      .setName("Granola API key")
+      .setDesc(
+        // eslint-disable-next-line obsidianmd/ui/sentence-case -- 'Settings → Connectors → API keys' is a literal Granola menu path
+        "Create a key in the Granola desktop app under Settings → Connectors → API keys (scope: Personal notes), then paste it here."
+      )
+      .addText((text) => {
+        text.inputEl.type = "password";
+        text
+          // eslint-disable-next-line obsidianmd/ui/sentence-case -- literal API key prefix
+          .setPlaceholder("grn_…")
+          .setValue(this.plugin.settings.apiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.apiKey = value.trim();
+            await this.plugin.saveSettings();
+          });
+      })
+      .addButton((button) =>
+        button.setButtonText("Test connection").onClick(async () => {
+          const key = this.plugin.settings.apiKey;
+          if (!key) {
+            new Notice("Enter an API key first.");
+            return;
+          }
+          button.setDisabled(true);
+          const result = await verifyApiKey(key);
+          button.setDisabled(false);
+          if (result.ok) {
+            new Notice("Granola API connection succeeded.");
+          } else {
+            new Notice(
+              `Granola API connection failed: ${result.message}`,
+              8000
+            );
+          }
+        })
+      );
+
     new Setting(containerEl)
       .setName("Periodic sync enabled")
       .setDesc(
@@ -340,21 +433,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
       new Setting(containerEl).setName("Notes").setHeading();
 
       new Setting(containerEl)
-        .setName("Include private notes")
-        .setDesc(
-          // eslint-disable-next-line obsidianmd/ui/sentence-case -- '## Private Notes' / '## Enhanced Notes' are literal heading labels written into the output
-          "Include your raw private notes at the top of each synced note. Private notes appear in a '## Private Notes' section above the '## Enhanced Notes' section."
-        )
-        .addToggle((toggle) =>
-          toggle
-            .setValue(this.plugin.settings.includePrivateNotes)
-            .onChange(async (value) => {
-              this.plugin.settings.includePrivateNotes = value;
-              await this.plugin.saveSettings();
-            })
-        );
-
-      new Setting(containerEl)
         .setName("Save notes as")
         .setDesc("Choose how to package your Granola notes")
         .addDropdown((dropdown) =>
@@ -430,36 +508,46 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           );
 
         if (this.plugin.settings.subfolderPattern === "custom") {
-          new Setting(containerEl)
+          const subfolderSetting = new Setting(containerEl)
             .setName("Custom subfolder pattern")
             .setDesc(
               "Use variables: {year}, {month}, {day}, {quarter}. Example: {year}/{month}"
-            )
-            .addText((text) =>
-              text
-                .setPlaceholder("{year}/{month}")
-                .setValue(this.plugin.settings.customSubfolderPattern || "")
-                .onChange(async (value) => {
-                  this.plugin.settings.customSubfolderPattern = value;
-                  await this.plugin.saveSettings();
-                })
             );
+          subfolderSetting.addText((text) => {
+            text
+              .setPlaceholder("{year}/{month}")
+              .setValue(this.plugin.settings.customSubfolderPattern || "");
+            this.bindValidatedPattern(
+              subfolderSetting,
+              text,
+              SUBFOLDER_VARIABLES,
+              async (value) => {
+                this.plugin.settings.customSubfolderPattern = value;
+                await this.plugin.saveSettings();
+              }
+            );
+          });
         }
 
-        new Setting(containerEl)
+        const filenameSetting = new Setting(containerEl)
           .setName("Filename pattern")
           .setDesc(
             "Customize note filenames. Variables: {title}, {date}, {time}, {year}, {month}, {day}"
-          )
-          .addText((text) =>
-            text
-              .setPlaceholder("{title}")
-              .setValue(this.plugin.settings.filenamePattern)
-              .onChange(async (value) => {
-                this.plugin.settings.filenamePattern = value || "{title}";
-                await this.plugin.saveSettings();
-              })
           );
+        filenameSetting.addText((text) => {
+          text
+            .setPlaceholder("{title}")
+            .setValue(this.plugin.settings.filenamePattern);
+          this.bindValidatedPattern(
+            filenameSetting,
+            text,
+            undefined,
+            async (value) => {
+              this.plugin.settings.filenamePattern = value || "{title}";
+              await this.plugin.saveSettings();
+            }
+          );
+        });
 
         new Setting(containerEl)
           .setName("Link from daily notes")
@@ -591,42 +679,52 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           );
 
         if (this.plugin.settings.transcriptSubfolderPattern === "custom") {
-          new Setting(containerEl)
+          const transcriptSubfolderSetting = new Setting(containerEl)
             .setName("Custom transcript subfolder pattern")
             .setDesc(
               "Use variables: {year}, {month}, {day}, {quarter}. Example: {year}/{month}"
-            )
-            .addText((text) =>
-              text
-                .setPlaceholder("{year}/{month}")
-                .setValue(
-                  this.plugin.settings.customTranscriptSubfolderPattern || ""
-                )
-                .onChange(async (value) => {
-                  this.plugin.settings.customTranscriptSubfolderPattern = value;
-                  await this.plugin.saveSettings();
-                })
             );
+          transcriptSubfolderSetting.addText((text) => {
+            text
+              .setPlaceholder("{year}/{month}")
+              .setValue(
+                this.plugin.settings.customTranscriptSubfolderPattern || ""
+              );
+            this.bindValidatedPattern(
+              transcriptSubfolderSetting,
+              text,
+              SUBFOLDER_VARIABLES,
+              async (value) => {
+                this.plugin.settings.customTranscriptSubfolderPattern = value;
+                await this.plugin.saveSettings();
+              }
+            );
+          });
         }
 
-        new Setting(containerEl)
+        const transcriptFilenameSetting = new Setting(containerEl)
           .setName("Transcript filename pattern")
           .setDesc(
             "Customize transcript filenames. Variables: {title}, {date}, {time}, {year}, {month}, {day}"
-          )
-          .addText((text) =>
-            text
-              .setPlaceholder("{title}-transcript")
-              .setValue(
-                this.plugin.settings.transcriptFilenamePattern ||
-                  "{title}-transcript"
-              )
-              .onChange(async (value) => {
-                this.plugin.settings.transcriptFilenamePattern =
-                  value || "{title}-transcript";
-                await this.plugin.saveSettings();
-              })
           );
+        transcriptFilenameSetting.addText((text) => {
+          text
+            .setPlaceholder("{title}-transcript")
+            .setValue(
+              this.plugin.settings.transcriptFilenamePattern ||
+                "{title}-transcript"
+            );
+          this.bindValidatedPattern(
+            transcriptFilenameSetting,
+            text,
+            undefined,
+            async (value) => {
+              this.plugin.settings.transcriptFilenamePattern =
+                value || "{title}-transcript";
+              await this.plugin.saveSettings();
+            }
+          );
+        });
       }
     }
 
@@ -682,20 +780,6 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
               } else {
                 new Notice("Please enter a valid number for sync days.");
               }
-            })
-        );
-
-      new Setting(containerEl)
-        .setName("Include shared notes")
-        .setDesc(
-          "Include notes that have been shared with you by others. When disabled, only notes you own will be synced."
-        )
-        .addToggle((toggle) =>
-          toggle
-            .setValue(this.plugin.settings.includeSharedNotes)
-            .onChange(async (value) => {
-              this.plugin.settings.includeSharedNotes = value;
-              await this.plugin.saveSettings();
             })
         );
 
@@ -802,17 +886,5 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           window.open("https://github.com/tomelliot/obsidian-granola-sync/");
         });
       });
-
-    new Setting(containerEl)
-      .setName("Show your support")
-      .addButton((button) => {
-      button.buttonEl.addClass("mod-cta");
-      button.buttonEl.addClass("granola-sync-bmc-icon");
-      button.buttonEl.empty();
-      appendSvg(button.buttonEl, bmcButtonSvg);
-      button.onClick(() => {
-        window.open("https://buymeacoffee.com/tomelliot");
-      });
-    });
   }
 }

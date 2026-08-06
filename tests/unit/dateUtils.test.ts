@@ -97,67 +97,18 @@ describe("getNoteDate", () => {
 });
 
 describe("getEffectiveUpdatedAt", () => {
-  it("returns the panel timestamp when it is later than the doc timestamp", () => {
+  it("returns the doc updated_at timestamp", () => {
     const doc: GranolaDoc = {
       id: "test-id",
       title: "Test Doc",
       updated_at: "2026-05-06T09:09:44.023Z",
-      last_viewed_panel: {
-        content: null,
-        updated_at: "2026-05-06T09:54:57.535Z",
-      },
-    };
-    expect(getEffectiveUpdatedAt(doc)).toBe("2026-05-06T09:54:57.535Z");
-  });
-
-  it("returns the doc timestamp when it is later than the panel timestamp", () => {
-    const doc: GranolaDoc = {
-      id: "test-id",
-      title: "Test Doc",
-      updated_at: "2026-05-06T10:00:00.000Z",
-      last_viewed_panel: {
-        content: null,
-        updated_at: "2026-05-06T09:54:57.535Z",
-      },
-    };
-    expect(getEffectiveUpdatedAt(doc)).toBe("2026-05-06T10:00:00.000Z");
-  });
-
-  it("falls back to doc updated_at when panel updated_at is missing", () => {
-    const doc: GranolaDoc = {
-      id: "test-id",
-      title: "Test Doc",
-      updated_at: "2026-05-06T09:09:44.023Z",
-      last_viewed_panel: { content: null },
     };
     expect(getEffectiveUpdatedAt(doc)).toBe("2026-05-06T09:09:44.023Z");
   });
 
-  it("falls back to panel updated_at when doc updated_at is missing", () => {
-    const doc: GranolaDoc = {
-      id: "test-id",
-      title: "Test Doc",
-      last_viewed_panel: {
-        content: null,
-        updated_at: "2026-05-06T09:54:57.535Z",
-      },
-    };
-    expect(getEffectiveUpdatedAt(doc)).toBe("2026-05-06T09:54:57.535Z");
-  });
-
-  it("returns undefined when neither timestamp is present", () => {
+  it("returns undefined when no timestamp is present", () => {
     const doc: GranolaDoc = { id: "test-id", title: "Test Doc" };
     expect(getEffectiveUpdatedAt(doc)).toBeUndefined();
-  });
-
-  it("ignores an unparseable panel timestamp and returns the doc timestamp", () => {
-    const doc: GranolaDoc = {
-      id: "test-id",
-      title: "Test Doc",
-      updated_at: "2026-05-06T09:09:44.023Z",
-      last_viewed_panel: { content: null, updated_at: "not-a-date" },
-    };
-    expect(getEffectiveUpdatedAt(doc)).toBe("2026-05-06T09:09:44.023Z");
   });
 });
 
