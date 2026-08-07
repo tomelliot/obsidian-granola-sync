@@ -1,6 +1,4 @@
-import { FileSystemAdapter, Notice, Plugin } from "obsidian";
-import fs from "fs";
-import path from "path";
+import { Notice, Plugin } from "obsidian";
 import { moment } from "./utils/moment";
 import { getDailyNote, getAllDailyNotes } from "obsidian-daily-notes-interface";
 import { getTitleOrDefault } from "./utils/filenameUtils";
@@ -114,8 +112,7 @@ export default class GranolaSync extends Plugin {
     if (hasNoExistingSettings(loadedData)) {
       const imported = await this.importSettingsFromPreviousPluginId();
       if (imported) {
-        loadedData = imported.settings as Partial<GranolaSyncSettings> &
-          LegacySettings;
+        loadedData = imported.settings;
         importedFrom = imported.pluginId;
       }
     }
@@ -228,20 +225,10 @@ export default class GranolaSync extends Plugin {
 
   private debugLogFilePath: string | null = null;
 
-  private getPluginDirPath(): string | null {
-    const adapter = this.app.vault.adapter;
-
-    if (adapter instanceof FileSystemAdapter) {
-      const basePath = adapter.getBasePath();
-      const configDir = this.app.vault.configDir;
-      return path.join(basePath, configDir, "plugins", this.manifest.id);
-    }
-
-    return null;
-  }
-
   private initializeLogger(): void {
-    const pluginDir = this.getPluginDirPath();
+    // manifest.dir is the vault-relative plugin folder, so logs stay inside
+    // the vault and go through the adapter API on every platform.
+    const pluginDir = this.manifest.dir;
 
     if (!pluginDir) {
       configureLogger(null);
@@ -253,21 +240,19 @@ export default class GranolaSync extends Plugin {
       .toISOString()
       .replace(/:/g, "-")
       .replace(/\.\d{3}Z$/, "");
-    this.debugLogFilePath = path.join(
-      pluginDir,
-      "logs",
-      `${timestamp}.log`
-    );
+    const logsDir = `${pluginDir}/logs`;
+    this.debugLogFilePath = `${logsDir}/${timestamp}.log`;
 
     configureLogger({
       isDebugEnabled: () => this.settings.enableDebugLogging,
       appendLine: async (line: string) => {
         if (!this.debugLogFilePath) return;
         try {
-          await fs.promises.mkdir(path.dirname(this.debugLogFilePath), {
-            recursive: true,
-          });
-          await fs.promises.appendFile(this.debugLogFilePath, line, "utf-8");
+          const adapter = this.app.vault.adapter;
+          if (!(await adapter.exists(logsDir))) {
+            await adapter.mkdir(logsDir);
+          }
+          await adapter.append(this.debugLogFilePath, line);
         } catch {
           // Swallow all errors to avoid affecting plugin behavior
         }
@@ -286,7 +271,15 @@ export default class GranolaSync extends Plugin {
     }
 
     try {
-      const contents = await fs.promises.readFile(debugLogPath, "utf-8");
+      const adapter = this.app.vault.adapter;
+      if (!(await adapter.exists(debugLogPath))) {
+        new Notice(
+          "Debug log file not found. Enable debug logging and try again."
+        );
+        return;
+      }
+
+      const contents = await adapter.read(debugLogPath);
 
       if (!contents) {
         new Notice("Debug log file is empty.");
@@ -296,17 +289,10 @@ export default class GranolaSync extends Plugin {
       await navigator.clipboard.writeText(contents);
       new Notice("Debug logs copied to clipboard.");
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") {
-        new Notice(
-          "Debug log file not found. Enable debug logging and try again."
-        );
-      } else {
-        new Notice(
-          "Failed to copy debug logs: " +
-            (error instanceof Error ? error.message : String(error))
-        );
-      }
+      new Notice(
+        "Failed to copy debug logs: " +
+          (error instanceof Error ? error.message : String(error))
+      );
     }
   }
 
@@ -472,8 +458,7 @@ export default class GranolaSync extends Plugin {
     const apiKey = this.settings.apiKey;
     if (!apiKey) {
       new Notice(
-        // eslint-disable-next-line obsidianmd/ui/sentence-case -- 'Settings → Connectors → API keys' is a literal Granola menu path
-        "Granola sync: No API key configured. Create one in Granola → Settings → Connectors → API keys, then paste it in the plugin settings.",
+        "Granola sync: No API key configured. Create one in Granola → settings → connectors → API keys, then paste it in the plugin settings.",
         10000
       );
       return;

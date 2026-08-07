@@ -86,7 +86,7 @@ jobs:
         with:
           name: plugin-build-${{ github.run_id }}
           path: |
-            ./output/main.js
+            ./main.js
             ./manifest.json
             ./styles.css
           retention-days: 1

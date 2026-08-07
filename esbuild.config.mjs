@@ -31,27 +31,11 @@ const DEV_PLUGIN_PATH =
     "obsidian/Everything/.obsidian/plugins/granola-sync/main.js"
   );
 
-function copyToOutput() {
-  const outputDir = path.join(__dirname, "output");
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-
-  fs.copyFileSync(manifestPath, path.join(outputDir, "manifest.json"));
-  console.log(`✓ Copied manifest.json to ${outputDir}`);
-
-  const stylesPath = path.join(__dirname, "styles.css");
-  if (fs.existsSync(stylesPath)) {
-    fs.copyFileSync(stylesPath, path.join(outputDir, "styles.css"));
-    console.log(`✓ Copied styles.css to ${outputDir}`);
-  }
-}
-
 function copyToDevPlugin() {
   if (prod) return;
 
   try {
-    const outputPath = path.join(__dirname, "output/main.js");
+    const outputPath = path.join(__dirname, "main.js");
     const stylesPath = path.join(__dirname, "styles.css");
     const targetDir = path.dirname(DEV_PLUGIN_PATH);
     const manifestTargetPath = path.join(targetDir, "manifest.json");
@@ -94,7 +78,6 @@ const copyPlugin = {
   name: "copy-to-dev-plugin",
   setup(build) {
     build.onEnd(() => {
-      copyToOutput();
       if (!prod) copyToDevPlugin();
     });
   },
@@ -130,7 +113,7 @@ const context = await esbuild.context({
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
-  outfile: "output/main.js",
+  outfile: "main.js",
   minify: prod,
   loader: { ".svg": "text" },
   plugins: [copyPlugin],

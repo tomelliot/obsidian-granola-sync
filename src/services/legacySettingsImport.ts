@@ -61,7 +61,7 @@ export function looksLikeGranolaSyncSettings(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }
-  const keys = Object.keys(value as Record<string, unknown>);
+  const keys = Object.keys(value);
   const matches = SCHEMA_MARKERS.filter((marker) => keys.includes(marker));
   return matches.length >= REQUIRED_MARKER_COUNT;
 }
@@ -74,7 +74,7 @@ export function looksLikeGranolaSyncSettings(value: unknown): boolean {
 export function hasNoExistingSettings(loaded: unknown): boolean {
   if (loaded === null || loaded === undefined) return true;
   if (typeof loaded !== "object" || Array.isArray(loaded)) return false;
-  return Object.keys(loaded as Record<string, unknown>).length === 0;
+  return Object.keys(loaded).length === 0;
 }
 
 /**
