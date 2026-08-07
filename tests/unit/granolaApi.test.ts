@@ -92,6 +92,34 @@ describe("listAllNoteSummaries", () => {
       GranolaAuthError
     );
   });
+
+  test("retries once on a transient 502 then succeeds", async () => {
+    mockRequestUrl
+      .mockResolvedValueOnce({ status: 502, json: {} })
+      .mockResolvedValueOnce({
+        status: 200,
+        json: { notes: [summary("not_a")], hasMore: false, cursor: null },
+      });
+    const notes = await listAllNoteSummaries("grn_key", 0);
+    expect(notes).toHaveLength(1);
+    expect(mockRequestUrl).toHaveBeenCalledTimes(2);
+  }, 10000);
+
+  test("gives up on a persistent 502 after retries, carrying the status", async () => {
+    mockRequestUrl.mockResolvedValue({ status: 502, json: {} });
+    await expect(listAllNoteSummaries("grn_key", 0)).rejects.toMatchObject({
+      status: 502,
+    });
+    expect(mockRequestUrl).toHaveBeenCalledTimes(4); // initial + MAX_RETRIES
+  }, 20000);
+
+  test("does not retry a 404", async () => {
+    mockRequestUrl.mockResolvedValue({ status: 404, json: {} });
+    await expect(listAllNoteSummaries("grn_key", 0)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("fetchNoteDetail", () => {

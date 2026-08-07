@@ -507,14 +507,37 @@ export default class GranolaSync extends Plugin {
       );
 
       let hydratedCount = 0;
+      let failedFetches = 0;
       for (const summary of toHydrate) {
         hydratedCount++;
         showStatusBar(
           this,
           `Granola sync: Fetching ${hydratedCount}/${toHydrate.length}`
         );
-        documents.push(
-          await fetchNoteDetail(apiKey, summary.id, needTranscripts)
+        try {
+          documents.push(
+            await fetchNoteDetail(apiKey, summary.id, needTranscripts)
+          );
+        } catch (error: unknown) {
+          // A rejected key won't recover on the next note — abort the sync.
+          if (error instanceof GranolaAuthError) throw error;
+          // Anything else (e.g. a note Granola's server persistently 502s
+          // on) should cost us that note, not the whole sync.
+          failedFetches++;
+          log.error(
+            `Skipping note ${summary.id} ("${summary.title}") — fetch failed:`,
+            error
+          );
+        }
+      }
+      if (failedFetches > 0) {
+        new Notice(
+          `Granola sync: ${failedFetches} note${
+            failedFetches === 1 ? "" : "s"
+          } could not be fetched and ${
+            failedFetches === 1 ? "was" : "were"
+          } skipped. See the debug log for details.`,
+          10000
         );
       }
     } catch (error: unknown) {

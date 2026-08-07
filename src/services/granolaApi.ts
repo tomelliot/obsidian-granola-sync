@@ -58,9 +58,16 @@ async function apiGet(apiKey: string, pathAndQuery: string): Promise<unknown> {
       },
     });
 
-    if (response.status === 429 && attempt < MAX_RETRIES) {
+    // 429 is rate limiting; 5xx is a server-side failure that is often
+    // transient — both deserve a backoff and retry before giving up.
+    if (
+      (response.status === 429 || response.status >= 500) &&
+      attempt < MAX_RETRIES
+    ) {
       const backoff = Math.pow(2, attempt) * 1000;
-      log.debug(`429 from Granola API, retrying in ${backoff}ms (${pathAndQuery})`);
+      log.debug(
+        `${response.status} from Granola API, retrying in ${backoff}ms (${pathAndQuery})`
+      );
       await sleep(backoff);
       continue;
     }

@@ -369,6 +369,45 @@ describe("GranolaSync", () => {
       expect(hideStatusBar).toHaveBeenCalledWith(plugin);
     });
 
+    it("skips a note whose detail fetch fails and still syncs the rest", async () => {
+      const badSummary = { ...mockSummary, id: "doc-bad" };
+      (listAllNoteSummaries as jest.Mock).mockResolvedValue([
+        badSummary,
+        mockSummary,
+      ]);
+      const serverError = new Error("Granola API error 502 for /notes/doc-bad");
+      (serverError as any).status = 502;
+      (fetchNoteDetail as jest.Mock).mockImplementation(
+        async (_key: string, id: string) => {
+          if (id === "doc-bad") throw serverError;
+          return mockDoc;
+        }
+      );
+      const syncNotesSpy = jest.fn().mockResolvedValue(undefined);
+      (plugin as any).syncNotes = syncNotesSpy;
+
+      await plugin.sync({ mode: "full" });
+
+      expect(syncNotesSpy).toHaveBeenCalledTimes(1);
+      expect(syncNotesSpy.mock.calls[0][0]).toEqual([mockDoc]);
+      expect(Notice).toHaveBeenCalledWith(
+        expect.stringContaining("1 note could not be fetched"),
+        10000
+      );
+    });
+
+    it("still aborts the sync when the API key is rejected mid-hydration", async () => {
+      (listAllNoteSummaries as jest.Mock).mockResolvedValue([mockSummary]);
+      (fetchNoteDetail as jest.Mock).mockRejectedValue(new GranolaAuthError());
+
+      await plugin.sync({ mode: "full" });
+
+      expect(Notice).toHaveBeenCalledWith(
+        expect.stringContaining("rejected your API key"),
+        10000
+      );
+    });
+
     it("should handle 500+ server errors", async () => {
       const error = new Error("server");
       (error as any).status = 500;
