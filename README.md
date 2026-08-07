@@ -3,7 +3,7 @@
 [![Release](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/tomelliot/obsidian-granola-sync/actions/workflows/release.yml)
 [![codecov](https://codecov.io/gh/tomelliot/obsidian-granola-sync/graph/badge.svg?token=UALN2224PQ)](https://codecov.io/gh/tomelliot/obsidian-granola-sync)
 
-<a href="https://buymeacoffee.com/tomelliot"><img src="assets/bmc-button.svg" alt="Buy Me A Coffee" height="60"></a>
+<a href="https://buymeacoffee.com/kayaic"><img src="assets/bmc-button.svg" alt="Buy Me A Coffee" height="60"></a>
 
 This plugin pulls your [Granola](https://granola.ai) meeting notes and transcripts into your Obsidian vault as plain Markdown - so they're searchable, linkable, and yours to keep, instead of locked away in Granola, separate from everything else you know.
 
