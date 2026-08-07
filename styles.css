@@ -28,6 +28,6 @@
   display: none;
 }
 
-.granola-sync-pattern-input-invalid {
-  border-color: var(--text-error) !important;
+.setting-item input.granola-sync-pattern-input-invalid {
+  border-color: var(--text-error);
 }

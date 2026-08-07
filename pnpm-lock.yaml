@@ -35,8 +35,8 @@ importers:
         specifier: github:czottmann/obsidian-daily-notes-interface
         version: https://codeload.github.com/czottmann/obsidian-daily-notes-interface/tar.gz/a25029772175d6e95e2ebea0edad0774cc96ebef
       valibot:
-        specifier: ^1.4.0
-        version: 1.4.0(typescript@5.2.2)
+        specifier: ^1.4.2
+        version: 1.4.2(typescript@5.2.2)
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.1
@@ -2721,8 +2721,8 @@ packages:
     resolution: {integrity: sha512-kiGUalWN+rgBJ/1OHZsBtU4rXZOfj/7rKQxULKlIzwzQSvMJUUNgPwJEEh7gU6xEVxC0ahoOBvN2YI8GH6FNgA==}
     engines: {node: '>=10.12.0'}
 
-  valibot@1.4.0:
-    resolution: {integrity: sha512-iC/x7fVcSyOwlm/VSt7RlHnzNGLGvR9GnxdifUeWoCJo0q4ZZvrVkIHC6faTlkxG47I2Y4UrFquPuVHCrOnrLg==}
+  valibot@1.4.2:
+    resolution: {integrity: sha512-gjdCvJ6d3RyHAneqxMYMW9QMCwYMb3jpOO0IyHZV1bnRHFBHrX3VkIILt5XYR0WhwHiH7Mty8ovuPZ/O3gamrg==}
     peerDependencies:
       typescript: '>=5'
     peerDependenciesMeta:
@@ -6063,7 +6063,7 @@ snapshots:
       '@types/istanbul-lib-coverage': 2.0.6
       convert-source-map: 2.0.0
 
-  valibot@1.4.0(typescript@5.2.2):
+  valibot@1.4.2(typescript@5.2.2):
     optionalDependencies:
       typescript: 5.2.2
 

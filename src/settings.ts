@@ -312,14 +312,12 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Granola API key")
       .setDesc(
-        // eslint-disable-next-line obsidianmd/ui/sentence-case -- 'Settings → Connectors → API keys' is a literal Granola menu path
-        "Create a key in the Granola desktop app under Settings → Connectors → API keys (scope: Personal notes), then paste it here."
+        "Create a key in the Granola desktop app under settings → connectors → API keys (scope: Personal notes), then paste it here."
       )
       .addText((text) => {
         text.inputEl.type = "password";
         text
-          // eslint-disable-next-line obsidianmd/ui/sentence-case -- literal API key prefix
-          .setPlaceholder("grn_…")
+          .setPlaceholder("Paste your grn_… key")
           .setValue(this.plugin.settings.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.apiKey = value.trim();
@@ -639,8 +637,7 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
           .setDesc("The folder where transcripts will be saved")
           .addText((text) =>
             text
-              // eslint-disable-next-line obsidianmd/ui/sentence-case -- folder path default, not display text
-              .setPlaceholder("Granola/Transcripts")
+              .setPlaceholder("Granola/transcripts")
               .setValue(
                 this.plugin.settings.customTranscriptBaseFolder ||
                   "Granola/Transcripts"
