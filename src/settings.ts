@@ -118,6 +118,8 @@ export type GranolaSyncSettings = NoteSettings &
     apiKey: string;
     enableDebugLogging: boolean;
     showSyncNotifications: boolean;
+    /** Last plugin version that ran; used to show upgrade notices once. */
+    lastSeenVersion?: string;
     // Persisted folder map for detecting renames across syncs
     _folderMapCache?: FolderMapData;
     // Legacy settings preserved for potential rollback

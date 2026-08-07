@@ -312,6 +312,47 @@ describe("GranolaSync", () => {
     });
   });
 
+  describe("maybeShowUpgradeNotice", () => {
+    beforeEach(() => {
+      plugin.manifest = { id: "granola-sync", version: "2.1.3" };
+    });
+
+    it("shows a sticky notice on first load of a new version when no API key is set", async () => {
+      plugin.settings = { ...DEFAULT_SETTINGS, apiKey: "" };
+
+      await (plugin as any).maybeShowUpgradeNotice();
+
+      expect(Notice).toHaveBeenCalledWith(
+        expect.stringContaining("API key"),
+        0
+      );
+      expect(plugin.settings.lastSeenVersion).toBe("2.1.3");
+      expect(plugin.saveData).toHaveBeenCalled();
+    });
+
+    it("does not repeat the notice once the version has been seen", async () => {
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        apiKey: "",
+        lastSeenVersion: "2.1.3",
+      };
+
+      await (plugin as any).maybeShowUpgradeNotice();
+
+      expect(Notice).not.toHaveBeenCalled();
+    });
+
+    it("records the version silently when an API key is already configured", async () => {
+      plugin.settings = { ...DEFAULT_SETTINGS, apiKey: "grn_key" };
+
+      await (plugin as any).maybeShowUpgradeNotice();
+
+      expect(Notice).not.toHaveBeenCalled();
+      expect(plugin.settings.lastSeenVersion).toBe("2.1.3");
+      expect(plugin.saveData).toHaveBeenCalled();
+    });
+  });
+
   describe("sync", () => {
     const mockApiKey = "grn_testkey";
     const mockSummary = {

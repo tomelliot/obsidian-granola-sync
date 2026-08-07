@@ -57,6 +57,8 @@ export default class GranolaSync extends Plugin {
   async onload() {
     await this.loadSettings();
 
+    await this.maybeShowUpgradeNotice();
+
     this.initializeLogger();
 
     // Initialize services
@@ -160,6 +162,29 @@ export default class GranolaSync extends Plugin {
       log.warn("Could not import settings from a previous plugin id", error);
       return null;
     }
+  }
+
+  /**
+   * On the first load of a new plugin version, tell users without an API key
+   * that syncing now requires one. Shown once per version, and only while no
+   * key is configured — so upgraders from 2.0.x see it, and everyone else
+   * never does.
+   */
+  private async maybeShowUpgradeNotice(): Promise<void> {
+    const currentVersion = this.manifest.version;
+    if (this.settings.lastSeenVersion === currentVersion) return;
+
+    this.settings.lastSeenVersion = currentVersion;
+    await this.saveData(this.settings);
+
+    if (this.settings.apiKey) return;
+
+    new Notice(
+      "Granola sync now uses Granola's official API and needs an API key to sync. " +
+        "Create one in the Granola app under settings → connectors → API keys " +
+        "(requires a paid Granola plan), then paste it in the plugin settings.",
+      0
+    );
   }
 
   async saveSettings() {
