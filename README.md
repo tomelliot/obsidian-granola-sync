@@ -11,8 +11,6 @@ The most actively maintained Granola sync plugin, and the one that gets the deta
 
 This repo is maintained by [@kayacancode](https://github.com/kayacancode).
 
-If you'd rather have composable CLI tools than a proprietary GUI, check out [All Ears](https://github.com/tomelliot/all-ears) - meeting capture, transcription, cleanup, and summarisation as separate command-line tools that read and write plain files. It comes with smart defaults, and lets you configure your own prompts, switch models however you like or build it into workflows with other tools.
-
 ## Now built on the official Granola API
 
 As of version 2.1.0 the plugin authenticates with a personal API key against Granola's **official public API** (`public-api.granola.ai`), replacing the old approach of decrypting the desktop app's local credential store (which Granola 7.427.0 broke). That means:
