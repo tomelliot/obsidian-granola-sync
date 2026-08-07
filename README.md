@@ -5,6 +5,9 @@
 
 <a href="https://buymeacoffee.com/kayaic"><img src="assets/bmc-button.svg" alt="Buy Me A Coffee" height="60"></a>
 
+> [!IMPORTANT]
+> **Upgrading from 2.0.x? The plugin now connects differently.** Granola broke the old credential-based login in app version 7.427.0, so as of 2.1.0 this plugin uses Granola's **official API** instead. You'll need to create an API key in the Granola desktop app (**Settings → Connectors → API keys** — note that API keys require a **paid Granola plan**) and paste it into the plugin settings. Everything else — your synced notes and settings — carries over untouched.
+
 This plugin pulls your [Granola](https://granola.ai) meeting notes and transcripts into your Obsidian vault as plain Markdown - so they're searchable, linkable, and yours to keep, instead of locked away in Granola, separate from everything else you know.
 
 The most actively maintained Granola sync plugin, and the one that gets the details right: it syncs reliably, never leaves you with duplicate notes, and keeps everything neatly organised the way you set it up. It's built on a clean, well-tested codebase, so syncs just work and stay working.
