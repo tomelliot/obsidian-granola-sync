@@ -20,12 +20,14 @@ As of version 2.1.0 the plugin authenticates with a personal API key against Gra
 
 - **No desktop app required** on the machine running Obsidian — the plugin talks straight to the API.
 - **No keychain/DPAPI prompts** and no credential decryption — just paste a key.
-- **AI summaries as the source of truth** — note bodies come from Granola's `summary_markdown` rather than a conversion of the raw note content, so your own typed notes no longer sync, and only meetings with a finished AI summary and transcript come through.
-- The "Include private notes" and "Include shared notes" settings were removed — access is governed by your API key's scope instead. Image attachments are no longer embedded.
+- **AI summaries as the source of truth** — note bodies come from Granola's `summary_markdown` rather than a conversion of the raw note content, and only meetings with a finished AI summary and transcript come through.
+- **Private notes are opt-in** — the notes you typed yourself can be synced above the summary by turning on **Sync private notes** (off by default). Granola only returns them for meetings you own, using a personal API key.
+- The old "Include private notes" and "Include shared notes" settings were removed — access is governed by your API key's scope instead. Image attachments are no longer embedded.
 
 ## Features
 
 - Sync notes to daily-note sections or individual files, with configurable folders, subfolder patterns, and filename patterns
+- Optional private-notes syncing: your own typed notes, placed above the AI summary in the same file
 - Transcript syncing: separate files, same location as notes, or combined into the note
 - Automatic bidirectional linking between notes and transcripts
 - Periodic automatic syncing with a customizable interval
@@ -45,6 +47,8 @@ As of version 2.1.0 the plugin authenticates with a personal API key against Gra
 3. Click **Test connection** to confirm it works.
 4. Run the command **Sync from Granola**, or enable periodic sync.
 
+> **On Granola's free plan?** API keys need a paid plan, so this plugin can't sync for you. If what you want is a free way to get meetings transcribed, summarised, and into your vault, take a look at [All Ears](https://github.com/tomelliot/all-ears): meeting capture, transcription, cleanup, and summarisation as command-line tools that read and write plain files, with your own choice of models.
+
 ## Upgrading from 2.0.x
 
 - Your settings are kept — you only need to add an API key (see Setup above).
@@ -54,7 +58,8 @@ As of version 2.1.0 the plugin authenticates with a personal API key against Gra
 ## What syncs
 
 - Meetings that have a **generated AI summary and transcript** — that's what the public API returns. Notes still processing (or without a summary) are skipped until Granola finishes them.
-- The note body is the **AI-enhanced summary** (`summary_markdown`). Your own raw typed notes are not exposed by the public API and no longer sync.
+- The note body is the **AI-enhanced summary** (`summary_markdown`).
+- **Private notes** (optional): the notes you typed yourself during the meeting. Turn on **Sync private notes** and they are written above the summary in the same file, under a `Private notes` heading, with the summary under a `Summary` heading. Granola returns them only when your API key is a personal key and you own the meeting — shared or teammate-owned meetings sync exactly as before. Existing notes pick them up on the next **Full sync**.
 - **Transcripts** (optional), with speaker names when Granola can identify them.
 - **Folders**: notes carry their Granola folder membership in frontmatter, including nested paths.
 - Attendees, timestamps, and a `web_url` link back to the note in the Granola web app.

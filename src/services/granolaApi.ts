@@ -113,6 +113,8 @@ export function noteDetailToGranolaDoc(detail: NoteDetailV1): GranolaDoc {
     },
     summary_markdown: detail.summary_markdown,
     summary_text: detail.summary_text ?? undefined,
+    private_notes_markdown: detail.private_notes_markdown ?? null,
+    private_notes_text: detail.private_notes_text ?? null,
     folder_ids: (detail.folder_membership ?? []).map((folder) => folder.id),
     transcript: detail.transcript ?? null,
   };

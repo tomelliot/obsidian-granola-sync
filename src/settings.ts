@@ -15,28 +15,6 @@ function appendSvg(target: HTMLElement, svgMarkup: string): void {
   }
 }
 
-/**
- * @deprecated These enums will be removed in version 3.0.0.
- * They are kept for migration purposes only.
- * Use the new settings structure instead.
- */
-export enum SyncDestination {
-  GRANOLA_FOLDER = "granola_folder",
-  DAILY_NOTES = "daily_notes",
-  DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
-}
-
-/**
- * @deprecated This enum will be removed in version 3.0.0.
- * It is kept for migration purposes only.
- * Use the new settings structure instead.
- */
-export enum TranscriptDestination {
-  GRANOLA_TRANSCRIPTS_FOLDER = "granola_transcripts_folder",
-  DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
-  COMBINED_WITH_NOTE = "combined_with_note",
-}
-
 export interface FilterSettings {
   syncDaysBack: number;
   titleFilterMode: "disabled" | "include" | "exclude";
@@ -45,6 +23,11 @@ export interface FilterSettings {
 
 export interface NoteSettings {
   syncNotes: boolean;
+  /**
+   * Also sync the notes you typed yourself, above the AI summary. The API
+   * only returns them for meetings you own, using a personal API key.
+   */
+  syncPrivateNotes: boolean;
   saveAsIndividualFiles: boolean; // true = files, false = sections
 
   // Only if saveAsIndividualFiles = true:
@@ -139,6 +122,7 @@ export const DEFAULT_SETTINGS: GranolaSyncSettings = {
   titleFilterKeyword: "",
   // NoteSettings
   syncNotes: true,
+  syncPrivateNotes: false, // Opt-in: private notes are the most personal content in Granola
   saveAsIndividualFiles: false, // Default to daily notes (sections)
   baseFolderType: "custom",
   customBaseFolder: "Granola",
@@ -398,6 +382,22 @@ export class GranolaSyncSettingTab extends PluginSettingTab {
             this.display();
           })
       );
+
+    if (this.plugin.settings.syncNotes) {
+      new Setting(containerEl)
+        .setName("Sync private notes")
+        .setDesc(
+          "Also include the notes you typed yourself, above the generated summary. Granola only returns them for meetings you own, using a personal API key. Run a full sync to add them to notes that are already synced."
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.syncPrivateNotes)
+            .onChange(async (value) => {
+              this.plugin.settings.syncPrivateNotes = value;
+              await this.plugin.saveSettings();
+            })
+        );
+    }
 
     new Setting(containerEl)
       .setName("Sync transcripts")

@@ -171,7 +171,7 @@ describe("GranolaSync", () => {
         expect.any(Function)
       );
       expect(DocumentProcessor).toHaveBeenCalledWith(
-        { syncTranscripts: true },
+        { syncTranscripts: true, syncPrivateNotes: false },
         mockPathResolver
       );
       expect(DailyNoteBuilder).toHaveBeenCalledWith(mockApp, mockDocumentProcessor);
@@ -342,14 +342,63 @@ describe("GranolaSync", () => {
       expect(Notice).not.toHaveBeenCalled();
     });
 
-    it("records the version silently when an API key is already configured", async () => {
+    it("tells users with an API key about private notes when upgrading from 2.x", async () => {
+      plugin.manifest = { id: "granola-sync", version: "3.0.0" };
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        apiKey: "grn_key",
+        lastSeenVersion: "2.1.3",
+      };
+
+      await (plugin as any).maybeShowUpgradeNotice();
+
+      expect(Notice).toHaveBeenCalledTimes(1);
+      expect(Notice).toHaveBeenCalledWith(
+        expect.stringContaining("private notes"),
+        0
+      );
+      expect(plugin.settings.lastSeenVersion).toBe("3.0.0");
+      expect(plugin.saveData).toHaveBeenCalled();
+    });
+
+    it("tells users with an API key about private notes when no version was recorded before", async () => {
+      plugin.manifest = { id: "granola-sync", version: "3.0.0" };
       plugin.settings = { ...DEFAULT_SETTINGS, apiKey: "grn_key" };
 
       await (plugin as any).maybeShowUpgradeNotice();
 
+      expect(Notice).toHaveBeenCalledWith(
+        expect.stringContaining("private notes"),
+        0
+      );
+    });
+
+    it("records later 3.x versions silently when an API key is already configured", async () => {
+      plugin.manifest = { id: "granola-sync", version: "3.0.1" };
+      plugin.settings = {
+        ...DEFAULT_SETTINGS,
+        apiKey: "grn_key",
+        lastSeenVersion: "3.0.0",
+      };
+
+      await (plugin as any).maybeShowUpgradeNotice();
+
       expect(Notice).not.toHaveBeenCalled();
-      expect(plugin.settings.lastSeenVersion).toBe("2.1.3");
+      expect(plugin.settings.lastSeenVersion).toBe("3.0.1");
       expect(plugin.saveData).toHaveBeenCalled();
+    });
+
+    it("does not mention private notes to users without an API key", async () => {
+      plugin.manifest = { id: "granola-sync", version: "3.0.0" };
+      plugin.settings = { ...DEFAULT_SETTINGS, apiKey: "", lastSeenVersion: "2.1.3" };
+
+      await (plugin as any).maybeShowUpgradeNotice();
+
+      expect(Notice).toHaveBeenCalledTimes(1);
+      expect(Notice).not.toHaveBeenCalledWith(
+        expect.stringContaining("private notes"),
+        expect.anything()
+      );
     });
   });
 
