@@ -28,6 +28,12 @@ export interface GranolaDoc {
   };
   summary_markdown?: string | null;
   summary_text?: string;
+  /**
+   * The owner's own typed notes. Only returned when the API key belongs to
+   * the user who created the note; null for everyone else.
+   */
+  private_notes_markdown?: string | null;
+  private_notes_text?: string | null;
   /** IDs of folders this note belongs to (fol_…). */
   folder_ids?: string[];
   /** Present when fetched with include=transcript. */

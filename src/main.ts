@@ -212,7 +212,10 @@ export default class GranolaSync extends Plugin {
 
     // Initialize DocumentProcessor with current settings
     this.documentProcessor = new DocumentProcessor(
-      { syncTranscripts: this.settings.syncTranscripts },
+      {
+        syncTranscripts: this.settings.syncTranscripts,
+        syncPrivateNotes: this.settings.syncPrivateNotes,
+      },
       this.pathResolver
     );
 

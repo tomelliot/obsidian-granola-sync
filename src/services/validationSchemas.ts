@@ -47,6 +47,9 @@ export const NoteDetailSchema = v.object({
   folder_membership: v.optional(v.array(FolderSchema), []),
   summary_text: v.nullish(v.string()),
   summary_markdown: v.nullish(v.string()),
+  /** The owner's own typed notes; only present when the API key belongs to the note's creator. */
+  private_notes_text: v.nullish(v.string()),
+  private_notes_markdown: v.nullish(v.string()),
   transcript: v.nullish(v.array(TranscriptEntrySchema)),
 });
 

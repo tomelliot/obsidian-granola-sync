@@ -1227,7 +1227,7 @@ describe("DailyNoteBuilder", () => {
         transcriptHandling: "combined",
       });
       const documentProcessor = new DocumentProcessor(
-        { syncTranscripts: false },
+        { syncTranscripts: false, syncPrivateNotes: false },
         pathResolver
       );
 

@@ -171,7 +171,7 @@ describe("GranolaSync", () => {
         expect.any(Function)
       );
       expect(DocumentProcessor).toHaveBeenCalledWith(
-        { syncTranscripts: true },
+        { syncTranscripts: true, syncPrivateNotes: false },
         mockPathResolver
       );
       expect(DailyNoteBuilder).toHaveBeenCalledWith(mockApp, mockDocumentProcessor);

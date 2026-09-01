@@ -13,6 +13,19 @@ import {
 
 export interface DocumentProcessorSettings {
   syncTranscripts: boolean;
+  /**
+   * Include the owner's own typed notes (`private_notes_*`) above the AI
+   * summary. The API only returns them for notes the key's user created.
+   */
+  syncPrivateNotes: boolean;
+}
+
+/** Section headings used when a note body has more than one part. */
+const PRIVATE_NOTES_HEADING = "Private notes";
+const SUMMARY_HEADING = "Summary";
+
+function heading(level: number, text: string): string {
+  return `${"#".repeat(level)} ${text}`;
 }
 
 /**
@@ -95,17 +108,10 @@ export class DocumentProcessor {
   }
 
   /**
-   * Builds the body content for a note.
-   *
-   * The public API returns the AI summary as ready-made markdown, so the body
-   * is `summary_markdown` verbatim, falling back to the plain `summary_text`.
-   *
-   * @param doc - The Granola document to process
-   * @param _options - Kept for signature stability; the API's own markdown
-   *   defines heading levels now.
-   * @returns The markdown body, or null when the note has no summary content
+   * The AI summary as ready-made markdown (`summary_markdown`), falling back
+   * to the plain `summary_text`. Null when the note has no summary content.
    */
-  buildNoteBody(doc: GranolaDoc, _options: BodyOptions): string | null {
+  getSummaryMarkdown(doc: GranolaDoc): string | null {
     if (doc.summary_markdown?.trim()) {
       return doc.summary_markdown;
     }
@@ -113,6 +119,54 @@ export class DocumentProcessor {
       return doc.summary_text;
     }
     return null;
+  }
+
+  /**
+   * The owner's own typed notes as markdown, falling back to plain text.
+   * Null when the setting is off or the API returned none (the key's user is
+   * not the note's owner, or nothing was typed).
+   */
+  getPrivateNotesMarkdown(doc: GranolaDoc): string | null {
+    if (!this.settings.syncPrivateNotes) {
+      return null;
+    }
+    if (doc.private_notes_markdown?.trim()) {
+      return doc.private_notes_markdown;
+    }
+    if (doc.private_notes_text?.trim()) {
+      return doc.private_notes_text;
+    }
+    return null;
+  }
+
+  /**
+   * Builds the body content for a note.
+   *
+   * With no private notes the body is the summary verbatim, so files stay
+   * byte-identical to earlier versions. When private notes are present they
+   * go first, and both parts get a heading at `options.headingLevel` so a
+   * reader can tell their own notes from the AI summary.
+   *
+   * @param doc - The Granola document to process
+   * @param options - Heading level for the section headings
+   * @returns The markdown body, or null when the note has no content at all
+   */
+  buildNoteBody(doc: GranolaDoc, options: BodyOptions): string | null {
+    const summary = this.getSummaryMarkdown(doc);
+    const privateNotes = this.getPrivateNotesMarkdown(doc);
+    if (privateNotes === null) {
+      return summary;
+    }
+
+    const sections = [
+      `${heading(options.headingLevel, PRIVATE_NOTES_HEADING)}\n\n${privateNotes}`,
+    ];
+    if (summary !== null) {
+      sections.push(
+        `${heading(options.headingLevel, SUMMARY_HEADING)}\n\n${summary}`
+      );
+    }
+    return sections.join("\n\n");
   }
 
   /**
@@ -206,9 +260,10 @@ export class DocumentProcessor {
     transcriptContent: string,
     folders?: string[]
   ): { filename: string; content: string } | null {
-    // Build body first — if there's no summary content, bail out early
-    const body = this.buildNoteBody(doc, { headingLevel: 2 });
-    if (body === null) {
+    // Build body parts first — if there's no content at all, bail out early
+    const summary = this.getSummaryMarkdown(doc);
+    const privateNotes = this.getPrivateNotesMarkdown(doc);
+    if (summary === null && privateNotes === null) {
       return null;
     }
 
@@ -240,9 +295,18 @@ export class DocumentProcessor {
 
     let finalMarkdown = frontmatterLines.join("\n");
 
-    finalMarkdown += "## Note\n\n";
-    finalMarkdown += body;
-    finalMarkdown += "\n\n";
+    // Private notes (when enabled and present) sit above the AI summary
+    if (privateNotes !== null) {
+      finalMarkdown += `${heading(2, PRIVATE_NOTES_HEADING)}\n\n`;
+      finalMarkdown += privateNotes;
+      finalMarkdown += "\n\n";
+    }
+
+    if (summary !== null) {
+      finalMarkdown += "## Note\n\n";
+      finalMarkdown += summary;
+      finalMarkdown += "\n\n";
+    }
 
     // Add transcript content at the end with heading
     finalMarkdown += "## Transcript\n\n";

@@ -52,6 +52,7 @@ describe("DocumentProcessor", () => {
     documentProcessor = new DocumentProcessor(
       {
         syncTranscripts: false,
+        syncPrivateNotes: false,
       },
       mockPathResolver
     );
@@ -177,6 +178,7 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
+          syncPrivateNotes: false,
         },
         mockPathResolver
       );
@@ -250,6 +252,7 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: false,
+          syncPrivateNotes: false,
         },
         mockPathResolver
       );
@@ -311,6 +314,7 @@ describe("DocumentProcessor", () => {
       documentProcessor = new DocumentProcessor(
         {
           syncTranscripts: true,
+          syncPrivateNotes: false,
         },
         mockPathResolver
       );
@@ -655,6 +659,132 @@ describe("DocumentProcessor", () => {
       expect(result.content).toContain("bob@example.com");
       // Should not contain "Unknown" which would be filtered out
       expect(result.content).not.toContain("Unknown");
+    });
+  });
+  describe("private notes", () => {
+    const SUMMARY = "## Key points\n\n- AI summary line";
+    const PRIVATE = "- my own typed note";
+
+    const docWithPrivate: GranolaDoc = {
+      id: "doc-priv",
+      title: "Owned Meeting",
+      created_at: "2024-01-15T10:00:00Z",
+      updated_at: "2024-01-15T12:00:00Z",
+      summary_markdown: SUMMARY,
+      private_notes_markdown: PRIVATE,
+      private_notes_text: "my own typed note",
+    };
+
+    function withPrivateNotesEnabled(): DocumentProcessor {
+      return new DocumentProcessor(
+        { syncTranscripts: false, syncPrivateNotes: true },
+        mockPathResolver
+      );
+    }
+
+    it("writes private notes above the summary, each under its own heading", () => {
+      const result = withPrivateNotesEnabled().prepareNote(docWithPrivate);
+
+      const body = result!.content.split("---\n")[2];
+      expect(body).toBe(
+        `## Private notes\n\n${PRIVATE}\n\n## Summary\n\n${SUMMARY}`
+      );
+    });
+
+    it("leaves the body as the bare summary when the setting is off", () => {
+      const result = documentProcessor.prepareNote(docWithPrivate);
+
+      expect(result!.content).not.toContain("my own typed note");
+      expect(result!.content).not.toContain("## Private notes");
+      expect(result!.content).not.toContain("## Summary");
+      expect(result!.content).toContain(SUMMARY);
+    });
+
+    it("leaves the body as the bare summary when the API returned no private notes", () => {
+      const doc: GranolaDoc = {
+        ...docWithPrivate,
+        private_notes_markdown: null,
+        private_notes_text: null,
+      };
+
+      const result = withPrivateNotesEnabled().prepareNote(doc);
+
+      expect(result!.content).not.toContain("## Private notes");
+      expect(result!.content).not.toContain("## Summary");
+      expect(result!.content).toContain(SUMMARY);
+    });
+
+    it("treats whitespace-only private notes as absent", () => {
+      const doc: GranolaDoc = {
+        ...docWithPrivate,
+        private_notes_markdown: "  \n",
+        private_notes_text: "   ",
+      };
+
+      const result = withPrivateNotesEnabled().prepareNote(doc);
+
+      expect(result!.content).not.toContain("## Private notes");
+    });
+
+    it("falls back to private_notes_text when private_notes_markdown is missing", () => {
+      const doc: GranolaDoc = {
+        ...docWithPrivate,
+        private_notes_markdown: null,
+      };
+
+      const result = withPrivateNotesEnabled().prepareNote(doc);
+
+      expect(result!.content).toContain(
+        "## Private notes\n\nmy own typed note\n\n## Summary"
+      );
+    });
+
+    it("still writes a note that has private notes but no summary", () => {
+      const doc: GranolaDoc = {
+        ...docWithPrivate,
+        summary_markdown: null,
+        summary_text: undefined,
+      };
+
+      const result = withPrivateNotesEnabled().prepareNote(doc);
+
+      expect(result).not.toBeNull();
+      expect(result!.content).toContain(`## Private notes\n\n${PRIVATE}`);
+      expect(result!.content).not.toContain("## Summary");
+    });
+
+    it("puts private notes before the note and transcript in combined files", () => {
+      const result = withPrivateNotesEnabled().prepareCombinedNote(
+        docWithPrivate,
+        "**Speaker:** hello"
+      );
+
+      const body = result!.content.split("---\n")[2];
+      expect(body).toBe(
+        `## Private notes\n\n${PRIVATE}\n\n## Note\n\n${SUMMARY}\n\n## Transcript\n\n**Speaker:** hello`
+      );
+    });
+
+    it("keeps the combined layout unchanged when the setting is off", () => {
+      const result = documentProcessor.prepareCombinedNote(
+        docWithPrivate,
+        "**Speaker:** hello"
+      );
+
+      const body = result!.content.split("---\n")[2];
+      expect(body).toBe(
+        `## Note\n\n${SUMMARY}\n\n## Transcript\n\n**Speaker:** hello`
+      );
+    });
+
+    it("uses level-3 headings for daily note sections", () => {
+      const result = withPrivateNotesEnabled().extractNoteForDailyNote(
+        docWithPrivate
+      );
+
+      expect(result!.markdown).toBe(
+        `### Private notes\n\n${PRIVATE}\n\n### Summary\n\n${SUMMARY}`
+      );
     });
   });
 });

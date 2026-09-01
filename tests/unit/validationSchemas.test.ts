@@ -41,6 +41,41 @@ describe("v1 schemas", () => {
     expect(result.success).toBe(true);
   });
 
+  test("keeps private_notes_text and private_notes_markdown on note detail", () => {
+    const detail = {
+      ...noteSummary,
+      attendees: [],
+      folder_membership: [],
+      summary_text: "plain",
+      summary_markdown: "## md",
+      private_notes_text: "my raw notes",
+      private_notes_markdown: "- my raw notes",
+      transcript: null,
+    };
+    const result = v.safeParse(NoteDetailSchema, detail);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.output.private_notes_text).toBe("my raw notes");
+      expect(result.output.private_notes_markdown).toBe("- my raw notes");
+    }
+  });
+
+  test("accepts note detail without private notes fields (not the owner)", () => {
+    const detail = {
+      ...noteSummary,
+      attendees: [],
+      folder_membership: [],
+      summary_text: "plain",
+      summary_markdown: "## md",
+      transcript: null,
+    };
+    const result = v.safeParse(NoteDetailSchema, detail);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.output.private_notes_markdown).toBeUndefined();
+    }
+  });
+
   test("parses transcript entries", () => {
     const detail = {
       ...noteSummary,

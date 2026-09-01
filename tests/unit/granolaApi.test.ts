@@ -216,4 +216,40 @@ describe("noteDetailToGranolaDoc", () => {
     expect(doc.title).toBeNull();
     expect(doc.summary_text).toBe("s");
   });
+
+  test("carries private notes through when the API returns them", () => {
+    const doc = noteDetailToGranolaDoc({
+      id: "not_a",
+      title: "T",
+      created_at: "2026-01-27T15:30:00Z",
+      updated_at: "2026-01-27T16:45:00Z",
+      web_url: "https://notes.granola.ai/d/abc",
+      attendees: [],
+      folder_membership: [],
+      summary_text: "s",
+      summary_markdown: "## md",
+      private_notes_text: "raw",
+      private_notes_markdown: "- raw",
+      transcript: null,
+    });
+    expect(doc.private_notes_markdown).toBe("- raw");
+    expect(doc.private_notes_text).toBe("raw");
+  });
+
+  test("leaves private notes null when the API omits them", () => {
+    const doc = noteDetailToGranolaDoc({
+      id: "not_a",
+      title: "T",
+      created_at: "2026-01-27T15:30:00Z",
+      updated_at: "2026-01-27T16:45:00Z",
+      web_url: "https://notes.granola.ai/d/abc",
+      attendees: [],
+      folder_membership: [],
+      summary_text: "s",
+      summary_markdown: "## md",
+      transcript: null,
+    });
+    expect(doc.private_notes_markdown).toBeNull();
+    expect(doc.private_notes_text).toBeNull();
+  });
 });
