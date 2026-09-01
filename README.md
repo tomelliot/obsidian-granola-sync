@@ -12,7 +12,7 @@ This plugin pulls your [Granola](https://granola.ai) meeting notes and transcrip
 
 The most actively maintained Granola sync plugin, and the one that gets the details right: it syncs reliably, never leaves you with duplicate notes, and keeps everything neatly organised the way you set it up. It's built on a clean, well-tested codebase, so syncs just work and stay working.
 
-This repo is maintained by [@kayacancode](https://github.com/kayacancode).
+This repo is maintained by [@kayacancode](https://github.com/kayacancode). [Tom Elliot](https://github.com/tomelliot), the plugin's original creator, is now working on [All Ears](https://github.com/tomelliot/all-ears): command-line tools for meeting capture, transcription, cleanup, and summarisation that read and write plain files.
 
 ## Now built on the official Granola API
 
@@ -46,8 +46,6 @@ As of version 2.1.0 the plugin authenticates with a personal API key against Gra
 2. In Obsidian, open the plugin settings and paste the key (`grn_…`) into **Granola API key**.
 3. Click **Test connection** to confirm it works.
 4. Run the command **Sync from Granola**, or enable periodic sync.
-
-> **On Granola's free plan?** API keys need a paid plan, so this plugin can't sync for you. If what you want is a free way to get meetings transcribed, summarised, and into your vault, take a look at [All Ears](https://github.com/tomelliot/all-ears): meeting capture, transcription, cleanup, and summarisation as command-line tools that read and write plain files, with your own choice of models.
 
 ## Upgrading from 2.0.x
 
