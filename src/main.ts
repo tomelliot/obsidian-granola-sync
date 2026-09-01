@@ -44,6 +44,15 @@ import {
   showStatusBarTemporary,
 } from "./utils/statusBar";
 
+/** Plugin major version that introduced the "Sync private notes" setting. */
+const PRIVATE_NOTES_MAJOR_VERSION = 3;
+
+/** Leading integer of a semver string; 0 when missing or unparsable. */
+function majorVersion(version: string | undefined): number {
+  const major = parseInt(version ?? "", 10);
+  return Number.isNaN(major) ? 0 : major;
+}
+
 export default class GranolaSync extends Plugin {
   settings: GranolaSyncSettings;
   syncIntervalId: number | null = null;
@@ -165,26 +174,39 @@ export default class GranolaSync extends Plugin {
   }
 
   /**
-   * On the first load of a new plugin version, tell users without an API key
-   * that syncing now requires one. Shown once per version, and only while no
-   * key is configured — so upgraders from 2.0.x see it, and everyone else
-   * never does.
+   * On the first load of a new plugin version, show a one-time notice:
+   * - without an API key, that syncing now requires one (so upgraders from
+   *   2.0.x learn what changed);
+   * - with a key, and coming from a 2.x version (or none recorded), that
+   *   private notes can now be synced — the headline change in 3.0.0.
+   * Later 3.x upgrades are recorded silently.
    */
   private async maybeShowUpgradeNotice(): Promise<void> {
     const currentVersion = this.manifest.version;
-    if (this.settings.lastSeenVersion === currentVersion) return;
+    const previousVersion = this.settings.lastSeenVersion;
+    if (previousVersion === currentVersion) return;
 
     this.settings.lastSeenVersion = currentVersion;
     await this.saveData(this.settings);
 
-    if (this.settings.apiKey) return;
+    if (!this.settings.apiKey) {
+      new Notice(
+        "Granola sync now uses Granola's official API and needs an API key to sync. " +
+          "Create one in the Granola app under settings → connectors → API keys " +
+          "(requires a paid Granola plan), then paste it in the plugin settings.",
+        0
+      );
+      return;
+    }
 
-    new Notice(
-      "Granola sync now uses Granola's official API and needs an API key to sync. " +
-        "Create one in the Granola app under settings → connectors → API keys " +
-        "(requires a paid Granola plan), then paste it in the plugin settings.",
-      0
-    );
+    if (majorVersion(previousVersion) < PRIVATE_NOTES_MAJOR_VERSION) {
+      new Notice(
+        "Granola sync can now include the private notes you typed yourself, above the summary. " +
+          "Turn on sync private notes in the plugin settings, then run a full sync to add them to existing notes. " +
+          "Granola only returns them for meetings you own, using a personal API key.",
+        0
+      );
+    }
   }
 
   async saveSettings() {

@@ -15,28 +15,6 @@ function appendSvg(target: HTMLElement, svgMarkup: string): void {
   }
 }
 
-/**
- * @deprecated These enums will be removed in version 3.0.0.
- * They are kept for migration purposes only.
- * Use the new settings structure instead.
- */
-export enum SyncDestination {
-  GRANOLA_FOLDER = "granola_folder",
-  DAILY_NOTES = "daily_notes",
-  DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
-}
-
-/**
- * @deprecated This enum will be removed in version 3.0.0.
- * It is kept for migration purposes only.
- * Use the new settings structure instead.
- */
-export enum TranscriptDestination {
-  GRANOLA_TRANSCRIPTS_FOLDER = "granola_transcripts_folder",
-  DAILY_NOTE_FOLDER_STRUCTURE = "daily_note_folder_structure",
-  COMBINED_WITH_NOTE = "combined_with_note",
-}
-
 export interface FilterSettings {
   syncDaysBack: number;
   titleFilterMode: "disabled" | "include" | "exclude";

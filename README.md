@@ -47,6 +47,8 @@ As of version 2.1.0 the plugin authenticates with a personal API key against Gra
 3. Click **Test connection** to confirm it works.
 4. Run the command **Sync from Granola**, or enable periodic sync.
 
+> **On Granola's free plan?** API keys need a paid plan, so this plugin can't sync for you. If what you want is a free way to get meetings transcribed, summarised, and into your vault, take a look at [All Ears](https://github.com/tomelliot/all-ears): meeting capture, transcription, cleanup, and summarisation as command-line tools that read and write plain files, with your own choice of models.
+
 ## Upgrading from 2.0.x
 
 - Your settings are kept — you only need to add an API key (see Setup above).
